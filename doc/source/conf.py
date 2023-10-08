@@ -17,9 +17,9 @@
 
 # -- Project information -----------------------------------------------------
 
-project = "python-stub"
-copyright = "2021 IIASA"
-author = "Daniel Huppmann"
+project = "rime"
+copyright = "2023 IIASA"
+author = "Edward Byers, Mia Werning"
 
 
 # -- General configuration ---------------------------------------------------

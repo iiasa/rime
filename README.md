@@ -1,45 +1,40 @@
-# A template repo for IIASA Python projects
+# RIME - Rapid Impact Model Emulator
 
-Copyright (c) 2021 IIASA
+Copyright (c) 2023 IIASA
 
-![License](https://img.shields.io/github/license/iiasa/python-stub)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+![GNU GPL v3](https://choosealicense.com/licenses/gpl-3.0/)
+![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 ## Overview
 
-Template repository for creating python packages and Sphinx-based documentation pages in line with the IIASA design guidelines
+RIME is a lightweight software tool for using global warming level approaches to link climate impacts to Integrated Assessment Models (IAMs).
+Accompanied by climate impacts data (table and/or maps), RIME can be used tot ake a global mean temperature timeseries (e.g. from an IAM), and return tables and maps of climate impacts through time.
+There are two key use-cases for the RIME approach:
+[1] Estimating a suite of climate impacts from an global emissions scenario.
+[2] Reformulating climates impact data to be used as an input to a global emissions scenario.
 
-## Configuration
 
-To start a new Python package from this repo, 
-click on the green **Use this template** button on top-right of this page.
-Detailed instructions to create a new repository from a template can be found
-[here](https://help.github.com/en/articles/creating-a-repository-from-a-template).
+### `rime_functions.py` 
+Contains the key functions that can be used to process data. 
 
-Then, make the following changes:
+### `process-config.py` 
+A script to host a large number of configurable settings for running the software on datasets.
+Needs to be imported at the beginning of a script, e.g. `from process_config import *`.
+Settings for Dask could be configured in here. 
 
-0. Change the text of the [LICENSE](LICENSE) file (optional).
-   Visit [choosealicense.com](https://choosealicense.com) to find out which license is
-   right for your project.
-0. Update the copyright (if other than IIASA) in this readme.
-0. Update the url in the license badge in this readme to point to your new repository.
-   This will automatically change the license badge (if you changed the license).
-0. Rename the folder `python_stub` to the intended package name.
-0. Update the package name, author info and url in `setup.cfg`.
-0. Update the package name, author info and copyright in `doc/source/conf.py`.
-0. Delete the configuration section from this readme and update the title and overview section.
+### `generate_aggregated_inputs.py` 
+Pre-processing of tabular impacts data of exposure by GWL, into netcdf datasets that will be used in emulation. Only needs to run once to pre-process the impacts data. 
 
-Make sure to commit all changes to your new repository - then program away!
+### `process_tabledata.py` 
+Take input table of emissions scenarios with GMT and output tables of climate impacts data in IAMC format. Can be done for multiple scenarios and indicators at a time. 
 
-## Recommendations
+### `process_maps.py`  
+Take input table of emissions scenarios with GMT and output maps of climate impacts through time as netCDF. Ouptut netCDF can be specified for either for 1 scenario and multiple climate impacts, or multiple scenarios for 1 indicator.
 
-This package uses the [Black](https://black.readthedocs.io/) code style.
-A GitHub Action workflow is configured to check that your commits conform to the style.
 
-We recommend that you follow the [numpydoc](https://numpydoc.readthedocs.io)
-docstring formatting guide.
 
-Looking for more best-practice tools for scientific software development?
+
+
 Take a look at the [cookiecutter-hypermodern-python](https://github.com/cjolowicz/cookiecutter-hypermodern-python) repository!
 
 ## Installation
