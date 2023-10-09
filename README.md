@@ -10,7 +10,7 @@ Copyright (c) 2023 IIASA
 
 
 ## Overview  
-------------------
+------------------  
 
 **RIME** is a lightweight software tool for using global warming level approaches to link climate impacts to Integrated Assessment Models (IAMs).
 When accompanied by climate impacts data (table and/or maps), RIME can be used tot ake a global mean temperature timeseries (e.g. from an IAM), and return tables and maps of climate impacts through time consistent with the warming of the scenario.
