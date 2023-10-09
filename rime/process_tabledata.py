@@ -36,8 +36,7 @@ if __name__ == "__main__":
     files = filesall[15:]
 
     if len(files) == 0:
-        print("no files!")
-        dsfsdfsdfsdf
+        raise Exception("No files!")
 
     # load input IAMC scenarios file
     df_scens_in = pyam.IamDataFrame(fname_input_scenarios)

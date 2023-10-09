@@ -16,8 +16,7 @@ import os
 
 # From generate_aggregated_inputs.py
 
-region = "COUNTRIES"
-# region = 'R10'
+region = "COUNTRIES"  # 'R10' or 'COUNTRIES'
 table_output_format = f"table_output_|_{region}.csv"
 
 
@@ -64,7 +63,7 @@ if env == "pc":
 
 
 elif env == "ebro3":
-    # wd = 'H:\\'
+    wd = "H:\\"
     wd2 = "H:\\rcre_testing\\"
 
     # Input source of processed climate data by ssp/year/variable/region
