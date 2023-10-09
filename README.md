@@ -5,8 +5,8 @@ Copyright (c) 2023 IIASA
 [![license](https://www.gnu.org/graphics/gplv3-with-text-136x68.png)](https://choosealicense.com/licenses/gpl-3.0/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)  
 
-<!-- ![RIME_logo](https://github.com/iiasa/rime/assets/17701232/12e9ae66-5d28-4f06-9540-fa496cc588d0) --!>
-<img src="[RIME_logo](https://github.com/iiasa/rime/assets/17701232/12e9ae66-5d28-4f06-9540-fa496cc588d0)" alt="image" width="500" height="auto"/>  
+![RIME_logo](https://github.com/iiasa/rime/assets/17701232/12e9ae66-5d28-4f06-9540-fa496cc588d0)
+<!-- <img src="[RIME_logo](https://github.com/iiasa/rime/assets/17701232/12e9ae66-5d28-4f06-9540-fa496cc588d0)" alt="image" width="500" height="auto"/>   --!>
 
 
 ## Overview  
