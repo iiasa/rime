@@ -2,16 +2,20 @@
 
 Copyright (c) 2023 IIASA
 
-![GNU GPL v3](https://choosealicense.com/licenses/gpl-3.0/)
-![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![license](https://www.gnu.org/graphics/gplv3-with-text-136x68.png)](https://choosealicense.com/licenses/gpl-3.0/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)  
 
-## Overview
+![RIME_logo](https://github.com/iiasa/rime/assets/17701232/12e9ae66-5d28-4f06-9540-fa496cc588d0)
 
-RIME is a lightweight software tool for using global warming level approaches to link climate impacts to Integrated Assessment Models (IAMs).
-Accompanied by climate impacts data (table and/or maps), RIME can be used tot ake a global mean temperature timeseries (e.g. from an IAM), and return tables and maps of climate impacts through time.
+## Overview  
+------------------
+
+**RIME** is a lightweight software tool for using global warming level approaches to link climate impacts to Integrated Assessment Models (IAMs).
+When accompanied by climate impacts data (table and/or maps), RIME can be used tot ake a global mean temperature timeseries (e.g. from an IAM), and return tables and maps of climate impacts through time consistent with the warming of the scenario.
 There are two key use-cases for the RIME approach:
-[1] Estimating a suite of climate impacts from an global emissions scenario.
-[2] Reformulating climates impact data to be used as an input to a global emissions scenario.
+[1] Estimating a suite of climate impacts from an global emissions scenario.  
+[2] Reformulating climates impact data to be used as an input to a global emissions scenario.  
+
 
 
 ### `rime_functions.py` 
@@ -32,7 +36,8 @@ Take input table of emissions scenarios with GMT and output tables of climate im
 Take input table of emissions scenarios with GMT and output maps of climate impacts through time as netCDF. Ouptut netCDF can be specified for either for 1 scenario and multiple climate impacts, or multiple scenarios for 1 indicator.
 
 
-
+## Tutorials
+Example scripts and tutorials are found inthe respective folders.
 
 
 Take a look at the [cookiecutter-hypermodern-python](https://github.com/cjolowicz/cookiecutter-hypermodern-python) repository!
