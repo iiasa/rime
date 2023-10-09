@@ -64,7 +64,7 @@ ssp = "ssp2"
 # Test multiple scenarios, 1 indicator
 files = glob.glob(os.path.join(impact_data_dir, ind, f"*{short}_{ssp}*{ftype}.nc4"))
 mapdata = xr.open_mfdataset(
-    files, preprocess=preprocess, combine="nested", concat_dim="gmt"
+    files, preprocess=remove_ssp_from_ds, combine="nested", concat_dim="gmt"
 )
 
 # df = pyam.IamDataFrame(dft)
@@ -122,7 +122,7 @@ for ind in indicators:
             os.path.join(impact_data_dir, ind, f"*{short}_{ssp}*{ftype}.nc4")
         )
         mapdata[short] = xr.open_mfdataset(
-            files, preprocess=preprocess, combine="nested", concat_dim="gmt"
+            files, preprocess=remove_ssp_from_ds, combine="nested", concat_dim="gmt"
         )[short]
 
 map_out_MI = map_transform_gmt_multi_dask(

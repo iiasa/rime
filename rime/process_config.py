@@ -85,7 +85,6 @@ elif env == "ebro3":
 year_resols = [5]
 input_scenarios_name = "AR6full"
 
-
 temp_variable = (
     "AR6 climate diagnostics|Surface Temperature (GSAT)|MAGICCv7.5.3|50.0th Percentile"
 )

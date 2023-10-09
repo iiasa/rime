@@ -6,6 +6,7 @@ Created on Sun Dec 11 00:24:36 2022
 """
 if __name__ == "__main__":
     from process_config import *
+    from rime_functions import *
 
     #  from alive_progress import alive_bar
     import dask.dataframe as dd
@@ -20,7 +21,6 @@ if __name__ == "__main__":
     import time
     import xarray as xr
     import dask
-    from rime_functions import *
 
     # from pandas import InvalidIndexError
     # dask.config.set(scheduler='threads')  # overwrite default with multiprocessing scheduler
@@ -32,14 +32,23 @@ if __name__ == "__main__":
     # files = filesall[2:6]
     # files = filesall[7:9] # problem in 6?
     # files = filesall[9:12]
-    # files = filesall[12:15]
-    files = filesall[15:]
+    files = filesall[12:15]
+    # files = filesall[15:]
 
     if len(files) == 0:
         raise Exception("No files!")
 
     # load input IAMC scenarios file
     df_scens_in = pyam.IamDataFrame(fname_input_scenarios)
+
+    mode = "CO2"
+    if mode == "CO2":
+        print(
+            "CO2 mode: Global mean temperatures will be derived from response \
+              to cumulative CO2 emissions."
+        )
+    elif mode == "GMT":
+        print("GMT mode: Global mean temperatures provided as input.")
 
     if parallel:
         dask.config.set(
@@ -58,76 +67,81 @@ if __name__ == "__main__":
     # % # Load aggregated file, and test with temperature pathway
     # =============================================================================
 
-    # %%
+    # %% Normal testing with temperature variable
 
     for year_res in year_resols:
         for f in files:
             start = time.time()
 
-            # Get variable name
+            # Get variable name for the filename output
             v1 = f.split(f"_{region}")[0]
             v2 = v1.split("\\")[-1]
 
             years = range(2015, 2101, year_res)
 
+            #############################
+            # CLIMATE DATA PRE-PROCESSING
             # load input climate impacts data file
             ds = xr.open_mfdataset(f)
             ds = ds.sel(year=years)
 
-            # Filter for temperature variable
-            dft = df_scens_in.filter(variable=temp_variable)
-
-            if few_scenarios:
-                dft = dft.filter(scenario="*SSP*")
-                dft = dft.filter(Category=["C1", "C2", "C3", "C8"])
-                dft = dft.filter(Category=["C1*"])
-                # dft = dft.filter(scenario='R2p1_SSP2-PkBudg900', keep=False)
-                if very_few_scenarios:
-                    dft = dft.filter(model="WIT*", scenario="*")
-
-            #  assign SSPs
-            dft = dft.filter(year=years)
-            dft = np.round(
-                dft.as_pandas()[pyam.IAMC_IDX + ["year", "value", "Ssp_family"]], 3
-            )
-            sspdic = {1.0: "SSP1", 2.0: "SSP2", 3.0: "SSP3", 4.0: "SSP4", 5.0: "SSP5"}
-            dft.Ssp_family.replace(
-                sspdic, inplace=True
-            )  # metadata must have Ssp_faily column. If not SSP2 automatically chosen
-            dft.loc[dft.Ssp_family.isnull(), ssp_meta_col] = "SSP2"
-            dfX = pyam.IamDataFrame(dft)
-
             # % Full thing
-
             varis = list(ds.data_vars.keys())[:lvaris]
-
             # Subset to fewer indicators
             # varis = list(ds.data_vars.keys())
             # varis = [str for str in list(ds.data_vars.keys()) if any(sub in str for sub in ['High','Low'])==False]
             # lvaris = len(varis)
             # dsi = ds[list(ds.data_vars.keys())[:x]]
-
             dsi = ds[varis]
-            print(f"real len variables = {len(varis)}")
+            print(f"# of variables = {len(varis)}")
 
-            dft = dfX.timeseries().reset_index()
+            ##############################
+            # SCENARIO DATA PRE-PROCESSING
+            # Filter for temperature variable
+
+            if mode == "GMT":
+                dfp = df_scens_in.filter(variable=temp_variable)
+            elif mode == "CO2":
+                dfp = prepare_cumCO2(df_scens_in, years=years, use_dask=True)
+                ts = dfp.timeseries().apply(co2togmt_simple)
+                ts = pyam.IamDataFrame(ts)
+                ts.rename(
+                    {
+                        "variable": {ts.variable[0]: "RIME|GSAT_tcre"},
+                        "unit": {ts.unit[0]: "°C"},
+                    },
+                    inplace=True,
+                )
+                # Export data to check error and relationships
+                # ts.append(dfp).to_csv('c://users//byers//downloads//tcre_gmt_output.csv')
+                dfp = ts
+                dfp.meta = df_scens_in.meta.copy()
+            dfp = dfp.filter(year=years)
+
+            if few_scenarios:
+                dfp = dfp.filter(scenario="*SSP*")
+                dfp = dfp.filter(Category=["C1", "C2", "C3", "C8"])
+                dfp = dfp.filter(Category=["C1*"])
+                # dfp = dfp.filter(scenario='R2p1_SSP2-PkBudg900', keep=False)
+                if very_few_scenarios:
+                    dfp = dfp.filter(model="REMIND 2.1*", scenario="*")  # (4)
+
+            #  assign SSPs
+            dfp = ssp_helper(dfp, ssp_meta_col="Ssp_family", default_ssp="SSP2")
 
             # Fix duplicate temperatures
-            dft = dft.apply(fix_dupes, axis=1)
+            dft = dfp.timeseries().reset_index()
+            dft = dft.apply(fix_duplicate_temps, years=years, axis=1)
             dft.reset_index(inplace=True, drop=True)
 
-            # Convert to dask array
-            # meta_df = pd.DataFrame(columns=dft.columns, dtype=float)#, name='meta')
-            # dic = {k:str for k in ['model',
-            #  'scenario',
-            #  'region',
-            #  'variable',
-            #  'unit',
-            #  'ssp_family',]}
-
-            # meta_df = meta_df.astype(dic)
+            ###########################
+            # START PROCESSING
 
             if parallel:
+                """
+                For parallel processing, convert dft as a wide IAMC pd.Dataframe
+                into a dask.DataFrame.
+                """
                 ddf = dd.from_pandas(dft, npartitions=1000)
 
                 # dfx = dft.iloc[0].squeeze()  # FOR DEBUIGGING THE FUNCTION
@@ -138,32 +152,18 @@ if __name__ == "__main__":
 
                 with ProgressBar():
                     # try:
-                    df_new = outd.compute(
-                        num_workers=num_workers
-                    )  # scheduler='processes')
+                    df_new = outd.compute(num_workers=num_workers)
                     print(f" Applied:  {time.time()-start}")
                 # except(InvalidIndexError):
                 # print(f'PROBLEM {f}')
             else:
-                df_new = dft.apply(
-                    calculate_impacts_gmt, dsi=dsi, axis=1
-                )  # .compute(scheduler='processes')
+                df_new = dft.apply(calculate_impacts_gmt, dsi=dsi, axis=1)
 
             expandedd = pd.concat([df_new[x] for x in df_new.index])
             print(f" Done:  {time.time()-start}")
 
             filename = f"{wd}{wd2}{output_folder_tables}{input_scenarios_name}_rcre_output_{region}_{v2}_{year_res}yr{test}.csv"
 
-            expandedd.to_csv(filename, encoding="utf-8", index=False)
+            # expandedd.to_csv(filename, encoding="utf-8", index=False)
             print(f" Saved: {region} yrs={year_res}\n  {time.time()-start}")
-            print(f"{len(dsi.data_vars)} variables")
-
-            # keep_cols = [x for x in expandedd.columns if type(x)==str]
-            # keep_cols = keep_cols + list(range(2015,2101,5))
-            # out_small = expandedd[keep_cols]
-            # filename_small = f'{wd}{wd2}{output_folder}{input_scenarios_name}_rcre_output_10yr_{region}.csv'
-            # out_small.to_csv(filename_small, encoding='utf-8')
-            # print(f' Saved:  {time.time()-start}')
-
-
-# %%
+            print(f"{len(dsi.data_vars)} variables, {len(dfp.meta)} scenarios")

@@ -5,10 +5,12 @@ Set of core functions for RIME
 """
 
 import dask
+import dask.dataframe as dd
 from dask import delayed
 import numpy as np
 import pandas as pd
 import pyam
+from scipy.stats import linregress
 import xarray as xr
 
 
@@ -65,10 +67,13 @@ def loop_interpolate_gmt(df, yr_start, yr_end):
 
 
 def calculate_impacts_gmt(
-    dfx, dsi, prefix_indicator="RIME|", ssp_meta_col="ssp_family", gmt_below=1.2
+    dfx,
+    dsi,
+    prefix_indicator="RIME|",
+    ssp_meta_col="ssp_family",
 ):
     """
-    Takes in a set of scenarios of GMT and dataset of climate impacts by GWL,
+    Takes in a set of scenarios of GMT and a dataset of climate impacts by GWL,
     and returns a table of climate impacts per scenario through time.
 
     Parameters
@@ -81,8 +86,8 @@ def calculate_impacts_gmt(
         DESCRIPTION. The default is 'RIME|'. Use this to change the output indicator prefix in the table data variable column.
     ssp_meta_col : str, optional
         DESCRIPTION. The default is 'Ssp_family'. Use this to change the name of the meta column used to assin the SSP per scenario
-    gmt_below : float, optional
-        DESCRIPTION. The default is 1.5. Assign all gmt values below gmt_below to the value of gmt_below (in case not enough data)
+    # gmt_below : float, optional
+    #     DESCRIPTION. The default is 1.5. Assign all gmt values below gmt_below to the value of gmt_below (in case not enough data)
 
     Returns
     -------
@@ -142,22 +147,22 @@ def calculate_impacts_gmt(
     return idf
 
 
-def fix_dupes(dfti, years):
+def fix_duplicate_temps(df, years):
     """
     Function that modifies GMT temperatures minutely, in case there are duplicates in the series.
 
     Parameters
     ----------
-    dfti : pandas.DataFrame,
+    df : pandas.DataFrame,
         a file from which to take transform and latitude objects
 
     Returns
     -------
     """
 
-    vs = dfti[years]
-    ld = len(dfti[years])
-    lu = len(set(dfti[years]))
+    vs = df[years]
+    ld = len(df[years])
+    lu = len(set(df[years]))
 
     if ld != lu:
         # print('')
@@ -168,8 +173,8 @@ def fix_dupes(dfti, years):
                 vsn.append(x)
             else:
                 vsn.append(x + np.random.uniform(-0.005, 0.005))
-        dfti[years] = vsn
-    return dfti
+        df[years] = vsn
+    return df
 
 
 # =============================================================================
@@ -413,53 +418,147 @@ def map_transform_gmt_multi_dask(
     return map_array
 
 
+def calculate_cumulative_CO2(ts, first_year, year, variable):
+    dfo = (
+        ts.apply(
+            pyam.cumulative, raw=False, axis=1, first_year=first_year, last_year=year
+        )
+        .to_frame()
+        .reset_index()
+    )
+    dfo["year"] = year
+    dfo["variable"] = f"{variable}|Cumulative|from {first_year}"
+    dfo.rename(columns={0: "value"}, inplace=True)
+    return dfo
+
+
+def prepare_cumCO2(
+    df,
+    variable="Emissions|CO2",
+    unit_in="Mt CO2/yr",
+    unit_out="Gt CO2/yr",
+    years=None,
+    first_year=2020,
+    last_year=2100,
+    use_dask=False,
+):
+    """
+    Prepares a dataframe, by taking in CO2 emissions, filtering, converting
+    units to Gt CO2, and then calculating cumulative CO2.
+
+    Parameters
+    ----------
+    df : pyam.IamDataFrame
+        DESCRIPTION.
+    variable : str, optional
+        DESCRIPTION. The default is 'Emissions|CO2'.
+    unit_in : str, optional
+        DESCRIPTION. The default is 'Mt CO2/yr'.
+    years : list or np.array, optional
+        If list or range is provided, cumulative emissions are calculated
+        iteratively between the first value to each subsequent interval. If NONE,
+        first_year and last)year are used.
+    first_year : int, optional
+        DESCRIPTION. The default is 2020.
+    last_year : int, optional
+        DESCRIPTION. The default is 2100.
+    use_dask : boolean, optional
+        If the datasets are very large, with many scenarios or high resolution
+        of years, dask may perform faster. For smaller sets, keep as False.
+
+    Returns
+    -------
+    df :  pyam.IamDataFrame
+        Returns df with cumulative CO2 (Gt CO2/yr) through time.
+
+    """
+
+    if years is not None:
+        years = list(years)
+        if len(years) < 2:
+            raise Exception("Error: years must be at least 2 items long")
+        first_year = years[0]
+        last_year = years[-1]
+    else:
+        years = [first_year, last_year]
+
+    df_cumCO2 = pd.DataFrame()
+
+    # filter and convert
+    ts = (
+        df.filter(
+            variable=variable,
+        )
+        .convert_unit(unit_in, "Gt CO2/yr")
+        .timeseries()
+    )
+
+    if use_dask:
+        # Create a list of delayed computations
+        dask_dfs = [
+            delayed(calculate_cumulative_CO2)(ts, first_year, year, variable)
+            for year in years
+        ]
+
+        # Compute the delayed computations and concatenate the results
+        df_cumCO2 = dd.from_delayed(dask_dfs)
+        df_cumCO2 = df_cumCO2.compute()
+    else:
+        df_cumCO2 = pd.concat(
+            [calculate_cumulative_CO2(ts, first_year, year, variable) for year in years]
+        )
+
+    df_cumCO2["unit"] = unit_out
+
+    return pyam.IamDataFrame(df_cumCO2)
+
+
 def co2togmt_simple(cum_CO2, regr=None):
     """
-    Takes in vector of cumulative CO2 values and calculates Global mean surface
+    Takes in vector of  CO2 values and calculates Global mean surface
     air temperature (p50).
     Parameters
     ----------
     cum_CO2 : int, float, np.array, pandas.Series
-        Value of cumulative CO2, from 2020 to net-zero CO2 emissions or end of century, in Gt CO2.
+        Value of cumulative CO2, from 2020 onwards, in Gt CO2.
     regr : dict, optional
         'slope' and 'intercept' values for line. The default is None, in which
         case parameters from AR6 assessment are used. Provide {'slope': m,
-        'intercept': x} to define own linear relationship, otherwise 'AR5'.
+        'intercept': x} to define own linear relationship.
 
     Returns
     -------
     Global mean surface air temperature (p50).
 
     """
-    import pandas as pd
-    import numpy as np
+
+    # if isinstance(cum_CO2, pyam.IamDataFrame):
+
+    cum_CO2 = np.array(cum_CO2)
 
     if regr == None:
         # use default AR6 paramters
         slope = 0.0005099869587542405
         intercept = 1.3024249460191835
-    elif type(regr) == dict:
+    elif isinstance(regr, dict):
         # User provided parameters
         slope = regr["slope"]
         intercept = regr["intercept"]
-    elif type(regr) == str:
+    elif isinstance(regr, str):
         if regr == "AR6":
             # use default AR6 paramters
             slope = 0.0005099869587542405
             intercept = 1.3024249460191835
-        elif regr == "AR5":
-            # use default AR6 paramters
-            slope = 0.0043534
-            intercept = 1.36555
+        # elif regr == "AR5":
+        #     # use default AR6 paramters
+        #     slope = 0.0043534
+        #     intercept = 1.36555
         else:
             print("Warning: specification not recognized")
-            raise ("Error: specification not recognized")
-    elif type(regr) == pd.DataFrame:
-        from scipy.stats import linregress
-
-        # use the first two columns
-        x = regr.columns[0]
-        y = regr.columns[1]
+            raise Exception("Error: specification not recognized")
+    elif isinstance(regr, pd.DataFrame):
+        # Use linear regression based on DataFrame
+        x, y = regr.columns[0], regr.columns[1]
         slope, intercept, r, p, se = linregress(regr[x], regr[y])
         print(f"Slope: {slope}")
         print(f"Intercept: {intercept}")
@@ -470,7 +569,51 @@ def co2togmt_simple(cum_CO2, regr=None):
     return gmt
 
 
-def preprocess(ds):
+def remove_ssp_from_ds(ds):
+    """
+    Preprocess input netCDF datasets to remove ssp from the variable names.
+    Passed to the `preprocess` argument of xr.open_mfdataset()
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        DESCRIPTION.
+
+    Returns
+    -------
+    xarray.Dataset
+        DESCRIPTION.
+
+    """
     var = list(ds.keys())[0]
     short = f'{var.rsplit("_ssp")[0]}'
+
     return ds.rename({list(ds.keys())[0]: short})
+
+
+def ssp_helper(dft, ssp_meta_col="Ssp_family", default_ssp="SSP2"):
+    """
+    Function to fill out and assign SSP to a meta column called Ssp_family. If
+    there is no meta column with SSP information, automatically filled with
+    default_ssp.
+
+    Parameters
+    ----------
+    dft : pyam.IamDataFram
+        input
+    ssp_meta_col : Str, optional
+        DESCRIPTION. The default is "Ssp_family".
+
+    Returns
+    -------
+    None.
+
+    """
+    dft = np.round(dft.as_pandas()[pyam.IAMC_IDX + ["year", "value", ssp_meta_col]], 3)
+    sspdic = {1.0: "SSP1", 2.0: "SSP2", 3.0: "SSP3", 4.0: "SSP4", 5.0: "SSP5"}
+    dft[ssp_meta_col].replace(
+        sspdic, inplace=True
+    )  # metadata must have Ssp_family column. If not SSP2 automatically chosen
+    dft.loc[dft[ssp_meta_col].isnull(), ssp_meta_col] = default_ssp
+
+    return pyam.IamDataFrame(dft)
