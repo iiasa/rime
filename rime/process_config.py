@@ -13,6 +13,15 @@ To be imported at start of each file run
 # =============================================================================
 import os
 
+# Run and environment settings
+user = "byers"
+env = "pc"
+# env = 'server'
+# env = 'ebro3'
+
+git_path = f"C:\\users\\{user}\\Github\\"
+
+
 
 # From generate_aggregated_inputs.py
 
@@ -23,11 +32,7 @@ table_output_format = f"table_output_|_{region}.csv"
 yr_start = 2010
 yr_end = 2100
 
-# Run and environment settings
-user = "byers"
-env = "pc"
-# env = 'server'
-# env = 'ebro3'
+
 
 num_workers = 24
 parallel = True  # Uses Dask in processing the IAMC scenarios
@@ -40,7 +45,10 @@ caution_checks = True
 # %% Working directories
 # =============================================================================
 
-yaml_path = "C:\\users\\byers\\Github\\climate_impacts_processing\\hotspots.yml"
+
+yaml_path = git_path+"climate_impacts_processing\\hotspots.yml"
+landmask_path = git_path+"climate_impacts_processing\\landareamaskmap0.nc"
+kg_class_path = git_path+"climate_impacts_processing\\kg_class.nc"
 
 if env == "pc":
     # Main working directory
@@ -112,7 +120,7 @@ lvaris = 200
 # impact data settings
 
 indicators = ["cdd", "precip"]
-ftype = "score"
+ftype = "score" #score
 interpolation = 0.01
 
 

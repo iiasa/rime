@@ -419,6 +419,26 @@ def map_transform_gmt_multi_dask(
 
 
 def calculate_cumulative_CO2(ts, first_year, year, variable):
+    """
+    
+
+    Parameters
+    ----------
+    ts : TYPE
+        DESCRIPTION.
+    first_year : TYPE
+        DESCRIPTION.
+    year : TYPE
+        DESCRIPTION.
+    variable : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    dfo : TYPE
+        DESCRIPTION.
+
+    """
     dfo = (
         ts.apply(
             pyam.cumulative, raw=False, axis=1, first_year=first_year, last_year=year

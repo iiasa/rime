@@ -4,6 +4,7 @@
 Created on Thu Apr  6 11:36:24 2023
 
 @author: werning, byers
+Execute this script ideally in the top level of the RIME directory
 
 To Do:
     

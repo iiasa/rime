@@ -22,15 +22,18 @@ import hvplot.pandas
 import itertools as it
 from scipy.interpolate import interp1d
 
+from rime.process_config import *
+from rime.rime_functions import *
 
-input_dir = "C:\\Users\\werning\\IIASA\\ECE.prog - Research Theme - NEXUS\\Hotspots_Explorer_2p0\\Data\\1_mmm_stats"
-score_dir = "C:\\Users\\werning\\IIASA\ECE.prog - Research Theme - NEXUS\\Hotspots_Explorer_2p0\\Data\\3_scores"
-diff_dir = "C:\\Users\\werning\\IIASA\ECE.prog - Research Theme - NEXUS\\Hotspots_Explorer_2p0\\Data\\2_differences"
-std_dir = "C:\\Users\\werning\\IIASA\\ECE.prog - Research Theme - NEXUS\\Hotspots_Explorer_2p0\\Data\\score_revision\\hist_standard_deviations_V2\\"
-plot_dir = "C:\\Users\\werning\\IIASA\ECE.prog - Research Theme - NEXUS\\Hotspots_Explorer_2p0\\Data\\score_revision\\bivariate"
-yaml_path = "H:\\git\\climate_impacts_processing\\hotspots.yml"
-landmask_path = "H:\\git\\climate_impacts_processing\\landareamaskmap0.nc"
-kg_class_path = "C:\\Users\\werning\\IIASA\\ECE.prog - Research Theme - NEXUS\\Hotspots_Explorer_2p0\\Data\\kg_class.nc"
+
+input_dir = "C:\\Users\\{user}\\IIASA\\ECE.prog - Research Theme - NEXUS\\Hotspots_Explorer_2p0\\Data\\1_mmm_stats"
+score_dir = "C:\\Users\\{user}\\IIASA\ECE.prog - Research Theme - NEXUS\\Hotspots_Explorer_2p0\\Data\\3_scores"
+diff_dir = "C:\\Users\\{user}\\IIASA\ECE.prog - Research Theme - NEXUS\\Hotspots_Explorer_2p0\\Data\\2_differences"
+std_dir = "C:\\Users\\{user}\\IIASA\\ECE.prog - Research Theme - NEXUS\\Hotspots_Explorer_2p0\\Data\\score_revision\\hist_standard_deviations_V2\\"
+# plot_dir = "C:\\Users\\{user}\\IIASA\ECE.prog - Research Theme - NEXUS\\Hotspots_Explorer_2p0\\Data\\score_revision\\bivariate"
+# yaml_path = "H:\\git\\climate_impacts_processing\\hotspots.yml"
+# landmask_path = "H:\\git\\climate_impacts_processing\\landareamaskmap0.nc"
+# kg_class_path = "H:\\git\\climate_impacts_processing\\kg_class.nc"
 
 # Set interpolation & load landarea mask and parameters
 land_mask = hfp.load_landmask(landmask_path)
@@ -61,16 +64,6 @@ gmt_threshold = 3.0
 # %% Functions
 # -----------------------------------------------------------------------------
 
-# def bin_data(data, bins):
-
-#     print(bins)
-
-#     no_impact = xr.where(data < bins[1], bins[0], data)
-#     low_impact = xr.where((no_impact < bins[2]) & (no_impact >= bins[1]), 1, no_impact)
-#     medium_impact = xr.where((low_impact < bins[3]) & (low_impact >= bins[2]), 2, low_impact)
-#     high_impact = xr.where(medium_impact >= bins[3], 3, medium_impact)
-
-#     return high_impact
 
 
 def bin_data(data, bins):
