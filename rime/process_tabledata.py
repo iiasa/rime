@@ -162,7 +162,7 @@ if __name__ == "__main__":
             expandedd = pd.concat([df_new[x] for x in df_new.index])
             print(f" Done:  {time.time()-start}")
 
-            filename = f"{wd}{wd2}{output_folder_tables}{input_scenarios_name}_rcre_output_{region}_{v2}_{year_res}yr{test}.csv"
+            filename = f"{wd}{wd2}{output_folder_tables}{input_scenarios_name}_RIME_output_{region}_{v2}_{year_res}yr{test}.csv"
 
             # expandedd.to_csv(filename, encoding="utf-8", index=False)
             print(f" Saved: {region} yrs={year_res}\n  {time.time()-start}")
