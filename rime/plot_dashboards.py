@@ -17,8 +17,8 @@ import hotspots_functions_pp as hfp
 import os
 import matplotlib.pyplot as plt
 import holoviews as hv
-import hvplot.xarray
 import hvplot.pandas
+import hvplot.xarray
 import itertools as it
 from scipy.interpolate import interp1d
 
@@ -391,3 +391,147 @@ for ind in indicators:
 # test = bin_data(pr20_std_change, [1, 2, 3])
 # temp_abs = bin_data(pr20_hist, [5, 10, 20])
 # temp4_2p0 = bin_data(pr20_2p0, [5, 10, 20])
+
+
+
+#%%
+
+
+dot = [3, 5, 7, 10]
+quantiles = [0.95, 0.97, 0.99]
+thresholds = [1.2, 1.5, 2.0, 2.5, 3.0, 3.5]
+
+ 
+
+land_mask = xr.open_dataset('H:\\git\\climate_impacts_processing\\landareamaskmap0.nc')
+
+ 
+
+output_dir = 'H:\\hotspots_explorer\\outputs\\test_zeros\\multi-model'
+os.chdir(output_dir)
+
+ 
+
+hw_mm = xr.open_dataset('H:/hotspots_explorer/outputs/test_zeros/multi-model/ISIMIP3b_MM_heatwave.nc4')
+hw_diff = xr.open_dataset('H:/hotspots_explorer/outputs/test_zeros/multi-model/ISIMIP3b_Diff_heatwave.nc4')
+hw_scores = xr.open_dataset('H:/hotspots_explorer/outputs/test_zeros/multi-model/ISIMIP3b_Scores_heatwave.nc4')
+
+ 
+
+hw_mm = hw_mm.where(land_mask['land area'] > 0)
+
+
+#%%
+
+fn_ds = 'C:\\Users\\byers\\IIASA\\ECE.prog - Documents\\Research Theme - NEXUS\\Hotspots_Explorer_2p0\\rcre_testing\\testing_2\\output\\maps\\'
+
+ds = xr.open_dataset(fn_ds+'scenario_maps_multiindicator_score.nc')
+
+
+#%%
+plot_list = []
+year = 2055
+for v in ds.data_vars:
+    
+    new_plot = ds[v].sel(year=year).hvplot(x='lon', y='lat', cmap='magma_r', shared_axes=True)
+    plot_list = plot_list + [new_plot]
+
+plot = hv.Layout(plot_list).cols(3)
+hvplot.save(plot, f'{fn_ds}_test_dashboard_score.html')
+
+
+def plot_maps_dashboard(ds, filename=None, indicators=None, year=2050, cmap='magma_r', shared_axes=True, clim=None):
+    
+    
+    if indicators==None:
+        indicators = list(ds.data_vars)
+    elif isinstance(indicators, list):
+        if all(x in ds.data_vars for x in indicators))==False:
+            except Exception as e:
+                print(f"Error: not all items in indicators were found in ds.")
+    elif isinstance(indicators, list)==False:
+        except Exception as e:
+            print(f"Error: indicators must be of type list.")
+        
+    
+    
+    # Subset the dataset. Check dims and length
+    
+    ds = check_ds_dims(ds)
+    
+    
+    if 'year' in ds.dims:
+        ds = ds.sel(year=year)
+    elif len(ds.dims) != 2:
+        except Exception as e:
+            print(f"Error: Year not a dimension and more than 2 dimensions in dataset")
+
+
+    
+    ds = ds.sel(year=year)
+    
+    
+    for i in indicators:
+        
+        new_plot = ds[i].sel(year=year).hvplot(x='lon', y='lat', cmap='magma_r', shared_axes=True)
+        plot_list = plot_list + [new_plot]
+
+    plot = hv.Layout(plot_list).cols(3)
+    
+    
+    
+    # Plot - check filename
+    if type(filename) is None:
+        filename = 'maps_dashboard_{model}_{scenario}.html'
+    
+    elif (type(filename) is str):
+        if (filename[:-5]) != '.html':
+            except Exception as e:
+                print(f"filename {filename} must end with '.html'")
+    else:
+        except Exception as e:
+            print(f"filename must be string and end with '.html'")
+        
+    
+    
+    hvplot.save(plot, filename)
+
+
+#%%
+for q, dt in it.product(range(0, len(quantiles)), range(0,len(dot))):
+
+    print(q,dt)
+
+    plot_list = []
+
+    for t in range(0, len(thresholds)):
+
+        print(t)
+
+        plot_mm = hw_mm.mean_dur[t,1,:,:,q,dt].hvplot(x='lon', y='lat', clim=(0,50), cmap='YlOrRd', shared_axes=False)
+        plot_diff = hw_diff.mean_dur[t,0,:,:,q,dt].hvplot(x='lon', y='lat', clim=(0,500), cmap='Reds', shared_axes=False)
+        plot_score = hw_scores.mean_dur[t,0,:,:,q,dt].hvplot(x='lon', y='lat', clim=(0,3), cmap='magma_r', shared_axes=False)
+        plot_list = plot_list + [plot_mm, plot_diff, plot_score]
+
+    plot = hv.Layout(plot_list).cols(3)
+    hvplot.save(plot, f'hw_{str(quantiles[q])[2:]}_{dot[dt]}.html')
+    del plot, plot_mm, plot_diff, plot_score, plot_list
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

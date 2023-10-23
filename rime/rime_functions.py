@@ -637,3 +637,32 @@ def ssp_helper(dft, ssp_meta_col="Ssp_family", default_ssp="SSP2"):
     dft.loc[dft[ssp_meta_col].isnull(), ssp_meta_col] = default_ssp
 
     return pyam.IamDataFrame(dft)
+
+
+def check_ds_dims(ds):
+    """
+    Function to check the dimensions present in dataset before passing to plot maps
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        If 2 dimensions, must be either x/y or lon/lat (former is renames to lon/lat). Third dimension can be 'year'. Otherwise errors are raised.
+
+    Returns
+    -------
+    ds : xarray.Dataset with renamed dimensions, if necessary
+        
+
+    """
+    if len(ds.dims) >= 3:
+        if 'year' not in ds.dims:
+            raise ValueError("The dataset contains 3 or more dimensions, but 'year' dimension is missing.")
+
+    if 'lat' in ds.dims and 'lon' in ds.dims:
+        return ds
+    elif 'x' in ds.dims and 'y' in ds.dims:
+        ds = ds.rename({'x': 'lat', 'y': 'lon'})
+        return ds
+    else:
+        raise ValueError("The dataset does not contain 'lat' and 'lon' or 'x' and 'y' dimensions.")
+
