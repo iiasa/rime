@@ -421,7 +421,7 @@ hw_scores = xr.open_dataset('H:/hotspots_explorer/outputs/test_zeros/multi-model
 hw_mm = hw_mm.where(land_mask['land area'] > 0)
 
 
-#%%
+#%% STARTS here new
 
 fn_ds = 'C:\\Users\\byers\\IIASA\\ECE.prog - Documents\\Research Theme - NEXUS\\Hotspots_Explorer_2p0\\rcre_testing\\testing_2\\output\\maps\\'
 
@@ -443,15 +443,22 @@ hvplot.save(plot, f'{fn_ds}_test_dashboard_score.html')
 def plot_maps_dashboard(ds, filename=None, indicators=None, year=2050, cmap='magma_r', shared_axes=True, clim=None):
     
     
-    if indicators==None:
-        indicators = list(ds.data_vars)
-    elif isinstance(indicators, list):
-        if all(x in ds.data_vars for x in indicators))==False:
-            except Exception as e:
-                print(f"Error: not all items in indicators were found in ds.")
-    elif isinstance(indicators, list)==False:
-        except Exception as e:
-            print(f"Error: indicators must be of type list.")
+    # if indicators==None:
+        # indicators = list(ds.data_vars)
+    # elif isinstance(indicators, list):
+        # if not all(x in ds.data_vars for x in indicators):
+            # print('')
+        # else:
+            # try:
+            # Your code here
+            # except Exception as e:
+                # print(f"Error: not all items in indicators were found in ds.")
+    # elif not isinstance(indicators, list):
+        # print('')
+        # try:
+            # nothing
+        # except Exception as e:
+            # print(f"Error: indicators must be of type list.")
         
     
     
@@ -460,11 +467,11 @@ def plot_maps_dashboard(ds, filename=None, indicators=None, year=2050, cmap='mag
     ds = check_ds_dims(ds)
     
     
-    if 'year' in ds.dims:
-        ds = ds.sel(year=year)
-    elif len(ds.dims) != 2:
-        except Exception as e:
-            print(f"Error: Year not a dimension and more than 2 dimensions in dataset")
+    # if 'year' in ds.dims:
+        # ds = ds.sel(year=year)
+    # elif len(ds.dims) != 2:
+        # except Exception as e:
+            # print(f"Error: Year not a dimension and more than 2 dimensions in dataset")
 
 
     
@@ -481,16 +488,16 @@ def plot_maps_dashboard(ds, filename=None, indicators=None, year=2050, cmap='mag
     
     
     # Plot - check filename
-    if type(filename) is None:
-        filename = 'maps_dashboard_{model}_{scenario}.html'
+    # if type(filename) is None:
+        # filename = 'maps_dashboard_{model}_{scenario}.html'
     
-    elif (type(filename) is str):
-        if (filename[:-5]) != '.html':
-            except Exception as e:
-                print(f"filename {filename} must end with '.html'")
-    else:
-        except Exception as e:
-            print(f"filename must be string and end with '.html'")
+    # elif (type(filename) is str):
+        # if (filename[:-5]) != '.html':
+            # except Exception as e:
+                # print(f"filename {filename} must end with '.html'")
+    # else:
+        # except Exception as e:
+            # print(f"filename must be string and end with '.html'")
         
     
     
