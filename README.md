@@ -1,6 +1,6 @@
 # RIME - Rapid Impact Model Emulator
 
-Copyright (c) 2023 IIASA
+2023 IIASA
 
 [![license](https://www.gnu.org/graphics/gplv3-with-text-136x68.png)](https://choosealicense.com/licenses/gpl-3.0/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)  
@@ -11,7 +11,7 @@ Copyright (c) 2023 IIASA
 ------------------
 
 **RIME** is a lightweight software tool for using global warming level approaches to link climate impacts to Integrated Assessment Models (IAMs).
-When accompanied by climate impacts data (table and/or maps), RIME can be used tot ake a global mean temperature timeseries (e.g. from an IAM), and return tables and maps of climate impacts through time consistent with the warming of the scenario.
+When accompanied by climate impacts data (table and/or maps), RIME can be used to take a global mean temperature timeseries (e.g. from an IAM), and return tables and maps of climate impacts through time consistent with the warming of the scenario.
 There are two key use-cases for the RIME approach:
 [1] Estimating a suite of climate impacts from an global emissions scenario.  
 [2] Reformulating climates impact data to be used as an input to a global emissions scenario.  
@@ -20,6 +20,9 @@ There are two key use-cases for the RIME approach:
 
 ### `rime_functions.py` 
 Contains the key functions that can be used to process data. 
+
+### `utils.py`
+A collection of helper functions related to data processing, used within functions and as standalone, if needed.
 
 ### `process-config.py` 
 A script to host a large number of configurable settings for running the software on datasets.

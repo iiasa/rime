@@ -4,7 +4,7 @@ Created on Mon Dec  5 12:35:40 2022
 
 @author: byers
 """
-# from alive_progress import alive_bar
+from alive_progress import alive_bar
 import glob
 
 # import numpy as np
@@ -16,7 +16,7 @@ import time
 
 # try:
 
-# ab_present = True
+ab_present = True
 # except:
 #     print("alive_progress not installed")
 #     ab_present = False
@@ -25,6 +25,7 @@ import time
 
 from rime.rime_functions import *
 from rime.process_config import *
+from rime.utils import *
 
 few_vars = False
 
