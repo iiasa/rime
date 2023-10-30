@@ -19,7 +19,8 @@ env = "pc"
 # env = 'server'
 # env = 'ebro3'
 
-git_path = f"C:\\users\\{user}\\Github\\"
+# git_path = f"C:\\users\\{user}\\Github\\"
+git_path = f"C:\\Github\\"
 
 
 

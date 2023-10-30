@@ -7,6 +7,9 @@ Set of core functions for RIME
 import dask
 import dask.dataframe as dd
 from dask import delayed
+import holoviews as hv
+import hvplot.pandas
+import hvplot.xarray
 import numpy as np
 import pandas as pd
 import pyam
@@ -587,6 +590,57 @@ def co2togmt_simple(cum_CO2, regr=None):
     gmt = slope * cum_CO2 + intercept
 
     return gmt
+
+
+def plot_maps_dashboard(ds, filename=None, indicators=None, year=2050, cmap='magma_r', shared_axes=True, clim=None):
+    
+    
+    if indicators==None:
+        indicators = list(ds.data_vars)
+    elif isinstance(indicators, list):
+        if all(x in ds.data_vars for x in indicators)==False:
+            raise Exception(f"Error: not all items in indicators were found in ds.")
+    elif isinstance(indicators, list)==False:
+        raise Exception(f"Error: indicators must be of type list.")
+
+    
+    # Subset the dataset. Check dims and length
+    
+    ds = check_ds_dims(ds)
+    
+    
+    if 'year' in ds.dims:
+        ds = ds.sel(year=year).squeeze()
+    elif len(ds.dims) != 2:
+        raise Exception(f"Error: Year not a dimension and more than 2 dimensions in dataset")
+
+    plot_list = []
+
+    # Run loop through indicators (variables)
+    for i in indicators:
+        
+        new_plot = ds[i].hvplot(x='lon', y='lat', cmap='magma_r', shared_axes=True)
+        plot_list = plot_list + [new_plot]
+
+    plot = hv.Layout(plot_list).cols(3)
+    
+    
+    
+    # Plot - check filename
+    if type(filename) is None:
+        filename = 'maps_dashboard_{model}_{scenario}.html'
+    
+    elif (type(filename) is str):
+        if (filename[:-5]) != '.html':
+            raise Exception(f"filename {filename} must end with '.html'")
+                
+    else:
+        raise Exception(f"filename must be string and end with '.html'")
+        
+    
+    
+    hvplot.save(plot, filename)
+
 
 
 def remove_ssp_from_ds(ds):
