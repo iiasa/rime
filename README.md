@@ -5,10 +5,10 @@
 [![license](https://www.gnu.org/graphics/gplv3-with-text-136x68.png)](https://choosealicense.com/licenses/gpl-3.0/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)  
 
-![RIME_logo](https://github.com/iiasa/rime/assets/17701232/12e9ae66-5d28-4f06-9540-fa496cc588d0)
+[![RIME_logo](https://github.com/iiasa/rime/assets/17701232/12e9ae66-5d28-4f06-9540-fa496cc588d0)  
 
 ## Overview  
-------------------
+------------------  
 
 **RIME** is a lightweight software tool for using global warming level approaches to link climate impacts to Integrated Assessment Models (IAMs).
 When accompanied by climate impacts data (table and/or maps), RIME can be used to take a global mean temperature timeseries (e.g. from an IAM), and return tables and maps of climate impacts through time consistent with the warming of the scenario.
