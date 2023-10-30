@@ -13,22 +13,27 @@ To be imported at start of each file run
 # =============================================================================
 import os
 
+# Run and environment settings
+user = "byers"
+env = "pc"
+# env = 'server'
+# env = 'ebro3'
+
+# git_path = f"C:\\users\\{user}\\Github\\"
+git_path = f"C:\\Github\\"
+
+
 
 # From generate_aggregated_inputs.py
 
-region = "COUNTRIES"
-# region = 'R10'
+region = "COUNTRIES"  # 'R10' or 'COUNTRIES'
 table_output_format = f"table_output_|_{region}.csv"
 
 
 yr_start = 2010
 yr_end = 2100
 
-# Run and environment settings
-user = "byers"
-env = "pc"
-# env = 'server'
-# env = 'ebro3'
+
 
 num_workers = 24
 parallel = True  # Uses Dask in processing the IAMC scenarios
@@ -41,7 +46,10 @@ caution_checks = True
 # %% Working directories
 # =============================================================================
 
-yaml_path = "C:\\users\\byers\\Github\\climate_impacts_processing\\hotspots.yml"
+
+yaml_path = git_path+"climate_impacts_processing\\hotspots.yml"
+landmask_path = git_path+"climate_impacts_processing\\landareamaskmap0.nc"
+kg_class_path = git_path+"climate_impacts_processing\\kg_class.nc"
 
 if env == "pc":
     # Main working directory
@@ -64,7 +72,7 @@ if env == "pc":
 
 
 elif env == "ebro3":
-    # wd = 'H:\\'
+    wd = "H:\\"
     wd2 = "H:\\rcre_testing\\"
 
     # Input source of processed climate data by ssp/year/variable/region
@@ -85,7 +93,6 @@ elif env == "ebro3":
 
 year_resols = [5]
 input_scenarios_name = "AR6full"
-
 
 temp_variable = (
     "AR6 climate diagnostics|Surface Temperature (GSAT)|MAGICCv7.5.3|50.0th Percentile"
@@ -114,7 +121,7 @@ lvaris = 200
 # impact data settings
 
 indicators = ["cdd", "precip"]
-ftype = "score"
+ftype = "score" #score
 interpolation = 0.01
 
 
