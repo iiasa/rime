@@ -524,9 +524,14 @@ for q, dt in it.product(range(0, len(quantiles)), range(0,len(dot))):
     hvplot.save(plot, f'hw_{str(quantiles[q])[2:]}_{dot[dt]}.html')
     del plot, plot_mm, plot_diff, plot_score, plot_list
 
+#%%  plot function
 
 
 
+#%%
+
+plot_maps_dashboard(ds, year=2055)
+os.startfile()
 
 
 

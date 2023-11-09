@@ -21,7 +21,7 @@ import time
 import xarray as xr
 import yaml
 from dask import delayed
-from dask.distributed import Client
+# from dask.distributed import Client
 from rime.process_config import *
 from rime.rime_functions import *
 
@@ -29,7 +29,7 @@ from rime.rime_functions import *
 # from dask.diagnostics import Profiler, ResourceProfiles, CacheProfiler
 dask.config.set(scheduler="processes")
 dask.config.set(num_workers=num_workers)
-client = Client()
+# client = Client()
 
 # dask.config.set(scheduler='synchronous')
 

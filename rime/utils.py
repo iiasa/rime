@@ -1,7 +1,9 @@
 # utils.py
 # Small helper functions
 
-
+import numpy as np
+import pandas as pd
+import pyam
 
 
 
@@ -57,15 +59,18 @@ def remove_ssp_from_ds(ds):
     return ds.rename({list(ds.keys())[0]: short})
 
 
-def ssp_helper(dft, ssp_meta_col="Ssp_family", default_ssp="SSP2"):
+def ssp_helper(dft, ssp_meta_col="Ssp_family", default_ssp="SSP2", keep_meta=True):
     """
-    Function to fill out and assign SSP to a meta column called Ssp_family. If
+    Function to fill out and assign SSP to a meta column called Ssp_family, 
+    making data numeric. If
     there is no meta column with SSP information, automatically filled with
     default_ssp.
 
+    ToDo: Expand into function that checks if SSP in scenario name
+    
     Parameters
     ----------
-    dft : pyam.IamDataFram
+    dft : pyam.IamDataFrame
         input
     ssp_meta_col : Str, optional
         DESCRIPTION. The default is "Ssp_family".
@@ -75,14 +80,22 @@ def ssp_helper(dft, ssp_meta_col="Ssp_family", default_ssp="SSP2"):
     None.
 
     """
-    dft = np.round(dft.as_pandas()[pyam.IAMC_IDX + ["year", "value", ssp_meta_col]], 3)
+    if ssp_meta_col not in dft.meta.columns:
+        dft.meta[ssp_meta_col] = ''
+        
+    if keep_meta:
+        meta_cols = list(dft.meta.columns)
+    else:
+        meta_cols = [ssp_meta_col]
+    dft = np.round(dft.as_pandas()[pyam.IAMC_IDX + ["year", "value"] + meta_cols], 3)
+    # Check if SSP denoted by numbers only already?
     sspdic = {1.0: "SSP1", 2.0: "SSP2", 3.0: "SSP3", 4.0: "SSP4", 5.0: "SSP5"}
     dft[ssp_meta_col].replace(
         sspdic, inplace=True
     )  # metadata must have Ssp_family column. If not SSP2 automatically chosen
     dft.loc[dft[ssp_meta_col].isnull(), ssp_meta_col] = default_ssp
-
-    return pyam.IamDataFrame(dft)
+    metadata = dft[['model','scenario']+meta_cols].drop_duplicates().set_index(['model','scenario'])
+    return pyam.IamDataFrame(dft[pyam.IAMC_IDX + ["year", "value"]], meta=metadata)
 	
 	
 

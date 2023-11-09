@@ -16,6 +16,8 @@ import pyam
 from scipy.stats import linregress
 import xarray as xr
 
+from rime.utils import check_ds_dims
+
 
 def loop_interpolate_gmt(df, yr_start, yr_end):
     """
@@ -73,7 +75,7 @@ def calculate_impacts_gmt(
     dfx,
     dsi,
     prefix_indicator="RIME|",
-    ssp_meta_col="ssp_family",
+    ssp_meta_col="Ssp_family",
 ):
     """
     Takes in a set of scenarios of GMT and a dataset of climate impacts by GWL,
@@ -102,7 +104,7 @@ def calculate_impacts_gmt(
     model = dfx["model"]
     scenario = dfx["scenario"]
 
-    ssp = dfx[ssp_meta_col.lower()]
+    ssp = dfx[ssp_meta_col] #<<< isue here?
 
     if ssp not in ["SSP1", "SSP2", "SSP3"]:
         ssp = "SSP2"
@@ -224,10 +226,12 @@ def map_transform_gmt(
 
         # Load and prepare the spatial impact data to be transformed
         # Rename 3rd dimension to 'gmt'
-        try:
-            mapdata = mapdata.rename_vars({gmt_name: "gmt"})
-        except ValueError:
-            print("")
+        # WORKS in multi scenario mode, but not single scenario!!!!!
+        # if len(mapdata.data_vars) >1:
+        #     try:
+        #         mapdata = mapdata.rename_vars({gmt_name: "gmt"})
+        #     except ValueError:
+        #         print("")
 
         # Get indicator name
         short = list(mapdata.data_vars)[0]
@@ -283,7 +287,7 @@ def map_transform_gmt_multi_dask(
     df,
     mapdata,
     years,
-    gmt_name="threshold",
+    gmt_name="gmt",
     use_dask=True,
     temp_min=1.2,
     temp_max=3.5,
@@ -315,10 +319,17 @@ def map_transform_gmt_multi_dask(
         pyam.IamDataFrame with variables for the impact indicators for each scenario(s).
 
     """
+    
 
-    map_array = xr.Dataset()
+
 
     if len(df.index) > 1:
+        if len(mapdata.dims)>2:
+            map_array = mapdata.isel({gmt_name:0}).reset_coords(drop=True)
+            map_array = map_array.drop_vars(map_array.data_vars)
+        else:
+            map_array = xr.full_like(mapdata, np.nan).drop_vars(mapdata.data_vars)
+        
         if len(mapdata.data_vars) == 1:
             # =============================================================================
             #             1 indicator, multi-scenario mode
@@ -365,7 +376,18 @@ def map_transform_gmt_multi_dask(
         #             1 scenario, multi-indicator mode
         # =============================================================================
         print("Single scenario mode")
+        model = df.model[0]
+        scenario = df.scenario[0]
+        
+        
+        
         delayed_tasks = []
+        if len(mapdata.dims)>2:
+            map_array = mapdata.isel({gmt_name:0}).reset_coords(drop=True)
+            map_array = map_array.drop_vars(map_array.data_vars)
+        else:
+            map_array = xr.full_like(mapdata, np.nan).drop_vars(mapdata.data_vars)
+        
 
         # Iterate through spatial indicators in DataSet
         for var_name in mapdata.data_vars:
@@ -374,11 +396,11 @@ def map_transform_gmt_multi_dask(
             if use_dask:
                 # Create delayed task for map_transform_gmt_dask
                 delayed_map_transform = delayed(map_transform_gmt)(
-                    df1, mapdata, var_name, years, map_array
+                    df1, mapdata[var_name], var_name, years, map_array
                 )
                 delayed_tasks.append(delayed_map_transform)
             else:
-                map_array = map_transform_gmt(df1, mapdata, var_name, years, map_array)
+                map_array = map_transform_gmt(df1, mapdata[var_name], var_name, years, map_array)
         if use_dask:
             # Compute delayed tasks concurrently
             computed_results = dask.compute(*delayed_tasks)
@@ -390,7 +412,8 @@ def map_transform_gmt_multi_dask(
     map_array = map_array.assign_coords(
         coords={"lon": map_array.lon, "lat": map_array.lat, "year": years}
     )
-
+    map_array.attrs['model'] = model
+    map_array.attrs['scenario'] = scenario
     return map_array
 
 
@@ -564,14 +587,56 @@ def co2togmt_simple(cum_CO2, regr=None):
 
     return gmt
 
+#%%
+def plot_maps_dashboard(ds, filename=None, indicators=None, year=2050, 
+                        cmap='magma_r', shared_axes=True, clim=None, 
+                        coastline=True, crs=None, features=None, layout_title=None):
+    """
+    
 
-def plot_maps_dashboard(ds, filename=None, indicators=None, year=2050, cmap='magma_r', shared_axes=True, clim=None):
+    Parameters
+    ----------
+    ds : TYPE
+        DESCRIPTION.
+    filename : TYPE, optional
+        DESCRIPTION. The default is None.
+    indicators : TYPE, optional
+        DESCRIPTION. The default is None.
+    year : int, optional
+        Year from which to plot data. The default is 2050.
+    cmap : TYPE, optional
+        DESCRIPTION. The default is 'magma_r'.
+    shared_axes : TYPE, optional
+        DESCRIPTION. The default is True.
+    clim : TYPE, optional
+        DESCRIPTION. The default is None.
+    coastline : TYPE, optional
+        DESCRIPTION. The default is True.
+    crs : must be either a valid crs or an reference to a `data.attr` containing a valid crs: Projection must be defined as a EPSG code, proj4 string, WKT string, cartopy CRS, pyproj.Proj, or pyproj.CRS., optional
+        DESCRIPTION. Provides the coordinate reference system to Cartopy. 
+        Requires Cartopy installation if used, and doesn't always work well. 
+        The default is None.
+    features : TYPE, optional
+        DESCRIPTION. The default is None.
+
+    Raises
+    ------
+    Exception
+        DESCRIPTION.
+
+    Returns
+    -------
+    None.
+
+    """
     
+    if isinstance(features, type(None)):
+        features = ['coastline', ]
     
-    if indicators==None:
+    if isinstance(indicators, type(None)):
         indicators = list(ds.data_vars)
     elif isinstance(indicators, list):
-        if all(x in ds.data_vars for x in indicators)==False:
+        if not all(x in ds.data_vars for x in indicators):
             raise Exception(f"Error: not all items in indicators were found in ds.")
     elif isinstance(indicators, list)==False:
         raise Exception(f"Error: indicators must be of type list.")
@@ -582,39 +647,80 @@ def plot_maps_dashboard(ds, filename=None, indicators=None, year=2050, cmap='mag
     ds = check_ds_dims(ds)
     
     
+    # Check year input.
     if 'year' in ds.dims:
-        ds = ds.sel(year=year).squeeze()
+        if year in ds.year:
+            ds = ds.sel(year=year).squeeze()
+        else:
+            print("Warning: year not in original data, interpolating now")
+            ds = ds.interp({'year':year})
+        
     elif len(ds.dims) != 2:
         raise Exception(f"Error: Year not a dimension and more than 2 dimensions in dataset")
+        
 
     plot_list = []
 
-    # Run loop through indicators (variables)
+    # Import cartopy if a crs is provided
+    if not isinstance(crs, type(None)):
+        try:
+            import cartopy
+        except:
+            print('Error importing Cartopy')
+            
+
+    # Run loop through indicators (variables) and plot
     for i in indicators:
         
-        new_plot = ds[i].hvplot(x='lon', y='lat', cmap='magma_r', shared_axes=True)
+        new_plot = ds[i].hvplot(x='lon', y='lat', cmap=cmap, 
+                                shared_axes=shared_axes, title=i, 
+                                coastline=coastline, crs=crs, 
+                                features=features)
         plot_list = plot_list + [new_plot]
 
     plot = hv.Layout(plot_list).cols(3)
     
+
     
+    if ('model' in ds.attrs.keys()) and ('scenario' in ds.attrs.keys()):
+        model = ds.attrs['model']
+        scenario = ds.attrs['scenario']
+        # layout title
+
+    else:
+        model = 'unknown'
+        scenario = 'scenario'
+    if isinstance(layout_title, type(None))==False:
+        layout_title = f'Climate impacts in {year} ({model}, {scenario})'
+
+    
+    plot.opts(title=layout_title)
     
     # Plot - check filename
-    if type(filename) is None:
-        filename = 'maps_dashboard_{model}_{scenario}.html'
+    if isinstance(filename, type(None)):
+        filename = f'maps_dashboard_{model}_{scenario}.html'
     
-    elif (type(filename) is str):
-        if (filename[:-5]) != '.html':
+    elif isinstance(filename, str):
+        if (filename[-5:]) != '.html':
             raise Exception(f"filename {filename} must end with '.html'")
                 
     else:
         raise Exception(f"filename must be string and end with '.html'")
         
-    
-    
     hvplot.save(plot, filename)
 
 
+#%%
+
+# # features = ['ocean']
+# indicators = ['cdd','dri']
+
+# filename = 'test_map.html'
+# plot_maps_dashboard(map_out_MI, indicators =indicators,
+#                     filename=filename,  year=2055, cmap='magma_r', 
+#                     shared_axes=True, clim=None, )
+# os.startfile(filename)
 
 
 
+#%%
