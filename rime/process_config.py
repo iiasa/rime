@@ -48,7 +48,7 @@ caution_checks = True
 # =============================================================================
 
 
-yaml_path = "indicator_params.yml"
+yaml_path = "rime\\indicator_params.yml"
 landmask_path = git_path+"climate_impacts_processing\\landareamaskmap0.nc"
 kg_class_path = git_path+"climate_impacts_processing\\kg_class.nc"
 
@@ -68,7 +68,7 @@ if env == "pc":
     fname_input_climate = f"{wd}{wd2}{folder_input_climate}*_{region}*.nc"
 
     # Input IAMC scenarios file, must have a temperature variable
-    fname_input_scenarios = f"emissions_temp_AR6_small.xlsx"
+    fname_input_scenarios = f"rime\\emissions_temp_AR6_small.xlsx"
 
     # Directory of map files to read as input
     # impact_data_dir = f"{wd}\\data\\4_split_files_for_geoserver"
