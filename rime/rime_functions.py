@@ -167,6 +167,7 @@ def map_transform_gmt(
     var_name=None,
     map_array=xr.Dataset(),
     caution_checks=True,
+    include_orig_gmt=False,
     drawdown_max=0.15,
     gmt_name="gmt",
     interpolation=0.01,
@@ -227,13 +228,7 @@ def map_transform_gmt(
         gmt_values[(gmt_values < temp_min) | (gmt_values > temp_max)] = 999
 
         # Load and prepare the spatial impact data to be transformed
-        # Rename 3rd dimension to 'gmt'
-        # WORKS in multi scenario mode, but not single scenario!!!!!
-        # if len(mapdata.data_vars) >1:
-        #     try:
-        #         mapdata = mapdata.rename_vars({gmt_name: "gmt"})
-        #     except ValueError:
-        #         print("")
+
 
         # Get indicator name
         # short = list(mapdata.data_vars)[0]
@@ -295,8 +290,11 @@ def map_transform_gmt(
         # Drop other coords
         dc = [x for x in map_array.coords if x not in ["lon", "lat", "year","gmt"]]
         if len(dc) > 0:
-            map_array.drop(dc)
+            map_array = map_array.drop(dc)
             
+        if include_orig_gmt==False:
+            map_array = map_array.drop('gmt')
+
             
     return map_array
 
@@ -309,6 +307,7 @@ def map_transform_gmt_multi_dask(
     years,
     gmt_name="gmt",
     use_dask=True,
+    include_orig_gmt=False,
     temp_min=1.2,
     temp_max=3.5,
     drawdown_max=0.15,
@@ -341,7 +340,8 @@ def map_transform_gmt_multi_dask(
             # =============================================================================
             print("Single indicator mode (multi-scenarios possible)")
             delayed_tasks = []
-
+            indicator = list(mapdata.data_vars)[0]
+            
             for model, scenario in df.index:
                 modelstrip = model
                 repdic = [" ", "/", ",", "."]
@@ -355,13 +355,17 @@ def map_transform_gmt_multi_dask(
                 if use_dask:
                     # Create delayed task for map_transform_gmt
                     delayed_map_transform = delayed(map_transform_gmt)(
-                        df1, mapdata, years, var_name, map_array
+                        df1, mapdata, years, var_name, map_array, include_orig_gmt=False,
                     )
+                    # delayed_map_transform = delayed_map_transform.drop('gmt')
                     delayed_tasks.append(delayed_map_transform)
+                    
                 else:
-                    map_array = map_transform_gmt(
-                        df1, mapdata, years, map_array
-                    )
+                    map_array[var_name] = map_transform_gmt(
+                        df1, mapdata, years, map_array, include_orig_gmt=False
+                    )[indicator]#.drop('gmt')  # drop here for alignment of coords (gmts are all different)
+                    
+                    
             if use_dask:
                 # Compute delayed tasks concurrently
                 computed_results = dask.compute(*delayed_tasks)
@@ -370,6 +374,7 @@ def map_transform_gmt_multi_dask(
                 for result in computed_results:
                     map_array.update(result)
 
+            map_array.attrs['indicator'] = indicator
         else:
             print("Error! Multiple IAM scenarios and spatial indicators detected.")
             raise ValueError(
@@ -408,7 +413,7 @@ def map_transform_gmt_multi_dask(
                 )
                 delayed_tasks.append(delayed_map_transform)
         else:
-            map_array = map_transform_gmt(df1, mapdata,  years, map_array)
+            map_array = map_transform_gmt(df1, mapdata, years, map_array, include_orig_gmt=include_orig_gmt)
                 
         # use_dask not working here
         if use_dask:
@@ -422,8 +427,8 @@ def map_transform_gmt_multi_dask(
     # map_array = map_array.assign_coords(
     #     coords={"lon": map_array.lon, "lat": map_array.lat, "year": years}
     # )
-    map_array.attrs['model'] = model
-    map_array.attrs['scenario'] = scenario
+        map_array.attrs['model'] = model
+        map_array.attrs['scenario'] = scenario
     return map_array
 
 

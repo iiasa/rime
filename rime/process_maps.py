@@ -62,14 +62,17 @@ mapdata = xr.open_mfdataset(
     files, preprocess=remove_ssp_from_ds, combine="nested", concat_dim="gmt"
 )
 
-# df = pyam.IamDataFrame(dft)
+mapdata = tidy_mapdata(mapdata)
+
+
+df = dft.filter(model='POLES GE*')
 
 map_out_MS = map_transform_gmt_multi_dask(
-    dft.filter(model="POLES ADVANCE"),
+    df,
     mapdata,
     years,
     use_dask=True,
-    gmt_name="threshold",
+    gmt_name="gmt",
     interpolation=interpolation,
 )
 
@@ -102,12 +105,12 @@ mapdata = xr.Dataset()
 indicators = [
     "cdd",
     "precip",
-    "dri",
+    # "dri",
     # "dri_qtot",
     # "iavar",
     # "ia_var_qtot",
-    # "sdd_18p3",
-    "sdd_24p0",
+    "sdd_18p3",
+    # "sdd_24p0",
     'wsi',
 ]  #'heatwave']
 
@@ -122,10 +125,9 @@ for ind in indicators:
             files, preprocess=remove_ssp_from_ds, combine="nested", concat_dim="gmt"
         )[short]
 
-dvs = mapdata.data_vars
-mapdata = mapdata.rename({'threshold':'gmt'})
-mapdata = mapdata.set_index({'lon':'lon','lat':'lat','gmt':'gmt'}).reset_coords()
-mapdata = mapdata.drop_vars([x for x in mapdata.data_vars if x not in dvs])
+mapdata = tidy_mapdata(mapdata)
+
+
 
 map_out_MI = map_transform_gmt_multi_dask(
             dft.filter(model="AIM*", scenario="SSP1-34"),

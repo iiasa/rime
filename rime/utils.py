@@ -98,7 +98,12 @@ def ssp_helper(dft, ssp_meta_col="Ssp_family", default_ssp="SSP2", keep_meta=Tru
     return pyam.IamDataFrame(dft[pyam.IAMC_IDX + ["year", "value"]], meta=metadata)
 	
 	
-
+def tidy_mapdata(mapdata):
+    dvs = mapdata.data_vars
+    mapdata = mapdata.rename({'threshold':'gmt'})
+    mapdata = mapdata.set_index({'lon':'lon','lat':'lat','gmt':'gmt'}).reset_coords()
+    mapdata = mapdata.drop_vars([x for x in mapdata.data_vars if x not in dvs])
+    return mapdata
 
 def check_ds_dims(ds):
     """
