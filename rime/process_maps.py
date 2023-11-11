@@ -35,7 +35,7 @@ dask.config.set(num_workers=num_workers)
 # dask.config.set(scheduler='synchronous')
 
 
-with open(yaml_path, "r") as f:
+with open('rime'+yaml_path, "r") as f:
     params = yaml.full_load(f)
 
 

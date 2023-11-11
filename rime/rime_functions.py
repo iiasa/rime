@@ -667,7 +667,7 @@ def plot_maps_dashboard(ds, filename=None, indicators=None, year=2050,
         if year in ds.year:
             ds = ds.sel(year=year).squeeze()
         else:
-            print("Warning: year not in original data, interpolating now")
+            print(f"Warning: {year} not in original data, interpolating now")
             ds = ds.interp({'year':year})
         
     elif len(ds.dims) != 2:
