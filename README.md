@@ -5,7 +5,7 @@
 [![license](https://www.gnu.org/graphics/gplv3-with-text-136x68.png)](https://choosealicense.com/licenses/gpl-3.0/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)  
 
-[![RIME_logo]](https://github.com/iiasa/rime/assets/17701232/12e9ae66-5d28-4f06-9540-fa496cc588d0)  
+[![RIME_logo]](https://github.com/iiasa/rime/assets/rime_logo2.png)  
 
 ## Overview  
 ------------------  
@@ -18,7 +18,7 @@ There are two key use-cases for the RIME approach:
 1. Estimating a suite of climate impacts from a global emissions or temperature scenario.  
 2. Reformulating climate impacts data to be used as an input to an integrated assessment model scenario.  
 
-[![RIME_use_cases]](https://github.com/iiasa/rime/assets/17701232/15f57506-4e91-4362-9886-ba6c1bf33035)
+[![RIME_use_cases]](https://github.com/iiasa/rime/assets/rime_use_cases.jpg)
 
 
 ## Core files
@@ -53,11 +53,11 @@ Example jupyter notebook that demonstrates methods of processing both table and 
 
 At command line, navigate to the directory where you want the installation, e.g. your Github folder.  
 
-	`git clone https://github.com/iiasa/rime.git`
+	git clone https://github.com/iiasa/rime.git
 
 Change to the rime folder and install the package including the requirements.  
 
-	`pip install --editable .`
+	pip install --editable .
 
 ## Further information
 This package is in a pre-release mode, currently work in progress, under-going testing and not formally published.  
