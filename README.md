@@ -24,29 +24,29 @@ There are two key use-cases for the RIME approach:
 
 ## Core files
 
-### `rime_functions.py` 
-Contains the key functions that can be used to process data. 
+### [`rime_functions.py`](https://github.com/iiasa/rime/blob/main/rime/rime_functions.py)   
+Contains the key functions that can be used to process data and generate outputs.
 
-### `utils.py`
+### [`utils.py`](https://github.com/iiasa/rime/blob/main/rime/utils.py)  
 A collection of helper functions related to data processing, used within functions and as standalone, if needed.
 
-### `process-config.py` 
+### [`process_config.py`](https://github.com/iiasa/rime/blob/main/rime/process_config.py)  
 A script to host a large number of configurable settings for running the software on datasets.
 Needs to be imported at the beginning of a script, e.g. `from process_config import *`.  
-Settings for `Dask` could be configured in here. 
+Settings for `Dask`, filepaths and data directories should be configured in here for your local configuration. 
 
 ## Example processing and workflow scripts
 
-### `generate_aggregated_inputs.py` 
+### [`generate_aggregated_inputs.py`](https://github.com/iiasa/rime/blob/main/rime/generate_aggregated_inputs.py)  
 Pre-processing of tabular impacts data of exposure by GWL, into netcdf datasets that will be used in emulation. Only needs to run once to pre-process the impacts data. Only required if working with IAMC table impacts data.
 
-### `process_tabledata.py` 
+### [`process_tabledata.py`](https://github.com/iiasa/rime/blob/main/rime/process_tabledata.py)  
 Example script that takes input table of emissions scenarios with global temperature timeseries, and output tables of climate impacts data in IAMC format. Can be done for multiple scenarios and indicators at a time. 
 
-### `process_maps.py`  
+### [`process_maps.py`](https://github.com/iiasa/rime/blob/main/rime/process_tabledata.py)  
 Example script that takes input table of emissions scenarios with global temperature timeseries, and output maps of climate impacts through time as netCDF. Ouptut netCDF can be specified for either for 1 scenario and multiple climate impacts, or multiple scenarios for 1 indicator.
 
-### `pp_combined example.ipynb`
+### [`pp_combined example.ipynb`](https://github.com/iiasa/rime/blob/main/rime/pp_combined example.py)  
 Example jupyter notebook that demonstrates methods of processing both table and map impacts data for IAM scenarios.
 
 
