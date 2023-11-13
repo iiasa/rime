@@ -6,7 +6,7 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)  
 [![license](https://www.gnu.org/graphics/gplv3-with-text-136x68.png)](https://choosealicense.com/licenses/gpl-3.0/)
 
-![RIME_logo](/assets/rime_logo2.png)  
+![RIME_logo](https://github.com/iiasa/rime/blob/main/assets/RIME_logo2.png?raw=true)  
 
 ## Overview  
 ------------------  
@@ -16,10 +16,10 @@
 When accompanied by climate impacts data (table and/or maps), RIME can be used to take a global mean temperature timeseries (e.g. from an IAM or climate model like FaIR/MAGICC), and return tables and maps of climate impacts through time consistent with the warming of the scenario.  
 
 There are two key use-cases for the RIME approach:  
-1. Estimating a suite of climate impacts from a global emissions or temperature scenario.  
-2. Reformulating climate impacts data to be used as an input to an integrated assessment model scenario.  
+1. **Post-process**: Estimating a suite of climate impacts from a global emissions or temperature scenario.  
+2. **Input**: Reformulating climate impacts data to be used as an input to an integrated assessment model scenario.  
 
-![RIME_use_cases](https://github.com/iiasa/rime/main/assets/rime_use_cases.jpg?raw=true)
+![RIME_use_cases](https://github.com/iiasa/rime/blob/main/assets/rime_use_cases.jpg?raw=true)  
 
 
 ## Core files
@@ -63,5 +63,5 @@ Change to the rime folder and install the package including the requirements.
 ## Further information
 This package is in a pre-release mode, currently work in progress, under-going testing and not formally published.  
 
-Examples provided use climate impacts data that is also in a pre-release stage, [(Werning et al. 2023)](https://zenodo.org/records/8134869) currently hosted on the [Climate Solutions Explorer](https://www.climate-solutions-explorer.eu/).
+Examples provided use climate impacts data that is also in a pre-release stage [(Werning et al. 2023)](https://zenodo.org/records/8134869), currently hosted on the [Climate Solutions Explorer](https://www.climate-solutions-explorer.eu/).
 
