@@ -24,7 +24,6 @@ env = "pc"
 git_path = f"C:\\Github\\"
 
 
-
 # From generate_aggregated_inputs.py
 
 region = "COUNTRIES"  # 'R10' or 'COUNTRIES'
@@ -37,11 +36,11 @@ yr_end = 2100
 
 
 # Dask settings
-num_workers = 24 # Number of workers. More workers creates more overhead
+num_workers = 24  # Number of workers. More workers creates more overhead
 parallel = True  # Uses Dask in processing the IAMC scenarios
 
 
-caution_checks = True 
+caution_checks = True
 
 
 # =============================================================================
@@ -50,16 +49,16 @@ caution_checks = True
 
 
 yaml_path = "indicator_params.yml"
-landmask_path = git_path+"climate_impacts_processing\\landareamaskmap0.nc"
-kg_class_path = git_path+"climate_impacts_processing\\kg_class.nc"
+landmask_path = git_path + "climate_impacts_processing\\landareamaskmap0.nc"
+kg_class_path = git_path + "climate_impacts_processing\\kg_class.nc"
 
 if env == "pc":
     # Main working directory
     wd = f"C:\\Users\\{user}\\IIASA\\ECE.prog - Documents\\Research Theme - NEXUS\\Hotspots_Explorer_2p0\\"
-    wd_input =  f"P:\\watxene\\ISIMIP_postprocessed\\cse\\"  # Input data branch
+    wd_input = f"P:\\watxene\\ISIMIP_postprocessed\\cse\\"  # Input data branch
     # Directory of table files to read as input
-    wdtable_input ="table_output\\"
-    
+    wdtable_input = "table_output\\"
+
     # Output directory
     wd2 = "rcre_testing\\testing_3\\"
     output_dir = f"{wd}{wd2}aggregated_region_datafiles\\"
@@ -74,7 +73,6 @@ if env == "pc":
     # Directory of map files to read as input
     # impact_data_dir = f"{wd}\\data\\4_split_files_for_geoserver"
     impact_data_dir = f"{wd_input}split_files"
-
 
 
 # =============================================================================
@@ -111,7 +109,7 @@ lvaris = 200
 # impact data settings
 
 indicators = ["cdd", "precip"]
-ftype = "score" #score
+ftype = "score"  # score
 interpolation = 0.01
 
 

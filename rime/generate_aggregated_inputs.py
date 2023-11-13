@@ -50,7 +50,7 @@ files = glob.glob(table_output_format.replace("|", "*"))
 
 # files = files[0:3]
 # files = files[2:4]
-files = files[4:5] # heatwav & iavar
+files = files[4:5]  # heatwav & iavar
 # files = files[5:10]
 # files = files[10:12]
 # files = files[12:15]
@@ -117,12 +117,16 @@ for i, ind in enumerate(zip(indicators, files)):
 
     small_vars = list(set([x.split("|")[0] for x in dfin.variable]))
     if ab_present:
-        with alive_bar(total=len(small_vars),
-                        title='Processing', length=10, force_tty=True,
-                        bar='circles',
-                        spinner='elements') as bar:
-    
-                print('alive bar present')
+        with alive_bar(
+            total=len(small_vars),
+            title="Processing",
+            length=10,
+            force_tty=True,
+            bar="circles",
+            spinner="elements",
+        ) as bar:
+
+            print("alive bar present")
         # Apply function here
         for vari in small_vars:
             df_ind = loop_interpolate_gmt(
@@ -130,10 +134,10 @@ for i, ind in enumerate(zip(indicators, files)):
             )
             # dfbig = pd.concat([dfbig, df_ind])
             print(f"dfbig: indicator {ind[0]}: {time.time()-istart}")
-    
+
             # % Convert and save out to xarray (todo - make function)
             # dfbig.dropna(how='all')
-    
+
             dfp = df_ind.melt(
                 id_vars=[
                     "model",
@@ -147,11 +151,11 @@ for i, ind in enumerate(zip(indicators, files)):
                 value_vars=years,
                 var_name="year",
             )  # change to df_big if concatenating multiple
-    
+
             dfp.columns = [x.lower() for x in dfp.columns]
-    
+
             dsout = xr.Dataset()
-    
+
             for indicator in dfp.variable.unique():
                 print(indicator)
                 dx = (
@@ -163,14 +167,12 @@ for i, ind in enumerate(zip(indicators, files)):
                 dsout[indicator] = dx["value"].to_dataset(name=indicator)[indicator]
                 dsout[indicator].attrs["unit"] = dx.unit.values[0, 0, 0, 0]
                 # dsout = dsout[indicator].assign_coords({'unit':dx.unit.values[0,0,0,0]})
-    
+
             dsout["ssp"] = [x.upper() for x in dsout["ssp"].values]
             # dsout = dsout.drop_vars('unit')
-    
+
             # Ne
-    
-    
-    
+
             # % Write out
             print("Writing out... ")
             comp = dict(zlib=True, complevel=5)

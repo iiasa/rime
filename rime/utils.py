@@ -6,7 +6,6 @@ import pandas as pd
 import pyam
 
 
-
 def fix_duplicate_temps(df, years):
     """
     Function that modifies GMT temperatures by minute increments, in case there are duplicates in the series which would otherwise cause problems with lookup indexing.
@@ -35,8 +34,8 @@ def fix_duplicate_temps(df, years):
                 vsn.append(x + np.random.uniform(-0.005, 0.005))
         df[years] = vsn
     return df
-	
-	
+
+
 def remove_ssp_from_ds(ds):
     """
     Preprocess input netCDF datasets to remove ssp from the variable names.
@@ -61,13 +60,13 @@ def remove_ssp_from_ds(ds):
 
 def ssp_helper(dft, ssp_meta_col="Ssp_family", default_ssp="SSP2", keep_meta=True):
     """
-    Function to fill out and assign SSP to a meta column called Ssp_family, 
+    Function to fill out and assign SSP to a meta column called Ssp_family,
     making data numeric. If
     there is no meta column with SSP information, automatically filled with
     default_ssp.
 
     ToDo: Expand into function that checks if SSP in scenario name
-    
+
     Parameters
     ----------
     dft : pyam.IamDataFrame
@@ -81,8 +80,8 @@ def ssp_helper(dft, ssp_meta_col="Ssp_family", default_ssp="SSP2", keep_meta=Tru
 
     """
     if ssp_meta_col not in dft.meta.columns:
-        dft.meta[ssp_meta_col] = ''
-        
+        dft.meta[ssp_meta_col] = ""
+
     if keep_meta:
         meta_cols = list(dft.meta.columns)
     else:
@@ -94,10 +93,14 @@ def ssp_helper(dft, ssp_meta_col="Ssp_family", default_ssp="SSP2", keep_meta=Tru
         sspdic, inplace=True
     )  # metadata must have Ssp_family column. If not SSP2 automatically chosen
     dft.loc[dft[ssp_meta_col].isnull(), ssp_meta_col] = default_ssp
-    metadata = dft[['model','scenario']+meta_cols].drop_duplicates().set_index(['model','scenario'])
+    metadata = (
+        dft[["model", "scenario"] + meta_cols]
+        .drop_duplicates()
+        .set_index(["model", "scenario"])
+    )
     return pyam.IamDataFrame(dft[pyam.IAMC_IDX + ["year", "value"]], meta=metadata)
-	
-	
+
+
 def tidy_mapdata(mapdata):
     """
     Function that takes in xarray.Dataset renames threshold dimension and drops all others
@@ -109,13 +112,16 @@ def tidy_mapdata(mapdata):
     Returns
     -------
     ds : xarray.Dataset with renamed dimensions, if necessary
-        
+
     """
     dvs = mapdata.data_vars
-    mapdata = mapdata.rename({'threshold':'gmt'})
-    mapdata = mapdata.set_index({'lon':'lon','lat':'lat','gmt':'gmt'}).reset_coords()
+    mapdata = mapdata.rename({"threshold": "gmt"})
+    mapdata = mapdata.set_index(
+        {"lon": "lon", "lat": "lat", "gmt": "gmt"}
+    ).reset_coords()
     mapdata = mapdata.drop_vars([x for x in mapdata.data_vars if x not in dvs])
     return mapdata
+
 
 def check_ds_dims(ds):
     """
@@ -129,17 +135,21 @@ def check_ds_dims(ds):
     Returns
     -------
     ds : xarray.Dataset with renamed dimensions, if necessary
-        
+
 
     """
     if len(ds.dims) >= 3:
-        if 'year' not in ds.dims:
-            raise ValueError("The dataset contains 3 or more dimensions, but 'year' dimension is missing.")
+        if "year" not in ds.dims:
+            raise ValueError(
+                "The dataset contains 3 or more dimensions, but 'year' dimension is missing."
+            )
 
-    if 'lat' in ds.dims and 'lon' in ds.dims:
+    if "lat" in ds.dims and "lon" in ds.dims:
         return ds
-    elif 'x' in ds.dims and 'y' in ds.dims:
-        ds = ds.rename({'x': 'lat', 'y': 'lon'})
+    elif "x" in ds.dims and "y" in ds.dims:
+        ds = ds.rename({"x": "lat", "y": "lon"})
         return ds
     else:
-        raise ValueError("The dataset does not contain 'lat' and 'lon' or 'x' and 'y' dimensions.")
+        raise ValueError(
+            "The dataset does not contain 'lat' and 'lon' or 'x' and 'y' dimensions."
+        )
