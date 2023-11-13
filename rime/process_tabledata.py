@@ -28,11 +28,11 @@ if __name__ == "__main__":
     filesall = glob.glob(fname_input_climate)
 
     # files = filesall
-    # files = filesall[:2]
+    files = filesall[:2]
     # files = filesall[2:6]
     # files = filesall[7:9] # problem in 6?
     # files = filesall[9:12]
-    files = filesall[12:15]
+    # files = filesall[12:15]
     # files = filesall[15:]
 
     if len(files) == 0:
@@ -102,7 +102,7 @@ if __name__ == "__main__":
             if mode == "GMT":
                 dfp = df_scens_in.filter(variable=temp_variable)
             elif mode == "CO2":
-                dfp = prepare_cumCO2(df_scens_in, years=years, use_dask=True)
+                dfp = prepare_cumulative(df_scens_in, years=years, use_dask=True)
                 ts = dfp.timeseries().apply(co2togmt_simple)
                 ts = pyam.IamDataFrame(ts)
                 ts.rename(
@@ -146,9 +146,9 @@ if __name__ == "__main__":
 
                 # dfx = dft.iloc[0].squeeze()  # FOR DEBUIGGING THE FUNCTION
                 outd = ddf.apply(
-                    calculate_impacts_gmt, dsi=dsi, axis=1, meta=("result", None)
+                    table_impacts_gmt, dsi=dsi, axis=1, meta=("result", None)
                 )
-                # outdd = client.map(ddf.apply(calculate_impacts_gmt, dsi=dsi,  axis=1))
+                # outdd = client.map(ddf.apply(table_impacts_gmt, dsi=dsi,  axis=1))
 
                 with ProgressBar():
                     # try:
@@ -157,7 +157,7 @@ if __name__ == "__main__":
                 # except(InvalidIndexError):
                 # print(f'PROBLEM {f}')
             else:
-                df_new = dft.apply(calculate_impacts_gmt, dsi=dsi, axis=1)
+                df_new = dft.apply(table_impacts_gmt, dsi=dsi, axis=1)
 
             expandedd = pd.concat([df_new[x] for x in df_new.index])
             print(f" Done:  {time.time()-start}")

@@ -4,7 +4,7 @@
 Created on Thu Apr  6 11:36:24 2023
 
 @author: werning, byers
-Execute this script ideally in the top level of the RIME directory
+Execute this script ideally in GitHub/rime folder
 
 To Do:
     
@@ -21,20 +21,21 @@ import time
 import xarray as xr
 import yaml
 from dask import delayed
-from dask.distributed import Client
+# from dask.distributed import Client
 from rime.process_config import *
 from rime.rime_functions import *
+from rime.utils import *
 
 
 # from dask.diagnostics import Profiler, ResourceProfiles, CacheProfiler
 dask.config.set(scheduler="processes")
 dask.config.set(num_workers=num_workers)
-client = Client()
+# client = Client()
 
 # dask.config.set(scheduler='synchronous')
 
 
-with open(yaml_path, "r") as f:
+with open('rime'+yaml_path, "r") as f:
     params = yaml.full_load(f)
 
 
@@ -42,14 +43,7 @@ with open(yaml_path, "r") as f:
 
 df_scens_in = pyam.IamDataFrame(fname_input_scenarios)
 dft = df_scens_in.filter(variable=temp_variable)
-dft = np.round(dft.as_pandas()[pyam.IAMC_IDX + ["year", "value", "Ssp_family"]], 2)
-# Replace & fill missing SSP scenario allocation
-# dft.Ssp_family.replace(sspdic, inplace=True) # metadata must have Ssp_faily column. If not SSP2 automatically chosen
-dft.loc[dft.Ssp_family.isnull(), ssp_meta_col] = "ssp2"
-
-dft = pyam.IamDataFrame(dft)
-
-# % interpolate maps
+dft = ssp_helper(dft)
 
 
 # %% Test multiple scenarios, 1 indicator
@@ -68,14 +62,17 @@ mapdata = xr.open_mfdataset(
     files, preprocess=remove_ssp_from_ds, combine="nested", concat_dim="gmt"
 )
 
-# df = pyam.IamDataFrame(dft)
+mapdata = tidy_mapdata(mapdata)
 
-map_out_MS = map_transform_gmt_multi_dask(
-    dft.filter(model="POLES ADVANCE"),
+
+df = dft.filter(model='POLES GE*')
+
+map_out_MS = map_transform_gmt_wrapper(
+    df,
     mapdata,
     years,
     use_dask=True,
-    gmt_name="threshold",
+    gmt_name="gmt",
     interpolation=interpolation,
 )
 
@@ -103,16 +100,18 @@ print(f"{time.time()-start}")
 print("Test 1 scenario, multiple indicators")
 start = time.time()
 ssp = "ssp2"
+# year=2055
 mapdata = xr.Dataset()
 indicators = [
     "cdd",
     "precip",
-    "dri",
-    "dri_qtot",
-    "ia_var",
-    "ia_var_qtot",
+    # "dri",
+    # "dri_qtot",
+    # "iavar",
+    # "ia_var_qtot",
     "sdd_18p3",
-    "sdd_24p0",
+    # "sdd_24p0",
+    'wsi',
 ]  #'heatwave']
 
 for ind in indicators:
@@ -126,17 +125,22 @@ for ind in indicators:
             files, preprocess=remove_ssp_from_ds, combine="nested", concat_dim="gmt"
         )[short]
 
-map_out_MI = map_transform_gmt_multi_dask(
-    dft.filter(model="AIM*", scenario="SSP1-34"),
-    mapdata,
-    years,
-    use_dask=False,
-    gmt_name="threshold",
-)
+mapdata = tidy_mapdata(mapdata)
+
+
+
+map_out_MI = map_transform_gmt_wrapper(
+            dft.filter(model="AIM*", scenario="SSP1-34"),
+            mapdata,
+            years=years,
+            use_dask=False,
+            gmt_name="gmt",
+        )
 
 comp = dict(zlib=True, complevel=5)
 encoding = {var: comp for var in map_out_MI.data_vars}
 filename = f"{output_folder_maps}scenario_maps_multiindicator_{ftype}.nc"
+dask.config.set(scheduler="single-threaded")
 map_out_MI.to_netcdf(filename, encoding=encoding)
 
 print("FINISHED 1 scenario, multiple indicators")
@@ -146,3 +150,21 @@ print(f"{time.time()-start}")
 # 1 scenario, 8 indis = 22s, = 1.8s/s dask=False
 # 1 scenario, 12 indis = 62s, = 5s/s dask=False, 24 workers.
 # 1...                   32s     dask=True
+
+#%% Test plot dashboard
+
+indicators = ['cdd','dri']
+
+filename = 'test_map.html'
+plot_maps_dashboard(map_out_MI, indicators=indicators,
+                    filename=filename,  year=2055, cmap='magma_r', 
+                    shared_axes=True, clim=None, )
+os.startfile(filename)
+
+#%%
+
+filename = 'test_map.html'
+plot_maps_dashboard(map_out_MI, 
+                    filename=filename,  year=2055, cmap='magma_r', 
+                    shared_axes=True, clim=None, )
+os.startfile(filename)

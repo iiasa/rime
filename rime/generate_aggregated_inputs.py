@@ -4,7 +4,7 @@ Created on Mon Dec  5 12:35:40 2022
 
 @author: byers
 """
-# from alive_progress import alive_bar
+from alive_progress import alive_bar
 import glob
 
 # import numpy as np
@@ -16,7 +16,7 @@ import time
 
 # try:
 
-# ab_present = True
+ab_present = True
 # except:
 #     print("alive_progress not installed")
 #     ab_present = False
@@ -25,6 +25,7 @@ import time
 
 from rime.rime_functions import *
 from rime.process_config import *
+from rime.utils import *
 
 few_vars = False
 
@@ -48,12 +49,12 @@ files = glob.glob(table_output_format.replace("|", "*"))
 # files = [str for str in files if any(sub in str for sub in indicator_subset)]
 
 # files = files[0:3]
-# files = files[1:2]
-# files = files[4:5] # heatwav & iavar
+# files = files[2:4]
+files = files[4:5] # heatwav & iavar
 # files = files[5:10]
 # files = files[10:12]
 # files = files[12:15]
-files = files[15:]
+# files = files[15:]
 
 
 indicators = []
@@ -115,64 +116,68 @@ for i, ind in enumerate(zip(indicators, files)):
     #     df = df.loc[df.variable.str.contains('High')]
 
     small_vars = list(set([x.split("|")[0] for x in dfin.variable]))
-    # if ab_present:
-    # with alive_bar(total=len(small_vars),
-    #                title='Processing', length=10, force_tty=True,
-    #                bar='circles',
-    #                spinner='elements') as bar:
-
-    #         print('alive bar present')
-    # Apply function here
-    for vari in small_vars:
-        df_ind = loop_interpolate_gmt(
-            df.loc[df.variable.str.startswith(vari)], yr_start, yr_end
-        )
-        # dfbig = pd.concat([dfbig, df_ind])
-        print(f"dfbig: indicator {ind[0]}: {time.time()-istart}")
-
-        # % Convert and save out to xarray
-        # dfbig.dropna(how='all')
-
-        dfp = df_ind.melt(
-            id_vars=[
-                "model",
-                "scenario",
-                "variable",
-                "region",
-                "unit",
-                "SSP",
-                "GMT",
-            ],
-            value_vars=years,
-            var_name="year",
-        )  # change to df_big if concatenating multiple
-
-        dfp.columns = [x.lower() for x in dfp.columns]
-
-        dsout = xr.Dataset()
-
-        for indicator in dfp.variable.unique():
-            print(indicator)
-            dx = (
-                dfp.loc[dfp.variable == indicator]
-                .set_index(["gmt", "year", "ssp", "region"])
-                .to_xarray()
+    if ab_present:
+        with alive_bar(total=len(small_vars),
+                        title='Processing', length=10, force_tty=True,
+                        bar='circles',
+                        spinner='elements') as bar:
+    
+                print('alive bar present')
+        # Apply function here
+        for vari in small_vars:
+            df_ind = loop_interpolate_gmt(
+                df.loc[df.variable.str.startswith(vari)], yr_start, yr_end
             )
-            # dx.attrs['unit'] = dx.assign_coords({'unit':dx.unit.values[0,0,0,0]})
-            dsout[indicator] = dx["value"].to_dataset(name=indicator)[indicator]
-            dsout[indicator].attrs["unit"] = dx.unit.values[0, 0, 0, 0]
-            # dsout = dsout[indicator].assign_coords({'unit':dx.unit.values[0,0,0,0]})
-
-        dsout["ssp"] = [x.upper() for x in dsout["ssp"].values]
-        # dsout = dsout.drop_vars('unit')
-
-        # % Write out
-        print("Writing out... ")
-        comp = dict(zlib=True, complevel=5)
-        encoding = {var: comp for var in dsout.data_vars}
-        filename = f"{output_dir}{vari}_{region}.nc"
-        dsout.to_netcdf(filename, encoding=encoding)
-        # if ab_present:
-        # bar()
+            # dfbig = pd.concat([dfbig, df_ind])
+            print(f"dfbig: indicator {ind[0]}: {time.time()-istart}")
+    
+            # % Convert and save out to xarray (todo - make function)
+            # dfbig.dropna(how='all')
+    
+            dfp = df_ind.melt(
+                id_vars=[
+                    "model",
+                    "scenario",
+                    "variable",
+                    "region",
+                    "unit",
+                    "SSP",
+                    "GMT",
+                ],
+                value_vars=years,
+                var_name="year",
+            )  # change to df_big if concatenating multiple
+    
+            dfp.columns = [x.lower() for x in dfp.columns]
+    
+            dsout = xr.Dataset()
+    
+            for indicator in dfp.variable.unique():
+                print(indicator)
+                dx = (
+                    dfp.loc[dfp.variable == indicator]
+                    .set_index(["gmt", "year", "ssp", "region"])
+                    .to_xarray()
+                )
+                # dx.attrs['unit'] = dx.assign_coords({'unit':dx.unit.values[0,0,0,0]})
+                dsout[indicator] = dx["value"].to_dataset(name=indicator)[indicator]
+                dsout[indicator].attrs["unit"] = dx.unit.values[0, 0, 0, 0]
+                # dsout = dsout[indicator].assign_coords({'unit':dx.unit.values[0,0,0,0]})
+    
+            dsout["ssp"] = [x.upper() for x in dsout["ssp"].values]
+            # dsout = dsout.drop_vars('unit')
+    
+            # Ne
+    
+    
+    
+            # % Write out
+            print("Writing out... ")
+            comp = dict(zlib=True, complevel=5)
+            encoding = {var: comp for var in dsout.data_vars}
+            filename = f"{output_dir}{vari}_{region}.nc"
+            dsout.to_netcdf(filename, encoding=encoding)
+            if ab_present:
+                bar()
 
     # =============================================================================

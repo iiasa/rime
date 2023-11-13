@@ -16,11 +16,14 @@ import pyam
 from scipy.stats import linregress
 import xarray as xr
 
+from rime.utils import check_ds_dims
 
-def loop_interpolate_gmt(df, yr_start, yr_end):
+
+
+def loop_interpolate_gmt(df, yr_start, yr_end, interval=50):
     """
     Loop through the variables and regions in df and interpolate the impacts data
-    between the global warming levels
+    between the global warming levels (typically at 0.5 °C).
     Parameters
     ----------
     df : pandas.DataFrame()
@@ -29,13 +32,17 @@ def loop_interpolate_gmt(df, yr_start, yr_end):
         start year of the interpolated data
     yr_end : int  # 2100  # 2099
         end year of the interpolated data
+    interval : int, default = 50
+        interval between global warming levels for interpolation. e.g. interval=50 and 
+        providing data with impacts data at 0.5 °C resolutions, would interpolate to
+        0.01 deg C resolution. 
 
     Returns
     -------
     df_ind : pandas.DataFrame()
 
     """
-    # if type(df_ind)==None:
+
     df_ind = pd.DataFrame(columns=df.columns)
     regions = df.region.unique()
     SSPs = df.SSP.unique()
@@ -48,8 +55,8 @@ def loop_interpolate_gmt(df, yr_start, yr_end):
                     (df.region == region) & (df.SSP == ssp) & (df.variable == variable)
                 ]
                 if len(dfs) > 0:
-                    dfs.index = range(0, 50 * len(dfs), 50)
-                    dfs = dfs.reindex(index=range(50 * len(dfs)))
+                    dfs.index = range(0, interval * len(dfs), interval)
+                    dfs = dfs.reindex(index=range(interval * len(dfs)))
                     tcols = pyam.IAMC_IDX + ["SSP"]
                     dfs[tcols] = dfs.loc[0, tcols]
 
@@ -69,28 +76,29 @@ def loop_interpolate_gmt(df, yr_start, yr_end):
 # =============================================================================
 
 
-def calculate_impacts_gmt(
+def table_impacts_gmt(
     dfx,
     dsi,
     prefix_indicator="RIME|",
-    ssp_meta_col="ssp_family",
+    ssp_meta_col="Ssp_family",
 ):
     """
-    Takes in a set of scenarios of GMT and a dataset of climate impacts by GWL,
-    and returns a table of climate impacts per scenario through time.
+    Takes in a table of scenarios of GMT and a dataset of climate impacts by GWL,
+    and returns a table of climate impacts per scenario through time. The 
 
     Parameters
     ----------
     dfx : dask.DataFrame
-        dask.DataFrame in the format of an IAMC table (see pyam.IamDataFrame) with scenario(s) as rows and only 1 variable for the global mean temperature timeseries. Needs to have a column specifying the SSP to be assumed.
+        dask.DataFrame in the format of an IAMC wide table (see pyam.IamDataFrame.timeseries()) with scenario(s) as rows and only 1 variable for the global mean temperature timeseries. Needs to have a column specifying the SSP to be assumed.
     dsi : xarray.Dataset
-        dimensions ['gmt','year','ssp','region'] and each variable is a climate indicator
+        dimensions ['gmt','year','ssp','region'] and each variable is a climate indicator. This format is an xarray file of impacts,
+        prepared from the output of the function loop_interpolate_gmt.
     prefix_indicator : str, optional
-        DESCRIPTION. The default is 'RIME|'. Use this to change the output indicator prefix in the table data variable column.
+        The default is 'RIME|'. Use this to change the output indicator prefix in the table data variable column.
     ssp_meta_col : str, optional
-        DESCRIPTION. The default is 'Ssp_family'. Use this to change the name of the meta column used to assin the SSP per scenario
-    # gmt_below : float, optional
-    #     DESCRIPTION. The default is 1.5. Assign all gmt values below gmt_below to the value of gmt_below (in case not enough data)
+        The default is 'Ssp_family'. Use this to change the name of the meta column used to assin the SSP per scenario
+    # gmt_below : float, optional (currently not usd)
+    #     The default is 1.5. Assign all gmt values below gmt_below to the value of gmt_below (in case not enough data)
 
     Returns
     -------
@@ -102,8 +110,9 @@ def calculate_impacts_gmt(
     model = dfx["model"]
     scenario = dfx["scenario"]
 
-    ssp = dfx[ssp_meta_col.lower()]
+    ssp = dfx[ssp_meta_col] #<<< isue here?
 
+    # Need to check SSP integration here.
     if ssp not in ["SSP1", "SSP2", "SSP3"]:
         ssp = "SSP2"
 
@@ -112,11 +121,13 @@ def calculate_impacts_gmt(
     years = [x for x in dfx.index if type(x) == int]
     tt = dfx[years]
 
+    # New dataframe in IAMC wide format for all output data.
     idf = pd.DataFrame(columns=pyam.IAMC_IDX + years)
 
     for indicator in list(dsi.data_vars):
         # print(indicator)
 
+        # For each indicator, new df
         edf = pd.DataFrame(
             columns=pyam.IAMC_IDX
         )  # dont have years because otherwise joins with empty rows
@@ -131,8 +142,11 @@ def calculate_impacts_gmt(
         #     edf['unit'] = dsi[indicator].unit
         dsd = dsi.sel(ssp=ssp)[indicator]
 
+        
         tgt_y = xr.DataArray(years, dims="points")
         tgt_g = xr.DataArray(tt[years].values, dims="points")
+        
+        # Do selection (lookup) of datapoints in dsd ix along the years & gmt points.
         try:
             agh = dsd.sel(year=tgt_y, gmt=tgt_g, method="nearest").to_dataframe(
                 name=indicator
@@ -146,76 +160,68 @@ def calculate_impacts_gmt(
 
         idf = pd.concat([idf, edf]).reset_index(drop=True)
 
-    # print('end func')
     return idf
 
 
-def fix_duplicate_temps(df, years):
-    """
-    Function that modifies GMT temperatures minutely, in case there are duplicates in the series.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame,
-        a file from which to take transform and latitude objects
-
-    Returns
-    -------
-    """
-
-    vs = df[years]
-    ld = len(df[years])
-    lu = len(set(df[years]))
-
-    if ld != lu:
-        # print('')
-        seen = set()
-        vsn = []
-        for x in vs:
-            if x not in vsn:
-                vsn.append(x)
-            else:
-                vsn.append(x + np.random.uniform(-0.005, 0.005))
-        df[years] = vsn
-    return df
-
 
 # =============================================================================
-# Mpas
+# Maps
 # =============================================================================
 
 
 def map_transform_gmt(
     df1,
     mapdata,
-    var_name,
     years,
+    var_name=None,
     map_array=xr.Dataset(),
     caution_checks=True,
+    include_orig_gmt=False,
     drawdown_max=0.15,
-    gmt_name="threshold",
+    gmt_name="gmt",
     interpolation=0.01,
     temp_min=1.2,
     temp_max=3.5,
 ):
     """
-        Takes in a set of scenarios of GMT and dataset of climate impacts by GWL,
-        and returns a table of climate impacts per scenario through time.
+        Takes in one scenario of GMT and dataset of climate impacts by GWL,
+        and returns a table of climate impacts for that scenario through time. Can be used on its own, but
+        typically is called from 
 
         Parameters
         ----------
-        df1 : dask.DataFrame
-            dask.DataFrame in the format of an IAMC table (see pyam.IamDataFrame) with scenario(s) as rows and only 1 variable for the global mean temperature timeseries. Needs to have a column specifying the SSP to be assumed.
+        df1 : dask.DataFrame, pandas.Dataframe()
+            dask or pandas DataFrame in the format of a wide IAMC table (see pyam.IamDataFrame.timeseries()) with scenario(s) as rows and only 1 variable for the global mean temperature timeseries. Needs to have a column specifying the SSP to be assumed.
         mapdata : xarray.Dataset
-            dimensions ['gmt','year','ssp','region'] and each variable is a climate indicator
-            .....
-    ....
-    ...
+            dimensions ['gmt','lat','lon'] and each variable is a climate indicator, gmt refers to global mean temperature.
+        years : list, iterator
+            The years for which the climate impacts are needed. Provided as a list of int, range() or similar.
+        var_name : str, optional, optional
+            Varaible / indicator name in the impacts dataset. Possibly not needed.
+        map_array : xarray.Dataset(), optional
+            xarray Dataset, by default empty, but can be passed into here if needing to add data.
+        caution_checks : boolean, optional
+            Checks key aspects of the input temperature scenario that could lead to unreliable results.
+            drawdown - checks that the difference between peak and end-of-timeseries is not greater than x - default is 0.15 (°C).
+            temp_min - checks whether time points in the scenario have lower temperatures than this and prints warning.
+            temp_max - checks whether time points in the scenario have higher temperatures than this and prints warning.
+        include_orig_gmt : boolean, optional
+            Include the gmt coordinates in the output dataset. Default is False. Can only be True if in mode 2.  
+        drawdown_max : float, optional
+            Maximum permitted level of temperature drawdown permitted after peak. Default is 0.15 (°C).
+        gmt_name : str, optional
+            If the input mapdata dimension for global mean temperatures is different to 'gmt', rename. Needs more testing, might not work.
+        interpolation : float, optional
+            Increment in degrees C at which to interpolate trhe data. Default is 0.01 °C.
+        temp_min : float, optional
+            Temperature values below this will be ignored. Limited by the extent of the climate impacts input data. Default is 1.2 °C.
+        temp_max : float, optional
+            Temperature values above this will be ignored. Limited by the extent of the climate impacts input data. Default is 3.5 °C.            
 
         Returns
         -------
-        idf : pyam.IamDataFrame
-            pyam.IamDataFrame with variables for the impact indicators for each scenario(s).
+        idf : xarray.Dataset
+            xarray.Dataset with variables for the impact indicators for each scenario(s) through time
 
     """
 
@@ -223,8 +229,10 @@ def map_transform_gmt(
         raise Exception("Error: more than 1 variable in DataFrame")
     if len(df1.meta) > 1:
         raise Exception("Error: more than 1 model-scenario in DataFrame")
+        
 
     # Should only be 1 scenario
+    # Currently only works for 1 climate indicator
     for model, scenario in df1.index:
         # Get the GMT values from df
         gmt_values = df1.filter(year=years).data["value"].values
@@ -235,12 +243,12 @@ def map_transform_gmt(
             drawdown = np.round(gmt_values.max() - gmt_values[-1], 2)
             if drawdown > drawdown_max:
                 print(f"Warning! Overshoot  drawdown: {drawdown}. Scenario SKIPPED")
-                continue
+                # continue
             if gmt_values.max() > temp_max:
                 print(
                     f"Warning! Max temperature above {temp_max}°C  {gmt_values.max()}, data thereafter not possible"
                 )
-                continue
+                # continue
             if gmt_values.min() < temp_min:
                 print(
                     f"Warning! Min temperature below {temp_min}°C  {gmt_values.min()}, data before not possible"
@@ -250,109 +258,147 @@ def map_transform_gmt(
         gmt_values[(gmt_values < temp_min) | (gmt_values > temp_max)] = 999
 
         # Load and prepare the spatial impact data to be transformed
-        # Rename 3rd dimension to 'gmt'
-        try:
-            mapdata = mapdata.rename_vars({gmt_name: "gmt"})
-        except ValueError:
-            print("")
+
 
         # Get indicator name
-        short = list(mapdata.data_vars)[0]
+        # short = list(mapdata.data_vars)[0]
         # provide new interpolated vector (e.g. 0.01 gmt resolution)
         new_thresholds = np.arange(
             mapdata.gmt.min(), mapdata.gmt.max() + interpolation, interpolation
         )
         new_thresholds = [round(i, 2) for i in new_thresholds]
-        data_interp = mapdata.interp(gmt=new_thresholds)
+        mapdata_interp = mapdata.interp(gmt=new_thresholds)
 
         # Add dummy data for out of range values to last slice 999
         # last_slice = data_interp.isel(gmt=-1)
         new_slice = xr.DataArray([999], dims=("gmt",), coords={"gmt": [999]})
-        data_interp = xr.concat([data_interp[short], new_slice], dim="gmt")
-        data_interp["gmt"] = data_interp["gmt"].assign_coords(
-            gmt=data_interp["gmt"].values
-        )
-        data_interp = data_interp.to_dataset()
+        data_interp = xr.Dataset()
+        for var_name in mapdata_interp.data_vars:
+            data_interp[var_name] = xr.concat([mapdata_interp[var_name], new_slice], dim="gmt")
+        
+        
+        # data_interp["gmt"] = data_interp["gmt"].assign_coords(
+            # gmt=data_interp["gmt"].values
+        # )
+        # data_interp = data_interp.to_dataset()
 
-        # Create new empty dataarray for the new data.
-        map_array = map_array.assign(
-            variables={
-                var_name: (
-                    ("lat", "lon", "year"),
-                    np.full(
-                        [len(data_interp.lat), len(data_interp.lon), len(years)], np.nan
-                    ),
+
+        # Here todo: loop through variables in data_interp
+        
+        for var_name in data_interp.data_vars:
+            map_array = map_array.assign(
+                    variables={
+                        var_name: (
+                            ("lat", "lon", "year"),
+                            np.full(
+                                [len(data_interp.lat), len(data_interp.lon), len(years)], np.nan
+                            ),
+                        )
+                    }
                 )
-            }
-        )
-        data_interp[short][
-            -1,
-            :,
-            :,
-        ] = np.full([len(data_interp.lat), len(data_interp.lon)], np.nan)
+            
+            
+        # for var_name in map_array.data_vars:
+        #     data_interp[var_name][
+        #         -1,
+        #         :,
+        #         :,
+        #     ] = np.full([len(data_interp.lat), len(data_interp.lon)], np.nan)
 
         # Create an array to store the updated data
-        updated_data = data_interp[short].sel(gmt=gmt_values)
-
-        # Update map_array
-        map_array[var_name][:, :, : len(years)] = updated_data.transpose(
-            "lat", "lon", "gmt"
+        updated_data = data_interp.sel(gmt=gmt_values) #[short]
+        updated_data = updated_data.transpose("lat", "lon", "gmt")
+        updated_data = updated_data.rename_dims({'gmt':'year'})
+        updated_data = updated_data.assign_coords(
+            coords={"lon": updated_data.lon, "lat": updated_data.lat, "year": years}
         )
+        
+        map_array = updated_data
 
-        # Drop other coords
-        dc = [x for x in map_array.coords if x not in ["lon", "lat", "year"]]
+        # Identify if other coordinates have been carried through with the Dataset and drop to
+        # avoid confusion
+        dc = [x for x in map_array.coords if x not in ["lon", "lat", "year","gmt"]]
         if len(dc) > 0:
-            map_array.drop(dc)
+            map_array = map_array.drop(dc)
+            
+        # The gmt coordinate is carried through, but when combining multiple scenarios with different 
+        # gmt trajectories, this causes error in constructing the xr.DataSet. Drop as default, but
+        # can be kept if using for only 1 scenario.
+        if include_orig_gmt==False:
+            map_array = map_array.drop('gmt')
+
+            
     return map_array
 
 
-def map_transform_gmt_multi_dask(
+
+
+def map_transform_gmt_wrapper(
     df,
     mapdata,
     years,
-    gmt_name="threshold",
+    gmt_name="gmt",
     use_dask=True,
+    include_orig_gmt=False,
     temp_min=1.2,
     temp_max=3.5,
     drawdown_max=0.15,
     interpolation=0.01,
 ):
     """
-    Takes in a set of scenarios of GMT and dataset of climate impacts by GWL,
-    and returns a table of climate impacts per scenario through time.
+    Wrapper function of map_transform_gmt that can be used to leverage Dask for parallel processing of scenarios.
+    Modes:
+         1. a set of IAM scenarios of GMT and one xarray.DataSet climate impact indicator by GWLs, and returns an xarray.DataSet of the climate indicator per scenario through time.
+         2. one IAM scenario of GMT and a an xarray Dataset with one or multiple climate impact indicators by GWLs, to return an xarray.DataSet of climate indicators for the scenario through time.
 
     Parameters
     ----------
-    df : dask.DataFrame
-        dask.DataFrame in the format of an IAMC table (see pyam.IamDataFrame) with scenario(s) as rows and only 1 variable for the global mean temperature timeseries. Needs to have a column specifying the SSP to be assumed.
+    df : pyam.IamDataFrame
+        pyam.IamDataFrame holding the scenario(s) with only the temperature variable. df is converted into appropriate dask or pandas Dataframe depending on whether use_dask=True/False.
     mapdata : xarray.Dataset
-        dimensions ['gmt','year','ssp','region'] and each variable is a climate indicator
-    filename : str, optional
-        DESCRIPTION. The default is NONE. output filename as .csv (utf-8), otherwise returns idf
-    # prefix_indicator : str, optional
-    #     DESCRIPTION. The default is 'RIME|'. Use this to change the output indicator prefix.
-    # ssp_meta_col : str, optional
-    #     DESCRIPTION. The default is 'Ssp_family'. Use this to change the name of the meta column used to assin the SSP per scenario
-    # gmt_below : float, optional
-    #     DESCRIPTION. The default is 1.5. Assign all gmt values below gmt_below to the value of gmt_below (in case not enough data)
-
+        xarray.Dataset holding the climate impacts data, with dimensions lat, lon and gmt. If only one (impact) variable (mode 1), then it can handle multiple IAM scenarios.
+        If multiple (impact) variables (mode 2), then it can handle only one IAM scenario.
+    years : list, iterator
+        The years for which the climate impacts are needed. Provided as a list of int, range() or similar.
+    gmt_name : str, optional
+        If the input mapdata dimension for global mean temperatures is different to 'gmt', rename. Needs more testing, might not work.
+    use_dask : boolean, optional
+        Whether to process in parallel using Dask. Default is True. Small numbers of scenarios / indicators may not be faster due to the overheads that result from starting workers.
+    include_orig_gmt : boolean, optional
+        Include the gmt coordinates in the output dataset. Default is False. Can only be True if in mode 2.
+    temp_min : float, optional
+        Temperature values below this will be ignored. Limited by the extent of the climate impacts input data. Default is 1.2 °C.
+    temp_max : float, optional
+        Temperature values above this will be ignored. Limited by the extent of the climate impacts input data. Default is 3.5 °C.      
+    drawdown_max : float, optional
+            Maximum permitted level of temperature drawdown permitted after peak. Default is 0.15 (°C).        
+    interpolation : float, optional
+        Increment in degrees C at which to interpolate trhe data. Default is 0.01 °C.
+        
     Returns
     -------
-    idf : pyam.IamDataFrame
-        pyam.IamDataFrame with variables for the impact indicators for each scenario(s).
+    map_array : xarray.DataSet
+        Output xarray.Dataset which, depending on the mode:
+        1. Multiple climate impact indicators (as variables), through time, for the given IAM scenario.
+        2. One climate impact indicator, through time, for the given IAM scenarios (as variables).
 
     """
 
-    map_array = xr.Dataset()
-
     if len(df.index) > 1:
+        if len(mapdata.dims)>2:
+            map_array = mapdata.isel({gmt_name:0}).reset_coords(drop=True)
+            map_array = map_array.drop_vars(map_array.data_vars)
+        else:
+            map_array = xr.full_like(mapdata, np.nan).drop_vars(mapdata.data_vars)
+        
         if len(mapdata.data_vars) == 1:
             # =============================================================================
-            #             1 indicator, multi-scenario mode
+            #   Mode 1:     1 indicator, multi-scenario mode
             # =============================================================================
-            print("Single indicator mode")
+            print("Single indicator mode (multi-scenarios possible)")
             delayed_tasks = []
-
+            indicator = list(mapdata.data_vars)[0]
+            
             for model, scenario in df.index:
                 modelstrip = model
                 repdic = [" ", "/", ",", "."]
@@ -366,13 +412,17 @@ def map_transform_gmt_multi_dask(
                 if use_dask:
                     # Create delayed task for map_transform_gmt
                     delayed_map_transform = delayed(map_transform_gmt)(
-                        df1, mapdata, var_name, years, map_array
+                        df1, mapdata, years, var_name, map_array, include_orig_gmt=False,
                     )
+                    # delayed_map_transform = delayed_map_transform.drop('gmt')
                     delayed_tasks.append(delayed_map_transform)
+                    
                 else:
-                    map_array = map_transform_gmt(
-                        df1, mapdata, var_name, years, map_array
-                    )
+                    map_array[var_name] = map_transform_gmt(
+                        df1, mapdata, years, map_array, include_orig_gmt=False
+                    )[indicator]#.drop('gmt')  # drop here for alignment of coords (gmts are all different)
+                    
+                    
             if use_dask:
                 # Compute delayed tasks concurrently
                 computed_results = dask.compute(*delayed_tasks)
@@ -381,6 +431,7 @@ def map_transform_gmt_multi_dask(
                 for result in computed_results:
                     map_array.update(result)
 
+            map_array.attrs['indicator'] = indicator
         else:
             print("Error! Multiple IAM scenarios and spatial indicators detected.")
             raise ValueError(
@@ -389,23 +440,38 @@ def map_transform_gmt_multi_dask(
 
     else:
         # =============================================================================
-        #             1 scenario, multi-indicator mode
+        #   Mode 2:      1 scenario, multi-indicator mode
         # =============================================================================
-        print("Single scenario mode")
+        print("Single scenario mode, multiple indicators possible")
+        model = df.model[0]
+        scenario = df.scenario[0]
+        
+        
+        if len(mapdata.dims)>2:
+            map_array = mapdata.isel({gmt_name:0}).reset_coords(drop=True)
+            map_array = map_array.drop_vars(map_array.data_vars)
+        else:
+            map_array = xr.full_like(mapdata, np.nan).drop_vars(mapdata.data_vars)
+        
+        # needs to be outsite loop
         delayed_tasks = []
 
-        # Iterate through spatial indicators in DataSet
-        for var_name in mapdata.data_vars:
-            print(var_name)
-            df1 = df
-            if use_dask:
-                # Create delayed task for map_transform_gmt_dask
+        df1 = df
+            
+        # use_dask not working here
+        if use_dask:
+            # Iterate through spatial indicators in DataSet
+            for var_name in mapdata.data_vars:
+                print(var_name)
+                # Create delayed task for map_transform_gmt_wrapper
                 delayed_map_transform = delayed(map_transform_gmt)(
-                    df1, mapdata, var_name, years, map_array
+                    df1, mapdata[var_name],  years, var_name, map_array
                 )
                 delayed_tasks.append(delayed_map_transform)
-            else:
-                map_array = map_transform_gmt(df1, mapdata, var_name, years, map_array)
+        else:
+            map_array = map_transform_gmt(df1, mapdata, years, map_array, include_orig_gmt=include_orig_gmt)
+                
+        # use_dask not working here
         if use_dask:
             # Compute delayed tasks concurrently
             computed_results = dask.compute(*delayed_tasks)
@@ -414,32 +480,43 @@ def map_transform_gmt_multi_dask(
             for result in computed_results:
                 map_array.update(result)
 
-    map_array = map_array.assign_coords(
-        coords={"lon": map_array.lon, "lat": map_array.lat, "year": years}
-    )
-
+    # map_array = map_array.assign_coords(
+    #     coords={"lon": map_array.lon, "lat": map_array.lat, "year": years}
+    # )
+        map_array.attrs['model'] = model
+        map_array.attrs['scenario'] = scenario
     return map_array
 
 
-def calculate_cumulative_CO2(ts, first_year, year, variable):
+# =============================================================================
+# CO2 functions
+# =============================================================================
+'''
+These functions below can be used for basic processes relating CO2 and global
+warming levels.
+'''
+
+def calculate_cumulative(ts, first_year, year, variable):
     """
-    
+    Input timeseries (e.g. CO2) and calculate the cumulative values through time.
 
     Parameters
     ----------
-    ts : TYPE
-        DESCRIPTION.
-    first_year : TYPE
-        DESCRIPTION.
-    year : TYPE
-        DESCRIPTION.
-    variable : TYPE
-        DESCRIPTION.
+    ts : pandas.Dataframe()
+        A pandas Dataframe in the IAMC wide format, with multi-index [model,scenario,region,variable,unit] 
+        and columns of [years]. Can be obtained by df.timeseries() from a pyam.IamDataFrame().
+    first_year : int
+        Year from which to start the cumulative calculation.
+    year : int
+        Last year until which to calculate cumulative.
+    variable : str
+        Name of the variable over which to calculate. e.g. Emissions|CO2
 
     Returns
     -------
-    dfo : TYPE
-        DESCRIPTION.
+    dfo : pandas.Dataframe()
+        The input pandas.Dataframe() with additionally a new variable including the cumulative
+        emissions through time along the timesteps.
 
     """
     dfo = (
@@ -455,7 +532,7 @@ def calculate_cumulative_CO2(ts, first_year, year, variable):
     return dfo
 
 
-def prepare_cumCO2(
+def prepare_cumulative(
     df,
     variable="Emissions|CO2",
     unit_in="Mt CO2/yr",
@@ -466,8 +543,8 @@ def prepare_cumCO2(
     use_dask=False,
 ):
     """
-    Prepares a dataframe, by taking in CO2 emissions, filtering, converting
-    units to Gt CO2, and then calculating cumulative CO2.
+    Prepares a pyam.IamDataFrame, by taking in variable (e.g. Emissions|CO2), filtering, optionally converting
+    units (e.g. to Gt CO2), and then calculating the cumulative through time along the timesteps.
 
     Parameters
     ----------
@@ -491,8 +568,9 @@ def prepare_cumCO2(
 
     Returns
     -------
-    df :  pyam.IamDataFrame
-        Returns df with cumulative CO2 (Gt CO2/yr) through time.
+    df_cumlative :  pyam.IamDataFrame
+        Returns pyam.IamDataFrame with cumulative variable (e.g. Emissions|CO2, Gt CO2/yr) through time,
+        along each timestep.
 
     """
 
@@ -512,46 +590,49 @@ def prepare_cumCO2(
         df.filter(
             variable=variable,
         )
-        .convert_unit(unit_in, "Gt CO2/yr")
+        .convert_unit(unit_in, unit_out)
         .timeseries()
     )
 
     if use_dask:
         # Create a list of delayed computations
         dask_dfs = [
-            delayed(calculate_cumulative_CO2)(ts, first_year, year, variable)
+            delayed(calculate_cumulative)(ts, first_year, year, variable)
             for year in years
         ]
 
         # Compute the delayed computations and concatenate the results
-        df_cumCO2 = dd.from_delayed(dask_dfs)
-        df_cumCO2 = df_cumCO2.compute()
+        df_cumulative = dd.from_delayed(dask_dfs)
+        df_cumlative = df_cumlative.compute()
     else:
-        df_cumCO2 = pd.concat(
-            [calculate_cumulative_CO2(ts, first_year, year, variable) for year in years]
+        df_cumlative = pd.concat(
+            [calculate_cumulative(ts, first_year, year, variable) for year in years]
         )
 
-    df_cumCO2["unit"] = unit_out
+    df_cumlative["unit"] = unit_out
 
-    return pyam.IamDataFrame(df_cumCO2)
+    return pyam.IamDataFrame(df_cumlative)
 
 
 def co2togmt_simple(cum_CO2, regr=None):
     """
     Takes in vector of  CO2 values and calculates Global mean surface
-    air temperature (p50).
+    air temperature. Default is set up to use the linear regression between
+    cumulative CO2 and the global mean surface air temperature (p50) from the 
+    IPCC AR6 Scenarios Database.
+    
     Parameters
     ----------
     cum_CO2 : int, float, np.array, pandas.Series
         Value of cumulative CO2, from 2020 onwards, in Gt CO2.
     regr : dict, optional
-        'slope' and 'intercept' values for line. The default is None, in which
-        case parameters from AR6 assessment are used. Provide {'slope': m,
+        'slope' and 'intercept' values for linear regession. The default is None, in which
+        case parameters from IPCC AR6 assessment are used. Provide {'slope': m,
         'intercept': x} to define own linear relationship.
 
     Returns
     -------
-    Global mean surface air temperature (p50).
+        Global mean surface air temperature.
 
     """
 
@@ -580,7 +661,8 @@ def co2togmt_simple(cum_CO2, regr=None):
             print("Warning: specification not recognized")
             raise Exception("Error: specification not recognized")
     elif isinstance(regr, pd.DataFrame):
-        # Use linear regression based on DataFrame
+        # Use linear regression based on pandas DataFrame of cumulative CO2 and 
+        # temperatures.
         x, y = regr.columns[0], regr.columns[1]
         slope, intercept, r, p, se = linregress(regr[x], regr[y])
         print(f"Slope: {slope}")
@@ -592,13 +674,58 @@ def co2togmt_simple(cum_CO2, regr=None):
     return gmt
 
 
-def plot_maps_dashboard(ds, filename=None, indicators=None, year=2050, cmap='magma_r', shared_axes=True, clim=None):
+# =============================================================================
+# Plotting dashboards
+# =============================================================================
+
+def plot_maps_dashboard(ds, filename=None, indicators=None, year=2050, 
+                        cmap='magma_r', shared_axes=True, clim=None, 
+                        coastline=True, crs=None, features=None, layout_title=None):
+    """
+    From an xarray.DataSet of climate impact indicators through time for one IAM scenario (mode 2 in map_transform_gmt_wrapper),
+    plot the indicators as an interactive html dashboard in a specified year.
+
+    Parameters
+    ----------
+    ds : xarray.DataSet
+        xarray.DataSet with dimensions of lat, lon and year, and each climate indicator as a variable.
+    filename : str, optional
+        Output filename as str ending in '.html' to save the file. Default will save as 
+        'maps_dashboard_{model}_{scenario}.html' in the current directory.
+    indicators : list, optional
+        A list of strings for the indicators in ds. Can be used to select only a subset of ass the 
+        indicators in ds.
+    year : int, optional
+        Year from which to plot data. The default is 2050.
+    cmap : str, optional
+        Continuous colormap from matplotlib.pyplot. The default is 'magma_r'.
+    shared_axes : boolean, optional
+        Whether zoom control automatically controls all axes. The default is True.
+    coastline : boolean, optional
+        Show the coastlines on the map using Cartopy features. The default is True.
+    crs : str, cartopy.Proj or pyproj.CRS, optional
+        Must be either a valid crs or an reference to a `data.attr` containing a valid crs: 
+        Projection must be defined as a EPSG code, proj4 string, WKT string, cartopy CRS, pyproj.Proj, or pyproj.CRS.
+        Provides the coordinate reference system to Cartopy. Requires Cartopy installation if used, and doesn't always work well. 
+        The default is None.
+    features : List of strings, optional
+        Whether to add Cartopy features to the map. The default is None. 
+        Available features include 'borders', 'coastline', 'lakes', 'land', 'ocean', 'rivers' and 'states'.
+
+
+    Returns
+    -------
+    None. Output is saved to .html file as specified in filename.
+
+    """
     
+    if isinstance(features, type(None)):
+        features = ['coastline', ]
     
-    if indicators==None:
+    if isinstance(indicators, type(None)):
         indicators = list(ds.data_vars)
     elif isinstance(indicators, list):
-        if all(x in ds.data_vars for x in indicators)==False:
+        if not all(x in ds.data_vars for x in indicators):
             raise Exception(f"Error: not all items in indicators were found in ds.")
     elif isinstance(indicators, list)==False:
         raise Exception(f"Error: indicators must be of type list.")
@@ -609,114 +736,67 @@ def plot_maps_dashboard(ds, filename=None, indicators=None, year=2050, cmap='mag
     ds = check_ds_dims(ds)
     
     
+    # Check year input.
     if 'year' in ds.dims:
-        ds = ds.sel(year=year).squeeze()
+        if year in ds.year:
+            ds = ds.sel(year=year).squeeze()
+        else:
+            print(f"Warning: {year} not in original data, interpolating now")
+            ds = ds.interp({'year':year})
+        
     elif len(ds.dims) != 2:
         raise Exception(f"Error: Year not a dimension and more than 2 dimensions in dataset")
+        
 
+
+    # Import cartopy if a crs is provided
+    if not isinstance(crs, type(None)):
+        try:
+            import cartopy
+        except:
+            print('Error importing Cartopy')
+            
     plot_list = []
 
-    # Run loop through indicators (variables)
+    # Run loop through indicators (variables) and plot
     for i in indicators:
         
-        new_plot = ds[i].hvplot(x='lon', y='lat', cmap='magma_r', shared_axes=True)
+        new_plot = ds[i].hvplot(x='lon', y='lat', cmap=cmap, 
+                                shared_axes=shared_axes, title=i, 
+                                coastline=coastline, crs=crs, 
+                                features=features)
         plot_list = plot_list + [new_plot]
 
     plot = hv.Layout(plot_list).cols(3)
     
+
     
+    if ('model' in ds.attrs.keys()) and ('scenario' in ds.attrs.keys()):
+        model = ds.attrs['model']
+        scenario = ds.attrs['scenario']
+        # layout title
+
+    else:
+        model = 'unknown'
+        scenario = 'scenario'
+    if isinstance(layout_title, type(str))==False:
+        layout_title = f'Climate impacts in {year} ({model}, {scenario})'
+
+    
+    plot.opts(title=layout_title)
     
     # Plot - check filename
-    if type(filename) is None:
-        filename = 'maps_dashboard_{model}_{scenario}.html'
+    if isinstance(filename, type(None)):
+        filename = f'maps_dashboard_{model}_{scenario}.html'
     
-    elif (type(filename) is str):
-        if (filename[:-5]) != '.html':
+    elif isinstance(filename, str):
+        if (filename[-5:]) != '.html':
             raise Exception(f"filename {filename} must end with '.html'")
                 
     else:
         raise Exception(f"filename must be string and end with '.html'")
         
-    
-    
     hvplot.save(plot, filename)
 
 
-
-def remove_ssp_from_ds(ds):
-    """
-    Preprocess input netCDF datasets to remove ssp from the variable names.
-    Passed to the `preprocess` argument of xr.open_mfdataset()
-
-    Parameters
-    ----------
-    ds : xarray.Dataset
-        DESCRIPTION.
-
-    Returns
-    -------
-    xarray.Dataset
-        DESCRIPTION.
-
-    """
-    var = list(ds.keys())[0]
-    short = f'{var.rsplit("_ssp")[0]}'
-
-    return ds.rename({list(ds.keys())[0]: short})
-
-
-def ssp_helper(dft, ssp_meta_col="Ssp_family", default_ssp="SSP2"):
-    """
-    Function to fill out and assign SSP to a meta column called Ssp_family. If
-    there is no meta column with SSP information, automatically filled with
-    default_ssp.
-
-    Parameters
-    ----------
-    dft : pyam.IamDataFram
-        input
-    ssp_meta_col : Str, optional
-        DESCRIPTION. The default is "Ssp_family".
-
-    Returns
-    -------
-    None.
-
-    """
-    dft = np.round(dft.as_pandas()[pyam.IAMC_IDX + ["year", "value", ssp_meta_col]], 3)
-    sspdic = {1.0: "SSP1", 2.0: "SSP2", 3.0: "SSP3", 4.0: "SSP4", 5.0: "SSP5"}
-    dft[ssp_meta_col].replace(
-        sspdic, inplace=True
-    )  # metadata must have Ssp_family column. If not SSP2 automatically chosen
-    dft.loc[dft[ssp_meta_col].isnull(), ssp_meta_col] = default_ssp
-
-    return pyam.IamDataFrame(dft)
-
-
-def check_ds_dims(ds):
-    """
-    Function to check the dimensions present in dataset before passing to plot maps
-
-    Parameters
-    ----------
-    ds : xarray.Dataset
-        If 2 dimensions, must be either x/y or lon/lat (former is renames to lon/lat). Third dimension can be 'year'. Otherwise errors are raised.
-
-    Returns
-    -------
-    ds : xarray.Dataset with renamed dimensions, if necessary
-        
-
-    """
-    if len(ds.dims) >= 3:
-        if 'year' not in ds.dims:
-            raise ValueError("The dataset contains 3 or more dimensions, but 'year' dimension is missing.")
-
-    if 'lat' in ds.dims and 'lon' in ds.dims:
-        return ds
-    elif 'x' in ds.dims and 'y' in ds.dims:
-        ds = ds.rename({'x': 'lat', 'y': 'lon'})
-        return ds
-    else:
-        raise ValueError("The dataset does not contain 'lat' and 'lon' or 'x' and 'y' dimensions.")
 
