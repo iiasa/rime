@@ -440,7 +440,7 @@ def map_transform_gmt_wrapper(
 
     else:
         # =============================================================================
-        #             1 scenario, multi-indicator mode
+        #   Mode 2:      1 scenario, multi-indicator mode
         # =============================================================================
         print("Single scenario mode, multiple indicators possible")
         model = df.model[0]
@@ -456,7 +456,6 @@ def map_transform_gmt_wrapper(
         # needs to be outsite loop
         delayed_tasks = []
 
-
         df1 = df
             
         # use_dask not working here
@@ -464,7 +463,7 @@ def map_transform_gmt_wrapper(
             # Iterate through spatial indicators in DataSet
             for var_name in mapdata.data_vars:
                 print(var_name)
-                # Create delayed task for map_transform_gmt_dask
+                # Create delayed task for map_transform_gmt_wrapper
                 delayed_map_transform = delayed(map_transform_gmt)(
                     df1, mapdata[var_name],  years, var_name, map_array
                 )
@@ -627,13 +626,13 @@ def co2togmt_simple(cum_CO2, regr=None):
     cum_CO2 : int, float, np.array, pandas.Series
         Value of cumulative CO2, from 2020 onwards, in Gt CO2.
     regr : dict, optional
-        'slope' and 'intercept' values for line. The default is None, in which
-        case parameters from AR6 assessment are used. Provide {'slope': m,
+        'slope' and 'intercept' values for linear regession. The default is None, in which
+        case parameters from IPCC AR6 assessment are used. Provide {'slope': m,
         'intercept': x} to define own linear relationship.
 
     Returns
     -------
-    Global mean surface air temperature (p50).
+        Global mean surface air temperature.
 
     """
 
@@ -683,7 +682,7 @@ def plot_maps_dashboard(ds, filename=None, indicators=None, year=2050,
                         cmap='magma_r', shared_axes=True, clim=None, 
                         coastline=True, crs=None, features=None, layout_title=None):
     """
-    From an xarray.DataSet of climate impacts indicators through time for one IAM scenario,
+    From an xarray.DataSet of climate impact indicators through time for one IAM scenario (mode 2 in map_transform_gmt_wrapper),
     plot the indicators as an interactive html dashboard in a specified year.
 
     Parameters
