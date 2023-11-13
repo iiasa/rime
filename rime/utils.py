@@ -1,5 +1,5 @@
 # utils.py
-# Small helper functions
+# Small helper functions for preparation of data and used also within functions.
 
 import numpy as np
 import pandas as pd
@@ -9,7 +9,7 @@ import pyam
 
 def fix_duplicate_temps(df, years):
     """
-    Function that modifies GMT temperatures minutely, in case there are duplicates in the series.
+    Function that modifies GMT temperatures by minute increments, in case there are duplicates in the series which would otherwise cause problems with lookup indexing.
 
     Parameters
     ----------
@@ -45,12 +45,12 @@ def remove_ssp_from_ds(ds):
     Parameters
     ----------
     ds : xarray.Dataset
-        DESCRIPTION.
+        With SSP info
 
     Returns
     -------
     xarray.Dataset
-        DESCRIPTION.
+        Without SSP info
 
     """
     var = list(ds.keys())[0]
@@ -99,6 +99,18 @@ def ssp_helper(dft, ssp_meta_col="Ssp_family", default_ssp="SSP2", keep_meta=Tru
 	
 	
 def tidy_mapdata(mapdata):
+    """
+    Function that takes in xarray.Dataset renames threshold dimension and drops all others
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+
+    Returns
+    -------
+    ds : xarray.Dataset with renamed dimensions, if necessary
+        
+    """
     dvs = mapdata.data_vars
     mapdata = mapdata.rename({'threshold':'gmt'})
     mapdata = mapdata.set_index({'lon':'lon','lat':'lat','gmt':'gmt'}).reset_coords()
