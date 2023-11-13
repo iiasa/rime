@@ -5,16 +5,21 @@
 [![license](https://www.gnu.org/graphics/gplv3-with-text-136x68.png)](https://choosealicense.com/licenses/gpl-3.0/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)  
 
-[![RIME_logo](https://github.com/iiasa/rime/assets/17701232/12e9ae66-5d28-4f06-9540-fa496cc588d0)  
+[![RIME_logo]](https://github.com/iiasa/rime/assets/17701232/12e9ae66-5d28-4f06-9540-fa496cc588d0)  
 
 ## Overview  
 ------------------  
 
 **RIME** is a lightweight software tool for using global warming level approaches to link climate impacts to Integrated Assessment Models (IAMs).
-When accompanied by climate impacts data (table and/or maps), RIME can be used to take a global mean temperature timeseries (e.g. from an IAM), and return tables and maps of climate impacts through time consistent with the warming of the scenario.
-There are two key use-cases for the RIME approach:
-[1] Estimating a suite of climate impacts from an global emissions scenario.  
-[2] Reformulating climates impact data to be used as an input to a global emissions scenario.  
+
+When accompanied by climate impacts data (table and/or maps), RIME can be used to take a global mean temperature timeseries (e.g. from an IAM or climate model like FaIR/MAGICC), and return tables and maps of climate impacts through time consistent with the warming of the scenario.  
+
+There are two key use-cases for the RIME approach:  
+1. Estimating a suite of climate impacts from an global emissions or temperature scenario.  
+2. Reformulating climate impacts data to be used as an input to an integrated assessment model scenario.  
+
+
+
 
 
 
@@ -26,7 +31,7 @@ A collection of helper functions related to data processing, used within functio
 
 ### `process-config.py` 
 A script to host a large number of configurable settings for running the software on datasets.
-Needs to be imported at the beginning of a script, e.g. `from process_config import *`.
+Needs to be imported at the beginning of a script, e.g. `from process_config import *`.  
 Settings for Dask could be configured in here. 
 
 ### `generate_aggregated_inputs.py` 
@@ -43,18 +48,13 @@ Take input table of emissions scenarios with GMT and output maps of climate impa
 Example scripts and tutorials are found inthe respective folders.
 
 
-Take a look at the [cookiecutter-hypermodern-python](https://github.com/cjolowicz/cookiecutter-hypermodern-python) repository!
-
 ## Installation
 
-Install the package including the requirements for building the docs.
+At command line, navigate to the directory where you want the installation, e.g. your Github folder.  
 
-    pip install --editable .[doc]
+	`git clone https://github.com/iiasa/rime.git`
 
-## Building the docs
+Change to the rime folder and install the package including the requirements.  
 
-Run Sphinx to build the docs!
+    pip install --editable .
 
-    make --directory=doc html
-
-The rendered html pages will be located in `doc/build/html/index.html`.

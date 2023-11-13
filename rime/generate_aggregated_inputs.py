@@ -131,7 +131,7 @@ for i, ind in enumerate(zip(indicators, files)):
             # dfbig = pd.concat([dfbig, df_ind])
             print(f"dfbig: indicator {ind[0]}: {time.time()-istart}")
     
-            # % Convert and save out to xarray
+            # % Convert and save out to xarray (todo - make function)
             # dfbig.dropna(how='all')
     
             dfp = df_ind.melt(
@@ -166,6 +166,10 @@ for i, ind in enumerate(zip(indicators, files)):
     
             dsout["ssp"] = [x.upper() for x in dsout["ssp"].values]
             # dsout = dsout.drop_vars('unit')
+    
+            # Ne
+    
+    
     
             # % Write out
             print("Writing out... ")

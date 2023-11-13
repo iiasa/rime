@@ -67,7 +67,7 @@ mapdata = tidy_mapdata(mapdata)
 
 df = dft.filter(model='POLES GE*')
 
-map_out_MS = map_transform_gmt_multi_dask(
+map_out_MS = map_transform_gmt_wrapper(
     df,
     mapdata,
     years,
@@ -129,7 +129,7 @@ mapdata = tidy_mapdata(mapdata)
 
 
 
-map_out_MI = map_transform_gmt_multi_dask(
+map_out_MI = map_transform_gmt_wrapper(
             dft.filter(model="AIM*", scenario="SSP1-34"),
             mapdata,
             years=years,
