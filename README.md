@@ -5,7 +5,7 @@
 [![license](https://www.gnu.org/graphics/gplv3-with-text-136x68.png)](https://choosealicense.com/licenses/gpl-3.0/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)  
 
-[![RIME_logo]](https://github.com/iiasa/rime/assets/rime_logo2.png)  
+[![RIME_logo]](https://github.com/iiasa/rime/assets/rime_logo2.png?raw=true)  
 
 ## Overview  
 ------------------  
@@ -18,7 +18,7 @@ There are two key use-cases for the RIME approach:
 1. Estimating a suite of climate impacts from a global emissions or temperature scenario.  
 2. Reformulating climate impacts data to be used as an input to an integrated assessment model scenario.  
 
-[![RIME_use_cases]](https://github.com/iiasa/rime/assets/rime_use_cases.jpg)
+[![RIME_use_cases]](https://github.com/iiasa/rime/assets/rime_use_cases.jpg?raw=true)
 
 
 ## Core files
