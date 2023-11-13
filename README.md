@@ -18,8 +18,7 @@ There are two key use-cases for the RIME approach:
 1. Estimating a suite of climate impacts from a global emissions or temperature scenario.  
 2. Reformulating climate impacts data to be used as an input to an integrated assessment model scenario.  
 
-[![RIME_use_cases]](https://github.com/iiasa/rime/assets/17701232/12e9ae66-5d28-4f06-9540-fa496cc588d0)  
-
+[![RIME_use_cases]](https://github.com/iiasa/rime/assets/17701232/15f57506-4e91-4362-9886-ba6c1bf33035)
 
 
 ## Core files
@@ -33,7 +32,7 @@ A collection of helper functions related to data processing, used within functio
 ### `process-config.py` 
 A script to host a large number of configurable settings for running the software on datasets.
 Needs to be imported at the beginning of a script, e.g. `from process_config import *`.  
-Settings for Dask could be configured in here. 
+Settings for `Dask` could be configured in here. 
 
 ## Example processing and workflow scripts
 
@@ -46,7 +45,7 @@ Example script that takes input table of emissions scenarios with global tempera
 ### `process_maps.py`  
 Example script that takes input table of emissions scenarios with global temperature timeseries, and output maps of climate impacts through time as netCDF. Ouptut netCDF can be specified for either for 1 scenario and multiple climate impacts, or multiple scenarios for 1 indicator.
 
-### pp_combined example.ipynb
+### `pp_combined example.ipynb`
 Example jupyter notebook that demonstrates methods of processing both table and map impacts data for IAM scenarios.
 
 
@@ -58,5 +57,10 @@ At command line, navigate to the directory where you want the installation, e.g.
 
 Change to the rime folder and install the package including the requirements.  
 
-    pip install --editable .
+	`pip install --editable .`
+
+## Further information
+This package is in a pre-release mode, currently work in progress, under-going testing and not formally published.  
+
+Examples provided use climate impacts data that is also in a pre-release stage, [(Werning et al. 2023)](https://zenodo.org/records/8134869) currently hosted on the [Climate Solutions Explorer](https://www.climate-solutions-explorer.eu/).
 
