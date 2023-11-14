@@ -22,7 +22,7 @@ There are two key use-cases for the RIME approach:
 ![RIME_use_cases](https://github.com/iiasa/rime/blob/main/assets/rime_use_cases.jpg?raw=true)  
 
 **RIME** is *Rapid*! *It's in the name...*
- - RIME is intended and designed to be rapid. It uses [Xarray](https://github.com/pydata/xarray) and [Dask](https://github.com/dask/dask) for parallelized processing and lazy reading of big data. Processing climate impacts data takes in the order of seconds per scenario on a desktop computer.
+ - RIME is intended and designed to be rapid. It uses [Xarray](https://github.com/pydata/xarray) and [Dask](https://github.com/dask/dask) for parallelized processing and lazy reading of big data. Processing climate impacts data takes **in the order of seconds per scenario** on a desktop computer.
  - RIME is intended and designed with the [IAMC](https://www.iamconsortium.org/) and [ISIMIP](https://www.isimip.org) communities in mind. It uses [Pyam](https://github.com/iamconsortium/pyam) for processing IAM scenarios and follows community data formats.
 
 ![image](https://github.com/iiasa/rime/assets/17701232/7f3fec80-ab5a-468b-99d8-e759628f7542)
@@ -54,6 +54,11 @@ Example script that takes input table of emissions scenarios with global tempera
 
 ### [`pp_combined example.ipynb`](https://github.com/iiasa/rime/blob/main/rime/pp_combined_example.py)  
 Example jupyter notebook that demonstrates methods of processing both table and map impacts data for IAM scenarios.
+
+### [`test_map_notebook.html`](https://github.com/iiasa/rime/blob/main/rime/test_map_notebook.html)
+Example html maps dashboard. CLick download in the top right corner and open locally in your browser.
+
+![image](https://github.com/iiasa/rime/assets/17701232/801e2dbe-cbe8-482f-be9b-1457c92ea23e)
 
 
 ## Installation
