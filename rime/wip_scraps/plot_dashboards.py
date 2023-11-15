@@ -526,24 +526,5 @@ for q, dt in it.product(range(0, len(quantiles)), range(0,len(dot))):
 
 #%%  plot function
 
-
-
-#%%
-
 plot_maps_dashboard(ds, year=2055)
 os.startfile()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
