@@ -21,6 +21,7 @@ import time
 import xarray as xr
 import yaml
 from dask import delayed
+
 # from dask.distributed import Client
 from rime.process_config import *
 from rime.rime_functions import *
@@ -35,7 +36,7 @@ dask.config.set(num_workers=num_workers)
 # dask.config.set(scheduler='synchronous')
 
 
-with open('rime'+yaml_path, "r") as f:
+with open("rime" + yaml_path, "r") as f:
     params = yaml.full_load(f)
 
 
@@ -65,7 +66,7 @@ mapdata = xr.open_mfdataset(
 mapdata = tidy_mapdata(mapdata)
 
 
-df = dft.filter(model='POLES GE*')
+df = dft.filter(model="POLES GE*")
 
 map_out_MS = map_transform_gmt_wrapper(
     df,
@@ -111,7 +112,7 @@ indicators = [
     # "ia_var_qtot",
     "sdd_18p3",
     # "sdd_24p0",
-    'wsi',
+    "wsi",
 ]  #'heatwave']
 
 for ind in indicators:
@@ -128,14 +129,13 @@ for ind in indicators:
 mapdata = tidy_mapdata(mapdata)
 
 
-
 map_out_MI = map_transform_gmt_wrapper(
-            dft.filter(model="AIM*", scenario="SSP1-34"),
-            mapdata,
-            years=years,
-            use_dask=False,
-            gmt_name="gmt",
-        )
+    dft.filter(model="AIM*", scenario="SSP1-34"),
+    mapdata,
+    years=years,
+    use_dask=False,
+    gmt_name="gmt",
+)
 
 comp = dict(zlib=True, complevel=5)
 encoding = {var: comp for var in map_out_MI.data_vars}
@@ -153,18 +153,29 @@ print(f"{time.time()-start}")
 
 #%% Test plot dashboard
 
-indicators = ['cdd','dri']
+indicators = ["cdd", "dri"]
 
-filename = 'test_map.html'
-plot_maps_dashboard(map_out_MI, indicators=indicators,
-                    filename=filename,  year=2055, cmap='magma_r', 
-                    shared_axes=True, clim=None, )
+filename = "test_map.html"
+plot_maps_dashboard(
+    map_out_MI,
+    indicators=indicators,
+    filename=filename,
+    year=2055,
+    cmap="magma_r",
+    shared_axes=True,
+    clim=None,
+)
 os.startfile(filename)
 
 #%%
 
-filename = 'test_map.html'
-plot_maps_dashboard(map_out_MI, 
-                    filename=filename,  year=2055, cmap='magma_r', 
-                    shared_axes=True, clim=None, )
+filename = "test_map.html"
+plot_maps_dashboard(
+    map_out_MI,
+    filename=filename,
+    year=2055,
+    cmap="magma_r",
+    shared_axes=True,
+    clim=None,
+)
 os.startfile(filename)

@@ -11,15 +11,21 @@
 ## Overview  
 ------------------  
 
-**RIME** is a lightweight software tool for using global warming level approaches to link climate impacts to Integrated Assessment Models (IAMs).
+**RIME** is a lightweight software tool for using global warming level approaches to link climate impacts data to Integrated Assessment Models (IAMs).
 
-When accompanied by climate impacts data (table and/or maps), RIME can be used to take a global mean temperature timeseries (e.g. from an IAM or climate model like FaIR/MAGICC), and return tables and maps of climate impacts through time consistent with the warming of the scenario.  
+When accompanied by climate impacts data (table and/or maps), RIME can be used to take a global mean temperature timeseries (e.g. from an IAM or climate model like [FaIR](https://github.com/OMS-NetZero/FAIR)/[MAGICC](https://live.magicc.org/)), and return tables and maps of climate impacts through time consistent with the warming of the scenario.  
 
 There are two key use-cases for the RIME approach:  
 1. **Post-process**: Estimating a suite of climate impacts from a global emissions or temperature scenario.  
 2. **Input**: Reformulating climate impacts data to be used as an input to an integrated assessment model scenario.  
 
 ![RIME_use_cases](https://github.com/iiasa/rime/blob/main/assets/rime_use_cases.jpg?raw=true)  
+
+**RIME** is *Rapid*! *It's in the name...*
+ - RIME is intended and designed to be rapid. It uses [Xarray](https://github.com/pydata/xarray) and [Dask](https://github.com/dask/dask) for parallelized processing and lazy reading of big data. Processing climate impacts data takes **in the order of seconds per scenario** on a desktop computer.
+ - RIME is intended and designed with the [IAMC](https://www.iamconsortium.org/) and [ISIMIP](https://www.isimip.org) communities in mind. It uses [Pyam](https://github.com/iamconsortium/pyam) for processing IAM scenarios and follows community data formats.
+
+![image](https://github.com/iiasa/rime/assets/17701232/7f3fec80-ab5a-468b-99d8-e759628f7542)
 
 
 ## Core files
@@ -46,8 +52,13 @@ Example script that takes input table of emissions scenarios with global tempera
 ### [`process_maps.py`](https://github.com/iiasa/rime/blob/main/rime/process_tabledata.py)  
 Example script that takes input table of emissions scenarios with global temperature timeseries, and output maps of climate impacts through time as netCDF. Ouptut netCDF can be specified for either for 1 scenario and multiple climate impacts, or multiple scenarios for 1 indicator.
 
-### [`pp_combined example.ipynb`](https://github.com/iiasa/rime/blob/main/rime/pp_combined example.py)  
+### [`pp_combined example.ipynb`](https://github.com/iiasa/rime/blob/main/rime/pp_combined_example.py)  
 Example jupyter notebook that demonstrates methods of processing both table and map impacts data for IAM scenarios.
+
+### [`test_map_notebook.html`](https://github.com/iiasa/rime/blob/main/rime/test_map_notebook.html)
+Example html maps dashboard. CLick download in the top right corner and open locally in your browser.
+
+![image](https://github.com/iiasa/rime/assets/17701232/801e2dbe-cbe8-482f-be9b-1457c92ea23e)
 
 
 ## Installation
