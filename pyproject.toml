@@ -2,8 +2,6 @@
 name = "rime"
 authors = ["Edward Byers <byers@iiasa.ac.at>",
 			"Mia Werning <werning@iiasa.ac.at>"]
-
-author_email = "byers@iiasa.ac.at"
 description = "Rapid Impact Model Emulator"
 repository = "https://github.com/iiasa/rime"
 homepage = "https://iiasa.ac.at/programs/ece"
