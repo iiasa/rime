@@ -1,14 +1,16 @@
 # This workflow checks that the code conforms to the Black style
 # See https://black.readthedocs.io/en/stable/github_actions.html for details
 
-name: Lint
+name: Black formatting
 
-on: [push, pull_request]
+on: [pull_request]
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
       - uses: psf/black@stable
+        with:
+          options: "--color"
