@@ -4,6 +4,7 @@
 import numpy as np
 import pandas as pd
 import pyam
+import yaml
 
 
 def fix_duplicate_temps(df, years):
@@ -153,3 +154,17 @@ def check_ds_dims(ds):
         raise ValueError(
             "The dataset does not contain 'lat' and 'lon' or 'x' and 'y' dimensions."
         )
+
+def load_indicator_params():
+    """
+    Function to load the indicator parameters to facilitate reading in climate impacts  data from Climate Solutions Explorer (Werning et al. 2023 - DOI:                                                                                                          https://zenodo.org/doi/10.5281/zenodo.7971429 )
+
+    Returns
+    -------
+    params : dict
+
+    """
+    with open("rime.rime.indicator_params.yml", "r") as f:
+        params = yaml.full_load(f)
+        
+    return params
