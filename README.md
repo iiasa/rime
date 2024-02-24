@@ -18,7 +18,7 @@ When accompanied by climate impacts data (table and/or maps), RIME can be used t
 *** Key use cases ***
 There are two key use-cases for the RIME approach:  
 1. **Post-process**: Estimating a suite of climate impacts from a global emissions or temperature scenario.  
-2. **Input**: Reformulating climate impacts data to be used as an input to an integrated assessment model scenario.  
+2. **Input**: Reformulating climate impacts data to be used as an input to an integrated assessment model scenario. First the scenario is run without climate impacts, to determine the emissions and global warming trajectory. Then, RIME can be used to generate climate impact-adjusted input variables for the IAM scenario.
 
 ![RIME_use_cases](https://github.com/iiasa/rime/blob/main/assets/rime_use_cases.jpg?raw=true)  
 
