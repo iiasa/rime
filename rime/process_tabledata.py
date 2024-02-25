@@ -5,8 +5,8 @@ Created on Sun Dec 11 00:24:36 2022
 @author: byers
 """
 if __name__ == "__main__":
-    from process_config import *
-    from rime_functions import *
+    from rime.process_config import *
+    from rime.rime_functions import *
 
     #  from alive_progress import alive_bar
     import dask.dataframe as dd
