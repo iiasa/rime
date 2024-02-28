@@ -107,8 +107,8 @@ for i, ind in enumerate(zip(indicators, files)):
     df = df.timeseries().reset_index()
     df.dropna(how="all", inplace=True)
 
-    df[["SSP", "GMT"]] = df.scenario.str.split("_", expand=True)
-    df["GMT"] = df["GMT"].str.replace("p", ".").astype("float")
+    df[["SSP", "GWL"]] = df.scenario.str.split("_", expand=True)
+    df["GWL"] = df["GWL"].str.replace("p", ".").astype("float")
 
     # df.drop(columns=['model', 'scenario'], inplace=True)
 
@@ -146,7 +146,7 @@ for i, ind in enumerate(zip(indicators, files)):
                     "region",
                     "unit",
                     "SSP",
-                    "GMT",
+                    "GWL",
                 ],
                 value_vars=years,
                 var_name="year",
@@ -160,7 +160,7 @@ for i, ind in enumerate(zip(indicators, files)):
                 print(indicator)
                 dx = (
                     dfp.loc[dfp.variable == indicator]
-                    .set_index(["gmt", "year", "ssp", "region"])
+                    .set_index(["gwl", "year", "ssp", "region"])
                     .to_xarray()
                 )
                 # dx.attrs['unit'] = dx.assign_coords({'unit':dx.unit.values[0,0,0,0]})

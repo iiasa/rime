@@ -47,8 +47,8 @@ if __name__ == "__main__":
             "CO2 mode: Global mean temperatures will be derived from response \
               to cumulative CO2 emissions."
         )
-    elif mode == "GMT":
-        print("GMT mode: Global mean temperatures provided as input.")
+    elif mode == "GWL":
+        print("GWL mode: Global mean temperatures provided as input.")
 
     if parallel:
         dask.config.set(
@@ -99,7 +99,7 @@ if __name__ == "__main__":
             # SCENARIO DATA PRE-PROCESSING
             # Filter for temperature variable
 
-            if mode == "GMT":
+            if mode == "GWL":
                 dfp = df_scens_in.filter(variable=temp_variable)
             elif mode == "CO2":
                 dfp = prepare_cumulative(df_scens_in, years=years, use_dask=True)

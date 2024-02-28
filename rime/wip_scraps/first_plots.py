@@ -105,7 +105,7 @@ world_filename = "AR6_Scenarios_Database_World_v1.1.csv"
 dfar6 = pyam.IamDataFrame(meta_folder + world_filename)
 dfar6.load_meta(meta_folder + meta_file)
 
-# %% GMT plots for presentation
+# %% GWL plots for presentation
 
 
 dfe = dfar6.filter(
