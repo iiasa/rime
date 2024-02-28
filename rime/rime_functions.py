@@ -145,16 +145,16 @@ def table_impacts_gwl(
         tgt_g = xr.DataArray(tt[years].values, dims="points")
 
         # Do selection (lookup) of datapoints in dsd ix along the years & gwl points.
-        try:
-            agh = dsd.sel(year=tgt_y, gwl=tgt_g, method="nearest").to_dataframe(
-                name=indicator
-            )
-            agh = agh.reset_index()
-            aghp = agh.pivot_table(index="region", columns="year", values=indicator)
-            edf = edf.join(aghp, on="region")
+        # try:
+        agh = dsd.sel(year=tgt_y, gwl=tgt_g, method="nearest").to_dataframe(
+            name=indicator
+        )
+        agh = agh.reset_index()
+        aghp = agh.pivot_table(index="region", columns="year", values=indicator)
+        edf = edf.join(aghp, on="region")
 
-        except Exception as e:
-            print(f"skip {model} {scenario}")
+        # except Exception as e:
+            # print(f"skip {model} {scenario}")
 
         idf = pd.concat([idf, edf]).reset_index(drop=True)
 
