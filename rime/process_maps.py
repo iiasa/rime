@@ -68,12 +68,12 @@ mapdata = tidy_mapdata(mapdata)
 
 df = dft.filter(model="POLES GE*")
 
-map_out_MS = map_transform_gmt_wrapper(
+map_out_MS = map_transform_gwl_wrapper(
     df,
     mapdata,
     years,
     use_dask=True,
-    gmt_name="gwl",
+    gwl_name="gwl",
     interpolation=interpolation,
 )
 
@@ -129,12 +129,12 @@ for ind in indicators:
 mapdata = tidy_mapdata(mapdata)
 
 
-map_out_MI = map_transform_gmt_wrapper(
+map_out_MI = map_transform_gwl_wrapper(
     dft.filter(model="AIM*", scenario="SSP1-34"),
     mapdata,
     years=years,
     use_dask=False,
-    gmt_name="gwl",
+    gwl_name="gwl",
 )
 
 comp = dict(zlib=True, complevel=5)

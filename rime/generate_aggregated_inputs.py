@@ -129,7 +129,7 @@ for i, ind in enumerate(zip(indicators, files)):
             print("alive bar present")
         # Apply function here
         for vari in small_vars:
-            df_ind = loop_interpolate_gmt(
+            df_ind = loop_interpolate_gwl(
                 df.loc[df.variable.str.startswith(vari)], yr_start, yr_end
             )
             # dfbig = pd.concat([dfbig, df_ind])
