@@ -250,17 +250,17 @@ def map_transform_gwl(
                     f"Warning! Min temperature below {temp_min}°C  {gwl_values.min()}, data before not possible"
                 )
 
-        if gwl_values.max() > mapdata.gwl.max()):
-            temp_max = mapdata.gwl.max()
+        if gwl_values.max() > mapdata.gwl.values.max():
+            temp_max = mapdata.gwl.values.max()
             print(f'Warning! Provided scenario temperatures are higher than the available climate impacts GWLs. Setting temp_max to {mapdata.gwl.max()}')
-        if gwl_values.mmin() < mapdata.gwl.min()):
-            temp_min = mapdata.gwl.min()
+        if gwl_values.min() < mapdata.gwl.values.min():
+            temp_min = mapdata.gwl.values.min()
             print(f'Warning! Provided scenario temperatures are lower than the available climate impacts GWLs. Setting temp_min to {mapdata.gwl.min()}')
 
         
         # Replace the values outside range with 999 index (of nans)
-        gwl_values[(gwl_values < temp_min)] = 999
-        gwl_values[(gwl_values > temp_max)] = 999
+        gwl_values[gwl_values < temp_min] = 999
+        gwl_values[gwl_values > temp_max] = 999
 
         print(gwl_values)
 
