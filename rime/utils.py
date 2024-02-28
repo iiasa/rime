@@ -122,6 +122,7 @@ def tidy_mapdata(mapdata):
     mapdata = mapdata.set_index(
         {"lon": "lon", "lat": "lat", "gwl": "gwl"}
     ).reset_coords()
+    mapdata = mapdata.sortby('gwl')
     mapdata = mapdata.drop_vars([x for x in mapdata.data_vars if x not in dvs])
     return mapdata
 
