@@ -60,7 +60,7 @@ ssp = "ssp2"
 # Test multiple scenarios, 1 indicator
 files = glob.glob(os.path.join(impact_data_dir, ind, f"*{short}_{ssp}*{ftype}.nc4"))
 mapdata = xr.open_mfdataset(
-    files, preprocess=remove_ssp_from_ds, combine="nested", concat_dim="gmt"
+    files, preprocess=remove_ssp_from_ds, combine="nested", concat_dim="gwl"
 )
 
 mapdata = tidy_mapdata(mapdata)
@@ -68,12 +68,12 @@ mapdata = tidy_mapdata(mapdata)
 
 df = dft.filter(model="POLES GE*")
 
-map_out_MS = map_transform_gmt_wrapper(
+map_out_MS = map_transform_gwl_wrapper(
     df,
     mapdata,
     years,
     use_dask=True,
-    gmt_name="gmt",
+    gwl_name="gwl",
     interpolation=interpolation,
 )
 
@@ -123,18 +123,18 @@ for ind in indicators:
             os.path.join(impact_data_dir, ind, f"*{short}_{ssp}*{ftype}.nc4")
         )
         mapdata[short] = xr.open_mfdataset(
-            files, preprocess=remove_ssp_from_ds, combine="nested", concat_dim="gmt"
+            files, preprocess=remove_ssp_from_ds, combine="nested", concat_dim="gwl"
         )[short]
 
 mapdata = tidy_mapdata(mapdata)
 
 
-map_out_MI = map_transform_gmt_wrapper(
+map_out_MI = map_transform_gwl_wrapper(
     dft.filter(model="AIM*", scenario="SSP1-34"),
     mapdata,
     years=years,
     use_dask=False,
-    gmt_name="gmt",
+    gwl_name="gwl",
 )
 
 comp = dict(zlib=True, complevel=5)

@@ -71,12 +71,12 @@ if env == "pc":
     fname_input_scenarios = f"emissions_temp_AR6_small.xlsx"
 
     # Directory of map files to read as input
-    # impact_data_dir = f"{wd}\\data\\4_split_files_for_geoserver"
-    impact_data_dir = f"{wd_input}split_files"
+    impact_data_dir = f"{wd}\\data\\4_split_files_for_geoserver"
+    # impact_data_dir = f"{wd_input}split_files"
 
 
 # =============================================================================
-# %% From process-iamc_scenarios_gmt.py
+# %% From process-iamc_scenarios_gwl.py
 # =============================================================================
 
 year_resols = [5]

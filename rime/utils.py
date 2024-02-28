@@ -9,7 +9,7 @@ import yaml
 
 def fix_duplicate_temps(df, years):
     """
-    Function that modifies GMT temperatures by minute increments, in case there are duplicates in the series which would otherwise cause problems with lookup indexing.
+    Function that modifies GWL temperatures by minute increments, in case there are duplicates in the series which would otherwise cause problems with lookup indexing.
 
     Parameters
     ----------
@@ -117,10 +117,12 @@ def tidy_mapdata(mapdata):
 
     """
     dvs = mapdata.data_vars
-    mapdata = mapdata.rename({"threshold": "gmt"})
+    if "threshold" in mapdata.coords:
+        mapdata = mapdata.rename({"threshold": "gwl"})
     mapdata = mapdata.set_index(
-        {"lon": "lon", "lat": "lat", "gmt": "gmt"}
+        {"lon": "lon", "lat": "lat", "gwl": "gwl"}
     ).reset_coords()
+    mapdata = mapdata.sortby('gwl')
     mapdata = mapdata.drop_vars([x for x in mapdata.data_vars if x not in dvs])
     return mapdata
 

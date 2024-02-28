@@ -15,7 +15,7 @@ if __name__ == "__main__":
     from scipy.stats import linregress
     import matplotlib.pyplot as plt
     import numpy as np
-    from rime_functions import co2togmt_simple
+    from rime_functions import co2togwl_simple
 
     fd = "C:\\Users\\byers\\IIASA\\IPCC WG3 Chapter 3 - Documents\\IPCC_AR6DB\\snapshots\\snapshot_ar6_public_v1.1\\uploaded\\"
     world_filename = "AR6_Scenarios_Database_World_v1.1.csv"
@@ -58,6 +58,6 @@ if __name__ == "__main__":
     plt.plot(x, intercept + slope * x, "r", label="fitted line")
 
     # %% Examples
-    co2togmt_simple(np.array([500, 600, 800]), regr={"slope": 0.0004, "intercept": 1.4})
+    co2togwl_simple(np.array([500, 600, 800]), regr={"slope": 0.0004, "intercept": 1.4})
 
-    co2togmt_simple(x, dfm[[meta_cumNZ, meta_pw50]])
+    co2togwl_simple(x, dfm[[meta_cumNZ, meta_pw50]])
