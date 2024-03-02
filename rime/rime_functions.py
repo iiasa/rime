@@ -222,8 +222,8 @@ def map_transform_gwl(
 
     """
 
-    if len(df1.variable) > 1:
-        raise Exception("Error: more than 1 variable in DataFrame")
+    # if len(df1.variable) > 1:
+    #     raise Exception("Error: more than 1 variable in DataFrame")
     if len(df1.meta) > 1:
         raise Exception("Error: more than 1 model-scenario in DataFrame")
 
