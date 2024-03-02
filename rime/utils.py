@@ -119,6 +119,8 @@ def tidy_mapdata(mapdata):
     dvs = mapdata.data_vars
     if "threshold" in mapdata.coords:
         mapdata = mapdata.rename({"threshold": "gwl"})
+    if "gmt" in mapdata.coords:
+        mapdata = mapdata.rename({"gmt": "gwl"})        
     mapdata = mapdata.set_index(
         {"lon": "lon", "lat": "lat", "gwl": "gwl"}
     ).reset_coords()
