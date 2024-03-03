@@ -19,7 +19,7 @@ import xarray as xr
 from rime.utils import check_ds_dims
 
 
-def loop_interpolate_gmt(df, yr_start, yr_end, interval=50):
+def loop_interpolate_gwl(df, yr_start, yr_end, interval=50):
     """
     Loop through the variables and regions in df and interpolate the impacts data
     between the global warming levels (typically at 0.5 °C).
@@ -61,7 +61,7 @@ def loop_interpolate_gmt(df, yr_start, yr_end, interval=50):
 
                     cols = list(
                         range(yr_start, yr_end + 1),
-                    ) + ["GMT"]
+                    ) + ["GWL"]
 
                     dfs[cols] = dfs[cols].interpolate()
                     dfs.drop_duplicates(inplace=True)
@@ -75,14 +75,14 @@ def loop_interpolate_gmt(df, yr_start, yr_end, interval=50):
 # =============================================================================
 
 
-def table_impacts_gmt(
+def table_impacts_gwl(
     dfx,
     dsi,
     prefix_indicator="RIME|",
     ssp_meta_col="Ssp_family",
 ):
     """
-    Takes in a table of scenarios of GMT and a dataset of climate impacts by GWL,
+    Takes in a table of scenarios of GWL and a dataset of climate impacts by GWL,
     and returns a table of climate impacts per scenario through time. The
 
     Parameters
@@ -90,14 +90,14 @@ def table_impacts_gmt(
     dfx : dask.DataFrame
         dask.DataFrame in the format of an IAMC wide table (see pyam.IamDataFrame.timeseries()) with scenario(s) as rows and only 1 variable for the global mean temperature timeseries. Needs to have a column specifying the SSP to be assumed.
     dsi : xarray.Dataset
-        dimensions ['gmt','year','ssp','region'] and each variable is a climate indicator. This format is an xarray file of impacts,
-        prepared from the output of the function loop_interpolate_gmt.
+        dimensions ['gwl','year','ssp','region'] and each variable is a climate indicator. This format is an xarray file of impacts,
+        prepared from the output of the function loop_interpolate_gwl.
     prefix_indicator : str, optional
         The default is 'RIME|'. Use this to change the output indicator prefix in the table data variable column.
     ssp_meta_col : str, optional
         The default is 'Ssp_family'. Use this to change the name of the meta column used to assin the SSP per scenario
-    # gmt_below : float, optional (currently not usd)
-    #     The default is 1.5. Assign all gmt values below gmt_below to the value of gmt_below (in case not enough data)
+    # gwl_below : float, optional (currently not usd)
+    #     The default is 1.5. Assign all gwl values below gwl_below to the value of gwl_below (in case not enough data)
 
     Returns
     -------
@@ -115,7 +115,7 @@ def table_impacts_gmt(
     if ssp not in ["SSP1", "SSP2", "SSP3"]:
         ssp = "SSP2"
 
-    # tt.loc[tt.value<gmt_below, 'value'] = gmt_below
+    # tt.loc[tt.value<gwl_below, 'value'] = gwl_below
 
     years = [x for x in dfx.index if type(x) == int]
     tt = dfx[years]
@@ -144,17 +144,17 @@ def table_impacts_gmt(
         tgt_y = xr.DataArray(years, dims="points")
         tgt_g = xr.DataArray(tt[years].values, dims="points")
 
-        # Do selection (lookup) of datapoints in dsd ix along the years & gmt points.
-        try:
-            agh = dsd.sel(year=tgt_y, gmt=tgt_g, method="nearest").to_dataframe(
-                name=indicator
-            )
-            agh = agh.reset_index()
-            aghp = agh.pivot_table(index="region", columns="year", values=indicator)
-            edf = edf.join(aghp, on="region")
+        # Do selection (lookup) of datapoints in dsd ix along the years & gwl points.
+        # try:
+        agh = dsd.sel(year=tgt_y, gwl=tgt_g, method="nearest").to_dataframe(
+            name=indicator
+        )
+        agh = agh.reset_index()
+        aghp = agh.pivot_table(index="region", columns="year", values=indicator)
+        edf = edf.join(aghp, on="region")
 
-        except Exception as e:
-            print(f"skip {model} {scenario}")
+        # except Exception as e:
+            # print(f"skip {model} {scenario}")
 
         idf = pd.concat([idf, edf]).reset_index(drop=True)
 
@@ -166,22 +166,22 @@ def table_impacts_gmt(
 # =============================================================================
 
 
-def map_transform_gmt(
+def map_transform_gwl(
     df1,
     mapdata,
     years,
     var_name=None,
     map_array=xr.Dataset(),
     caution_checks=True,
-    include_orig_gmt=False,
+    include_orig_gwl=False,
+    gwl_name="gwl",
     drawdown_max=0.15,
-    gmt_name="gmt",
-    interpolation=0.01,
     temp_min=1.2,
     temp_max=3.5,
+    interpolation=0.01,
 ):
     """
-    Takes in one scenario of GMT and dataset of climate impacts by GWL,
+    Takes in one scenario of GWL and dataset of climate impacts by GWL,
     and returns a table of climate impacts for that scenario through time. Can be used on its own, but
     typically is called from
 
@@ -190,7 +190,7 @@ def map_transform_gmt(
     df1 : dask.DataFrame, pandas.Dataframe()
         dask or pandas DataFrame in the format of a wide IAMC table (see pyam.IamDataFrame.timeseries()) with scenario(s) as rows and only 1 variable for the global mean temperature timeseries. Needs to have a column specifying the SSP to be assumed.
     mapdata : xarray.Dataset
-        dimensions ['gmt','lat','lon'] and each variable is a climate indicator, gmt refers to global mean temperature.
+        dimensions ['gwl','lat','lon'] and each variable is a climate indicator, gwl refers to global mean temperature.
     years : list, iterator
         The years for which the climate impacts are needed. Provided as a list of int, range() or similar.
     var_name : str, optional, optional
@@ -202,12 +202,12 @@ def map_transform_gmt(
         drawdown - checks that the difference between peak and end-of-timeseries is not greater than x - default is 0.15 (°C).
         temp_min - checks whether time points in the scenario have lower temperatures than this and prints warning.
         temp_max - checks whether time points in the scenario have higher temperatures than this and prints warning.
-    include_orig_gmt : boolean, optional
-        Include the gmt coordinates in the output dataset. Default is False. Can only be True if in mode 2.
+    include_orig_gwl : boolean, optional
+        Include the gwl coordinates in the output dataset. Default is False. Can only be True if in mode 2.
     drawdown_max : float, optional
         Maximum permitted level of temperature drawdown permitted after peak. Default is 0.15 (°C).
-    gmt_name : str, optional
-        If the input mapdata dimension for global mean temperatures is different to 'gmt', rename. Needs more testing, might not work.
+    gwl_name : str, optional
+        If the input mapdata dimension for global mean temperatures is different to 'gwl', rename. Needs more testing, might not work.
     interpolation : float, optional
         Increment in degrees C at which to interpolate trhe data. Default is 0.01 °C.
     temp_min : float, optional
@@ -222,59 +222,70 @@ def map_transform_gmt(
 
     """
 
-    if len(df1.variable) > 1:
-        raise Exception("Error: more than 1 variable in DataFrame")
+    # if len(df1.variable) > 1:
+    #     raise Exception("Error: more than 1 variable in DataFrame")
     if len(df1.meta) > 1:
         raise Exception("Error: more than 1 model-scenario in DataFrame")
 
     # Should only be 1 scenario
     # Currently only works for 1 climate indicator
     for model, scenario in df1.index:
-        # Get the GMT values from df
-        gmt_values = df1.filter(year=years).data["value"].values
-        gmt_values = np.round(gmt_values, 2)
+        # Get the GWL values from df
+        gwl_values = df1.filter(year=years).data["value"].values
+        gwl_values = np.round(gwl_values, 2)
 
         if caution_checks:
-            # check if gmt at end reduction post peak greater than 0.2C
-            drawdown = np.round(gmt_values.max() - gmt_values[-1], 2)
+            # check if gwl at end reduction post peak greater than 0.2C
+            drawdown = np.round(gwl_values.max() - gwl_values[-1], 2)
             if drawdown > drawdown_max:
                 print(f"Warning! Overshoot  drawdown: {drawdown}. Scenario SKIPPED")
                 # continue
-            if gmt_values.max() > temp_max:
+            if gwl_values.max() > temp_max:
                 print(
-                    f"Warning! Max temperature above {temp_max}°C  {gmt_values.max()}, data thereafter not possible"
+                    f"Warning! Max temperature above {temp_max}°C  {gwl_values.max()}, data thereafter not possible"
                 )
                 # continue
-            if gmt_values.min() < temp_min:
+            if gwl_values.min() < temp_min:
                 print(
-                    f"Warning! Min temperature below {temp_min}°C  {gmt_values.min()}, data before not possible"
+                    f"Warning! Min temperature below {temp_min}°C  {gwl_values.min()}, data before not possible"
                 )
 
+        if gwl_values.max() > mapdata.gwl.values.max():
+            temp_max = mapdata.gwl.values.max()
+            print(f'Warning! Provided scenario temperatures are higher than the available climate impacts GWLs. Setting temp_max to {mapdata.gwl.max()}')
+        if gwl_values.min() < mapdata.gwl.values.min():
+            temp_min = mapdata.gwl.values.min()
+            print(f'Warning! Provided scenario temperatures are lower than the available climate impacts GWLs. Setting temp_min to {mapdata.gwl.min()}')
+
+        
         # Replace the values outside range with 999 index (of nans)
-        gmt_values[(gmt_values < temp_min) | (gmt_values > temp_max)] = 999
+        gwl_values[gwl_values < temp_min] = 999
+        gwl_values[gwl_values > temp_max] = 999
+
+        print(gwl_values)
 
         # Load and prepare the spatial impact data to be transformed
 
         # Get indicator name
         # short = list(mapdata.data_vars)[0]
-        # provide new interpolated vector (e.g. 0.01 gmt resolution)
+        # provide new interpolated vector (e.g. 0.01 gwl resolution)
         new_thresholds = np.arange(
-            mapdata.gmt.min(), mapdata.gmt.max() + interpolation, interpolation
+            mapdata.gwl.min(), mapdata.gwl.max() + interpolation, interpolation
         )
         new_thresholds = [round(i, 2) for i in new_thresholds]
-        mapdata_interp = mapdata.interp(gmt=new_thresholds)
+        mapdata_interp = mapdata.interp(gwl=new_thresholds)
 
         # Add dummy data for out of range values to last slice 999
-        # last_slice = data_interp.isel(gmt=-1)
-        new_slice = xr.DataArray([999], dims=("gmt",), coords={"gmt": [999]})
+        # last_slice = data_interp.isel(gwl=-1)
+        new_slice = xr.DataArray([999], dims=("gwl",), coords={"gwl": [999]})
         data_interp = xr.Dataset()
         for var_name in mapdata_interp.data_vars:
             data_interp[var_name] = xr.concat(
-                [mapdata_interp[var_name], new_slice], dim="gmt"
+                [mapdata_interp[var_name], new_slice], dim="gwl"
             )
 
-        # data_interp["gmt"] = data_interp["gmt"].assign_coords(
-        # gmt=data_interp["gmt"].values
+        # data_interp["gwl"] = data_interp["gwl"].assign_coords(
+        # gwl=data_interp["gwl"].values
         # )
         # data_interp = data_interp.to_dataset()
 
@@ -301,9 +312,12 @@ def map_transform_gmt(
         #     ] = np.full([len(data_interp.lat), len(data_interp.lon)], np.nan)
 
         # Create an array to store the updated data
-        updated_data = data_interp.sel(gmt=gmt_values)  # [short]
-        updated_data = updated_data.transpose("lat", "lon", "gmt")
-        updated_data = updated_data.rename_dims({"gmt": "year"})
+        # print(temp_max)sfsdff
+        print(gwl_values)
+        updated_data = data_interp.sel(gwl=gwl_values)
+        updated_data = updated_data.transpose("lat", "lon", "gwl")
+        updated_data = updated_data.rename_dims({"gwl": "year"})
+        updated_data = updated_data.rename({"gwl":"year"})
         updated_data = updated_data.assign_coords(
             coords={"lon": updated_data.lon, "lat": updated_data.lat, "year": years}
         )
@@ -312,52 +326,56 @@ def map_transform_gmt(
 
         # Identify if other coordinates have been carried through with the Dataset and drop to
         # avoid confusion
-        dc = [x for x in map_array.coords if x not in ["lon", "lat", "year", "gmt"]]
+        dc = [x for x in map_array.coords if x not in ["lon", "lat", "year", "gwl"]]
         if len(dc) > 0:
             map_array = map_array.drop(dc)
 
-        # The gmt coordinate is carried through, but when combining multiple scenarios with different
-        # gmt trajectories, this causes error in constructing the xr.DataSet. Drop as default, but
+        # The gwl coordinate is carried through, but when combining multiple scenarios with different
+        # gwl trajectories, this causes error in constructing the xr.DataSet. Drop as default, but
         # can be kept if using for only 1 scenario.
-        if include_orig_gmt == False:
-            map_array = map_array.drop("gmt")
+        if (include_orig_gwl==False) & ("gwl" in map_array.coords):
+            try:
+                map_array = map_array.drop("gwl")
+            except ValueError:
+                print('')
 
     return map_array
 
 
-def map_transform_gmt_wrapper(
+def map_transform_gwl_wrapper(
     df,
     mapdata,
     years,
-    gmt_name="gmt",
+    caution_checks=True,
     use_dask=True,
-    include_orig_gmt=False,
+    include_orig_gwl=False,
+    gwl_name="gwl",
+    drawdown_max=0.15,
     temp_min=1.2,
     temp_max=3.5,
-    drawdown_max=0.15,
     interpolation=0.01,
 ):
     """
-    Wrapper function of map_transform_gmt that can be used to leverage Dask for parallel processing of scenarios.
+    Wrapper function of map_transform_gwl that can be used to leverage Dask for parallel processing of scenarios.
     Modes:
-         1. a set of IAM scenarios of GMT and one xarray.DataSet climate impact indicator by GWLs, and returns an xarray.DataSet of the climate indicator per scenario through time.
-         2. one IAM scenario of GMT and a an xarray Dataset with one or multiple climate impact indicators by GWLs, to return an xarray.DataSet of climate indicators for the scenario through time.
+         1. a set of IAM scenarios of GWL and one xarray.DataSet climate impact indicator by GWLs, and returns an xarray.DataSet of the climate indicator per scenario through time.
+         2. one IAM scenario of GWL and a an xarray Dataset with one or multiple climate impact indicators by GWLs, to return an xarray.DataSet of climate indicators for the scenario through time.
 
     Parameters
     ----------
     df : pyam.IamDataFrame
         pyam.IamDataFrame holding the scenario(s) with only the temperature variable. df is converted into appropriate dask or pandas Dataframe depending on whether use_dask=True/False.
     mapdata : xarray.Dataset
-        xarray.Dataset holding the climate impacts data, with dimensions lat, lon and gmt. If only one (impact) variable (mode 1), then it can handle multiple IAM scenarios.
+        xarray.Dataset holding the climate impacts data, with dimensions lat, lon and gwl. If only one (impact) variable (mode 1), then it can handle multiple IAM scenarios.
         If multiple (impact) variables (mode 2), then it can handle only one IAM scenario.
     years : list, iterator
         The years for which the climate impacts are needed. Provided as a list of int, range() or similar.
-    gmt_name : str, optional
-        If the input mapdata dimension for global mean temperatures is different to 'gmt', rename. Needs more testing, might not work.
+    gwl_name : str, optional
+        If the input mapdata dimension for global mean temperatures is different to 'gwl', rename. Needs more testing, might not work.
     use_dask : boolean, optional
         Whether to process in parallel using Dask. Default is True. Small numbers of scenarios / indicators may not be faster due to the overheads that result from starting workers.
-    include_orig_gmt : boolean, optional
-        Include the gmt coordinates in the output dataset. Default is False. Can only be True if in mode 2.
+    include_orig_gwl : boolean, optional
+        Include the gwl coordinates in the output dataset. Default is False. Can only be True if in mode 2.
     temp_min : float, optional
         Temperature values below this will be ignored. Limited by the extent of the climate impacts input data. Default is 1.2 °C.
     temp_max : float, optional
@@ -378,7 +396,7 @@ def map_transform_gmt_wrapper(
 
     if len(df.index) > 1:
         if len(mapdata.dims) > 2:
-            map_array = mapdata.isel({gmt_name: 0}).reset_coords(drop=True)
+            map_array = mapdata.isel({gwl_name: 0}).reset_coords(drop=True)
             map_array = map_array.drop_vars(map_array.data_vars)
         else:
             map_array = xr.full_like(mapdata, np.nan).drop_vars(mapdata.data_vars)
@@ -391,45 +409,63 @@ def map_transform_gmt_wrapper(
             delayed_tasks = []
             indicator = list(mapdata.data_vars)[0]
 
-            for model, scenario in df.index:
-                modelstrip = model
-                repdic = [" ", "/", ",", "."]
-                for char in repdic:
-                    modelstrip = modelstrip.replace(char, "_")
-                var_name = f"{modelstrip}_{scenario}"  # f'{model}_{scenario}'
-                print(var_name)
-
-                df1 = df.filter(model=model, scenario=scenario)
-
-                if use_dask:
-                    # Create delayed task for map_transform_gmt
-                    delayed_map_transform = delayed(map_transform_gmt)(
-                        df1,
-                        mapdata,
-                        years,
-                        var_name,
-                        map_array,
-                        include_orig_gmt=False,
-                    )
-                    # delayed_map_transform = delayed_map_transform.drop('gmt')
-                    delayed_tasks.append(delayed_map_transform)
-
-                else:
-                    map_array[var_name] = map_transform_gmt(
-                        df1, mapdata, years, map_array, include_orig_gmt=False
-                    )[
-                        indicator
-                    ]  # .drop('gmt')  # drop here for alignment of coords (gmts are all different)
-
             if use_dask:
+                # Create delayed task for map_transform_gwl
+                delayed_map_transform = delayed(map_transform_gwl)(
+                    df,
+                    mapdata,
+                    years,
+                    var_name,
+                    map_array,
+                    caution_checks=caution_checks,
+                    include_orig_gwl=include_orig_gwl,
+                    gwl_name=gwl_name,
+                    drawdown_max=drawdown_max,
+                    temp_min=temp_min,
+                    temp_max=temp_max,
+                    interpolation=interpolation,                    
+                )
+                # delayed_map_transform = delayed_map_transform.drop('gwl')
+                delayed_tasks.append(delayed_map_transform)
+
                 # Compute delayed tasks concurrently
                 computed_results = dask.compute(*delayed_tasks)
 
                 # Merge the computed results into map_array
                 for result in computed_results:
                     map_array.update(result)
+            
+            # use_dask=False
+            else:                
+                for model, scenario in df.index:
+                    modelstrip = model
+                    repdic = [" ", "/", ",", "."]
+                    for char in repdic:
+                        modelstrip = modelstrip.replace(char, "_")
+                    var_name = f"{modelstrip}_{scenario}"  # f'{model}_{scenario}'
+                    print(var_name)
+    
+                    df1 = df.filter(model=model, scenario=scenario)
+
+                    map_array[var_name] = map_transform_gwl(
+                        df1, 
+                        mapdata, 
+                        years,
+                        var_name,
+                        map_array, 
+                        caution_checks=caution_checks,
+                        include_orig_gwl=include_orig_gwl,
+                        gwl_name=gwl_name,
+                        drawdown_max=drawdown_max,
+                        temp_min=temp_min,
+                        temp_max=temp_max,
+                        interpolation=interpolation,
+                    )[
+                        indicator
+                    ]  # .drop('gwl')  # drop here for alignment of coords (gwls are all different)
 
             map_array.attrs["indicator"] = indicator
+
         else:
             print("Error! Multiple IAM scenarios and spatial indicators detected.")
             raise ValueError(
@@ -445,7 +481,7 @@ def map_transform_gmt_wrapper(
         scenario = df.scenario[0]
 
         if len(mapdata.dims) > 2:
-            map_array = mapdata.isel({gmt_name: 0}).reset_coords(drop=True)
+            map_array = mapdata.isel({gwl_name: 0}).reset_coords(drop=True)
             map_array = map_array.drop_vars(map_array.data_vars)
         else:
             map_array = xr.full_like(mapdata, np.nan).drop_vars(mapdata.data_vars)
@@ -460,14 +496,35 @@ def map_transform_gmt_wrapper(
             # Iterate through spatial indicators in DataSet
             for var_name in mapdata.data_vars:
                 print(var_name)
-                # Create delayed task for map_transform_gmt_wrapper
-                delayed_map_transform = delayed(map_transform_gmt)(
-                    df1, mapdata[var_name], years, var_name, map_array
+                # Create delayed task for map_transform_gwl_wrapper
+                delayed_map_transform = delayed(map_transform_gwl)(
+                    df1, 
+                    mapdata[var_name], 
+                    years, 
+                    var_name, 
+                    map_array,
+                    caution_checks=caution_checks,
+                    include_orig_gwl=include_orig_gwl,
+                    gwl_name=gwl_name,
+                    drawdown_max=drawdown_max,
+                    temp_min=temp_min,
+                    temp_max=temp_max,
+                    interpolation=interpolation,
                 )
                 delayed_tasks.append(delayed_map_transform)
         else:
-            map_array = map_transform_gmt(
-                df1, mapdata, years, map_array, include_orig_gmt=include_orig_gmt
+            map_array = map_transform_gwl(
+                df1, 
+                mapdata, 
+                years, 
+                map_array, 
+                caution_checks=caution_checks,
+                include_orig_gwl=include_orig_gwl,
+                gwl_name=gwl_name,
+                drawdown_max=drawdown_max,
+                temp_min=temp_min,
+                temp_max=temp_max,
+                interpolation=interpolation,
             )
 
         # use_dask not working here
@@ -614,7 +671,7 @@ def prepare_cumulative(
     return pyam.IamDataFrame(df_cumlative)
 
 
-def co2togmt_simple(cum_CO2, regr=None):
+def co2togwl_simple(cum_CO2, regr=None):
     """
     Takes in vector of  CO2 values and calculates Global mean surface
     air temperature. Default is set up to use the linear regression between
@@ -669,9 +726,9 @@ def co2togmt_simple(cum_CO2, regr=None):
         print(f"Intercept: {intercept}")
         print(f"r2: {r}")
 
-    gmt = slope * cum_CO2 + intercept
+    gwl = slope * cum_CO2 + intercept
 
-    return gmt
+    return gwl
 
 
 # =============================================================================
@@ -693,7 +750,7 @@ def plot_maps_dashboard(
     layout_title=None,
 ):
     """
-    From an xarray.DataSet of climate impact indicators through time for one IAM scenario (mode 2 in map_transform_gmt_wrapper),
+    From an xarray.DataSet of climate impact indicators through time for one IAM scenario (mode 2 in map_transform_gwl_wrapper),
     plot the indicators as an interactive html dashboard in a specified year.
 
     Parameters

@@ -9,7 +9,7 @@ import yaml
 
 def fix_duplicate_temps(df, years):
     """
-    Function that modifies GMT temperatures by minute increments, in case there are duplicates in the series which would otherwise cause problems with lookup indexing.
+    Function that modifies GWL temperatures by minute increments, in case there are duplicates in the series which would otherwise cause problems with lookup indexing.
 
     Parameters
     ----------
@@ -93,7 +93,10 @@ def ssp_helper(dft, ssp_meta_col="Ssp_family", default_ssp="SSP2", keep_meta=Tru
     dft.replace({ssp_meta_col: 
         sspdic}, inplace=True
     )  # metadata must have Ssp_family column. If not SSP2 automatically chosen
+
     dft.loc[dft[ssp_meta_col].isnull(), ssp_meta_col] = default_ssp
+    dft.loc[dft[ssp_meta_col]=='', ssp_meta_col] = default_ssp
+
     metadata = (
         dft[["model", "scenario"] + meta_cols]
         .drop_duplicates()
@@ -116,10 +119,14 @@ def tidy_mapdata(mapdata):
 
     """
     dvs = mapdata.data_vars
-    mapdata = mapdata.rename({"threshold": "gmt"})
+    if "threshold" in mapdata.coords:
+        mapdata = mapdata.rename({"threshold": "gwl"})
+    if "gmt" in mapdata.coords:
+        mapdata = mapdata.rename({"gmt": "gwl"})        
     mapdata = mapdata.set_index(
-        {"lon": "lon", "lat": "lat", "gmt": "gmt"}
+        {"lon": "lon", "lat": "lat", "gwl": "gwl"}
     ).reset_coords()
+    mapdata = mapdata.sortby('gwl')
     mapdata = mapdata.drop_vars([x for x in mapdata.data_vars if x not in dvs])
     return mapdata
 
@@ -164,7 +171,7 @@ def load_indicator_params():
     params : dict
 
     """
-    with open("rime.rime.indicator_params.yml", "r") as f:
+    with open("rime.indicator_params.yml", "r") as f:
         params = yaml.full_load(f)
         
     return params

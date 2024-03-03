@@ -59,7 +59,7 @@ indicators = [
     "wsi",
 ]
 # indicators = ['seas']
-gmt_threshold = 3.0
+gwl_threshold = 3.0
 
 # %% Functions
 # -----------------------------------------------------------------------------
@@ -162,21 +162,21 @@ for ind in indicators:
         )
 
         # Select variable and rename it
-        future_data = future.sel({"threshold": gmt_threshold})
+        future_data = future.sel({"threshold": gwl_threshold})
         future_data = future_data[var][1, :, :].rename(
-            str(gmt_threshold).replace(".", "p")
+            str(gwl_threshold).replace(".", "p")
         )
-        # plot_future = future_data.hvplot(x='lon', y='lat', shared_axes=False, cmap = params["indicators"][ind][var]['ind_cmap'], clim=(params["indicators"][ind][var]['ind_min'], params["indicators"][ind][var]['ind_max']), title=f'Absolute - {str(gmt_threshold).replace(".", "p")}')
+        # plot_future = future_data.hvplot(x='lon', y='lat', shared_axes=False, cmap = params["indicators"][ind][var]['ind_cmap'], clim=(params["indicators"][ind][var]['ind_min'], params["indicators"][ind][var]['ind_max']), title=f'Absolute - {str(gwl_threshold).replace(".", "p")}')
 
         # Select variable and rename it
-        diff_data = diff.sel({"threshold": gmt_threshold})
+        diff_data = diff.sel({"threshold": gwl_threshold})
         diff_data = diff_data[var][0].rename("diff")
-        # plot_diff = diff_data.hvplot(x='lon', y='lat', shared_axes=False, cmap=params["indicators"][ind][var]['diff_cmap'], clim=(params["indicators"][ind][var]['diff_min'], params["indicators"][ind][var]['diff_max']), title=f'Difference - {str(gmt_threshold).replace(".", "p")}')
+        # plot_diff = diff_data.hvplot(x='lon', y='lat', shared_axes=False, cmap=params["indicators"][ind][var]['diff_cmap'], clim=(params["indicators"][ind][var]['diff_min'], params["indicators"][ind][var]['diff_max']), title=f'Difference - {str(gwl_threshold).replace(".", "p")}')
 
         # Select variable and rename it
-        score_data = scores.sel({"threshold": gmt_threshold})
+        score_data = scores.sel({"threshold": gwl_threshold})
         score_data = score_data[var][0].rename("score")
-        # plot_score = score_data.hvplot(x='lon', y='lat', cmap='magma_r', shared_axes=False, title=f'Score - {str(gmt_threshold).replace(".", "p")}')
+        # plot_score = score_data.hvplot(x='lon', y='lat', cmap='magma_r', shared_axes=False, title=f'Score - {str(gwl_threshold).replace(".", "p")}')
 
         # Load standard deviation data, apply land mask, remove inf and rename
         std_dev = hft.load_netcdf(
@@ -200,10 +200,10 @@ for ind in indicators:
         # hist_plot.ax_marg_x.set_xlim(0, 1800)
         # hist_plot.ax_marg_y.set_ylim(0, 50)
         # hist_plot.savefig(os.path.join(plot_dir, f'{params["indicators"][ind][var]["short_name"]}_joint_hist_std_change.png'))
-        # future_plot = sns.jointplot(x=future_data.to_dataframe()[str(gmt_threshold).replace(".", "p")], y=std_change.to_dataframe()['std_change'])
+        # future_plot = sns.jointplot(x=future_data.to_dataframe()[str(gwl_threshold).replace(".", "p")], y=std_change.to_dataframe()['std_change'])
         # future_plot.ax_marg_x.set_xlim(0, 1800)
         # future_plot.ax_marg_y.set_ylim(0, 50)
-        # future_plot.savefig(os.path.join(plot_dir, f'{params["indicators"][ind][var]["short_name"]}_joint_{str(gmt_threshold).replace(".", "p")}_std_change.png'))
+        # future_plot.savefig(os.path.join(plot_dir, f'{params["indicators"][ind][var]["short_name"]}_joint_{str(gwl_threshold).replace(".", "p")}_std_change.png'))
 
         joint_merged = xr.merge([hist_data, std_change]).to_dataframe()
         # plot_joint_hist = joint_merged.hvplot.scatter(x='hist', y='std_change', shared_axes=False, cmap=['blue'], title='Joint plot hist - z score')
@@ -255,10 +255,10 @@ for ind in indicators:
             [future_data, std_change, future_bivariate]
         ).to_dataframe()
         # plot_joint_hist_quartiles = joint_hist_quartiles_merged.hvplot.scatter(x='hist', y='std_change', color='std_score', cmap=explicit_mapping, title='Joint plot hist - z score quartiles')
-        # plot_joint_future_quartiles = joint_future_quartiles_merged.hvplot.scatter(x=f'{str(gmt_threshold).replace(".", "p")}', y='std_change', color='std_score', cmap=explicit_mapping, title=f'Joint plot {str(gmt_threshold).replace(".", "p")} - z score quartiles')
+        # plot_joint_future_quartiles = joint_future_quartiles_merged.hvplot.scatter(x=f'{str(gwl_threshold).replace(".", "p")}', y='std_change', color='std_score', cmap=explicit_mapping, title=f'Joint plot {str(gwl_threshold).replace(".", "p")} - z score quartiles')
 
         # plot_joint_hist_quartiles = joint_hist_quartiles_merged.hvplot.scatter(x='hist', y='std_change', color='std_score', cmap='magma_r', title='Joint plot hist - z score quartiles').redim.range(std_score=(0, 6))
-        # plot_joint_future_quartiles = joint_future_quartiles_merged.hvplot.points(x=f'{str(gmt_threshold).replace(".", "p")}', y='std_change', color='std_score', cmap='magma_r', title=f'Joint plot {str(gmt_threshold).replace(".", "p")} - z score quartiles').redim.range(std_score=(0, 6))
+        # plot_joint_future_quartiles = joint_future_quartiles_merged.hvplot.points(x=f'{str(gwl_threshold).replace(".", "p")}', y='std_change', color='std_score', cmap='magma_r', title=f'Joint plot {str(gwl_threshold).replace(".", "p")} - z score quartiles').redim.range(std_score=(0, 6))
 
         # # Joint plot - coloured with score
         # joint_hist = xr.merge([hist_data, std_change, hist_bivariate]).to_dataframe()
@@ -301,7 +301,7 @@ for ind in indicators:
 
             # fig = plt.figure()
             # kg_future_bivariate.plot(cmap='magma_r', vmin=0, vmax=6)
-            # plt.savefig(os.path.join(plot_dir, f'{params["indicators"][ind][var]["short_name"]}_kg_class_{k}_score_{str(gmt_threshold).replace(".", "p")}.png'))
+            # plt.savefig(os.path.join(plot_dir, f'{params["indicators"][ind][var]["short_name"]}_kg_class_{k}_score_{str(gwl_threshold).replace(".", "p")}.png'))
             # plt.close()
 
         # plot_kg_score_quartile = kg_future_all.hvplot(x='lon', y='lat', cmap='magma_r', shared_axes=False, clim=(0,6), title='Score - Quartiles - KG')
@@ -326,9 +326,9 @@ for ind in indicators:
             [future_data, std_change, kg_future_all]
         ).to_dataframe()
         # plot_joint_hist_kg_quartiles = joint_hist_kg_quartiles_merged.hvplot.scatter(x='hist', y='std_change', by='std_score', color=color_cycle, title='Joint plot hist - z score quartiles KG')
-        # plot_joint_future_kg_quartiles = joint_future_kg_quartiles_merged.hvplot.scatter(x=f'{str(gmt_threshold).replace(".", "p")}', y='std_change', by='std_score', color=color_cycle, title=f'Joint plot {str(gmt_threshold).replace(".", "p")} - z score quartiles KG')
+        # plot_joint_future_kg_quartiles = joint_future_kg_quartiles_merged.hvplot.scatter(x=f'{str(gwl_threshold).replace(".", "p")}', y='std_change', by='std_score', color=color_cycle, title=f'Joint plot {str(gwl_threshold).replace(".", "p")} - z score quartiles KG')
         # plot_joint_hist_kg_quartiles = joint_hist_kg_quartiles_merged.hvplot.scatter(x='hist', y='std_change', color='std_score', cmap='magma_r', title='Joint plot hist - z score quartiles KG').redim.range(std_score=(0, 6))
-        # plot_joint_future_kg_quartiles = joint_future_kg_quartiles_merged.hvplot.scatter(x=f'{str(gmt_threshold).replace(".", "p")}', y='std_change', color='std_score', cmap='magma_r', title=f'Joint plot {str(gmt_threshold).replace(".", "p")} - z score quartiles KG').redim.range(std_score=(0, 6))
+        # plot_joint_future_kg_quartiles = joint_future_kg_quartiles_merged.hvplot.scatter(x=f'{str(gwl_threshold).replace(".", "p")}', y='std_change', color='std_score', cmap='magma_r', title=f'Joint plot {str(gwl_threshold).replace(".", "p")} - z score quartiles KG').redim.range(std_score=(0, 6))
 
         # print('saving plot')
         # plot_list = [plot_future, plot_diff, plot_score,
@@ -343,16 +343,16 @@ for ind in indicators:
         plot_list = plot_list + [plot_kg_score_quartile]
 
         # plot = hv.Layout(plot_list).cols(3)
-        # hvplot.save(plot, f'{params["indicators"][ind][var]["short_name"]}_bivariate_dashboard_{str(gmt_threshold).replace(".", "p")}_interp.html')
+        # hvplot.save(plot, f'{params["indicators"][ind][var]["short_name"]}_bivariate_dashboard_{str(gwl_threshold).replace(".", "p")}_interp.html')
 
     plot = (
         hv.Layout(plot_list)
         .cols(3)
-        .opts(title=f'{str(gmt_threshold).replace(".", "p")}')
+        .opts(title=f'{str(gwl_threshold).replace(".", "p")}')
     )
     hvplot.save(
         plot,
-        f'All_indicators_bivariate_dashboard_{str(gmt_threshold).replace(".", "p")}_interp.html',
+        f'All_indicators_bivariate_dashboard_{str(gwl_threshold).replace(".", "p")}_interp.html',
     )
 
     # fig = plt.figure()
@@ -362,7 +362,7 @@ for ind in indicators:
 
     # fig = plt.figure()
     # kg_future_all.kg_class.plot(cmap='magma_r', vmin=0, vmax=6)
-    # plt.savefig(os.path.join(plot_dir, f'{params["indicators"][ind][var]["short_name"]}_kg_quartiles_score_{str(gmt_threshold).replace(".", "p")}.png'))
+    # plt.savefig(os.path.join(plot_dir, f'{params["indicators"][ind][var]["short_name"]}_kg_quartiles_score_{str(gwl_threshold).replace(".", "p")}.png'))
     # plt.close()
 
     # Manual bins
@@ -376,7 +376,7 @@ for ind in indicators:
 
     # fig = plt.figure()
     # future_bivariate.plot(cmap='magma_r', vmin=0, vmax=6)
-    # plt.savefig(os.path.join(plot_dir, f'{params["indicators"][ind][var]["short_name"]}_quartiles_score_{str(gmt_threshold).replace(".", "p")}.png'))
+    # plt.savefig(os.path.join(plot_dir, f'{params["indicators"][ind][var]["short_name"]}_quartiles_score_{str(gwl_threshold).replace(".", "p")}.png'))
     # plt.close()
 
 # temp4 = bin_data(t20_std_change, [1, 2, 3])
