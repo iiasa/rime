@@ -170,8 +170,8 @@ def map_transform_gwl(
     df1,
     mapdata,
     years,
-    var_name=None,
     map_array=xr.Dataset(),
+    var_name=None,
     caution_checks=True,
     include_orig_gwl=False,
     gwl_name="gwl",
@@ -183,7 +183,7 @@ def map_transform_gwl(
     """
     Takes in one scenario of GWL and dataset of climate impacts by GWL,
     and returns a table of climate impacts for that scenario through time. Can be used on its own, but
-    typically is called from
+    typically is called from map_transform_gwl_wrapper
 
     Parameters
     ----------
@@ -395,28 +395,28 @@ def map_transform_gwl_wrapper(
     """
 
     if len(df.index) > 1:
-        if len(mapdata.dims) > 2:
-            map_array = mapdata.isel({gwl_name: 0}).reset_coords(drop=True)
+        if len(mapdata.xrdataset.dims) > 2:
+            map_array = mapdata.xrdataset.isel({gwl_name: 0}).reset_coords(drop=True)
             map_array = map_array.drop_vars(map_array.data_vars)
         else:
-            map_array = xr.full_like(mapdata, np.nan).drop_vars(mapdata.data_vars)
+            map_array = xr.full_like(mapdata.xrdataset, np.nan).drop_vars(mapdata.xrdataset.data_vars)
 
-        if len(mapdata.data_vars) == 1:
+        if len(mapdata.xrdataset.data_vars) == 1:
             # =============================================================================
             #   Mode 1:     1 indicator, multi-scenario mode
             # =============================================================================
             print("Single indicator mode (multi-scenarios possible)")
             delayed_tasks = []
-            indicator = list(mapdata.data_vars)[0]
+            indicator = list(mapdata.xrdataset.data_vars)[0]
 
             if use_dask:
                 # Create delayed task for map_transform_gwl
                 delayed_map_transform = delayed(map_transform_gwl)(
                     df,
-                    mapdata,
+                    mapdata.xrdataset,
                     years,
-                    var_name,
                     map_array,
+                    var_name=None,
                     caution_checks=caution_checks,
                     include_orig_gwl=include_orig_gwl,
                     gwl_name=gwl_name,
@@ -445,14 +445,14 @@ def map_transform_gwl_wrapper(
                     var_name = f"{modelstrip}_{scenario}"  # f'{model}_{scenario}'
                     print(var_name)
     
-                    df1 = df.filter(model=model, scenario=scenario)
+                    df1 = df.df.filter(model=model, scenario=scenario)
 
                     map_array[var_name] = map_transform_gwl(
                         df1, 
-                        mapdata, 
+                        mapdata.xrdataset, 
                         years,
-                        var_name,
                         map_array, 
+                        var_name,
                         caution_checks=caution_checks,
                         include_orig_gwl=include_orig_gwl,
                         gwl_name=gwl_name,

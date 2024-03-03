@@ -75,6 +75,7 @@ class RasterArray:
     
         self.tidy_rasterdata()  # Clean out any unwanted dimensions and coordinates
         self._validate_and_adjust_dataset()
+        self.xrdataset = self.dataset
 
 
     def _validate_and_adjust_dataset(self):
@@ -159,6 +160,9 @@ class GWLPathway:
         self.df = self._load_dataframe()
         self._process_dataframe()
         self._ensure_temperature_variable()
+        self.index = self.df.index
+        self.meta = self.df.meta
+
         # if len(self.df.meta==0):
             # raise ValueError("Empty dataframe.")
 
