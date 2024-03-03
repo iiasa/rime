@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pyam
 import xarray as xr
@@ -64,11 +65,16 @@ class RasterArray:
             self.dataset = data_input.to_dataset()
         elif isinstance(data_input, str):
             self.dataset = xr.open_dataset(data_input)
+        elif isinstance(data_input, list):
+            from rime.utils import remove_ssp_from_ds
+
+            self.dataset = xr.open_mfdataset(data_input, preprocess=remove_ssp_from_ds, combine="nested", concat_dim="gwl"
+)
         else:
-            raise ValueError("Input must be an xarray.Dataset, xarray.DataArray, or a file path string.")
+            raise ValueError("Input must be an xarray.Dataset, xarray.DataArray, a file path string, or a list of file path strings.")
     
-        self._validate_and_adjust_dataset()
         self.tidy_rasterdata()  # Clean out any unwanted dimensions and coordinates
+        self._validate_and_adjust_dataset()
 
 
     def _validate_and_adjust_dataset(self):
@@ -77,7 +83,7 @@ class RasterArray:
         self.dataset = self.dataset.rename({dim: dim.lower() for dim in self.dataset.dims})
 
         # Check dimensions, now using lowercase to ensure case-insensitive comparison
-        required_dims = ['lat', 'lon', 'gwl', 'ssp']
+        required_dims = ['lat', 'lon', 'gwl',]
         missing_dims = [dim for dim in required_dims if dim not in self.dataset.dims]
         if missing_dims:
             raise ValueError(f"Dataset is missing required dimensions: {missing_dims}")
@@ -87,14 +93,14 @@ class RasterArray:
             raise ValueError("The 'gwl' dimension must have a length greater than 1.")
 
         # Validate coordinates for 'lat' and 'lon', ensuring they are floats
-        if not all(isinstance(lat, float) for lat in self.dataset['lat'].values):
-            raise ValueError("All 'lat' coordinates should be floats.")
-        if not all(isinstance(lon, float) for lon in self.dataset['lon'].values):
-            raise ValueError("All 'lon' coordinates should be floats.")
-        if not all(isinstance(gwl, float) for gwl in self.dataset['gwl'].values):
-            raise ValueError("All 'gwl' coordinates should be floats.")
-        if not all(isinstance(ssp, str) for ssp in self.dataset['ssp'].values):
-            raise ValueError("All 'ssp' coordinates should be strings.")            
+        if not all(isinstance(lat, (float, np.float32, np.float64)) for lat in self.dataset['lat'].values):
+            raise ValueError("All 'lat' coordinates must be floats.")
+        if not all(isinstance(lon, (float, np.float32, np.float64)) for lon in self.dataset['lon'].values):
+            raise ValueError("All 'lon' coordinates must be floats.")
+        if not all(isinstance(gwl, (float, np.float32, np.float64)) for gwl in self.dataset['gwl'].values):
+            raise ValueError("All 'gwl' coordinates must be floats.")
+        # if not all(isinstance(ssp, str) for ssp in self.dataset['ssp'].values):
+            # raise ValueError("All 'ssp' coordinates should be strings.")            
         
         # Ensure all 'gmt' coordinate values are > 0.5
         if not all(gwl > 0.5 for gwl in self.dataset['gwl'].values):
@@ -104,7 +110,11 @@ class RasterArray:
         """Clean out any unwanted dimensions and coordinates."""
         dvs = self.dataset.data_vars
         self.dataset = self.dataset.rename({"threshold": "gwl"}) if "threshold" in self.dataset.dims else self.dataset
+        self.dataset = self.dataset.rename({"threshold": "gwl"}) if "threshold" in self.dataset.coords else self.dataset
+        self.dataset = self.dataset.rename({"gmt": "gwl"}) if "gmt" in self.dataset.dims else self.dataset
+        print(self.dataset.dims)
         self.dataset = self.dataset.set_index({"lon": "lon", "lat": "lat", "gwl": "gwl"}).reset_coords()
+        self.dataset = self.dataset.sortby("gwl")
         self.dataset = self.dataset.drop_vars([x for x in self.dataset.data_vars if x not in dvs])
       
         
