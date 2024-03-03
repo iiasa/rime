@@ -113,6 +113,34 @@ class RasterArray:
         return repr(self.dataset)
 
 class GWLPathway:
+    """
+    A class for processing global warming level (GWL) pathways from input data files or existing dataframes, 
+    with a focus on filtering and analyzing temperature-related variables.
+
+    The class supports input data in the form of a CSV or Excel file path, or an existing `pyam.IamDataFrame`. 
+    It determines the appropriate temperature variables to filter on, either automatically (if there's only one unique variable in the input data) 
+    or based on user specification. The class also uses the `ssp_helper` function from `rime.utils` for further data processing.
+
+    Attributes:
+        data_input (str or pyam.IamDataFrame): The input data source, which can be a file path (CSV or Excel) or an existing `pyam.IamDataFrame`.
+        temperature_variable (str or list of str, optional): The name(s) of the temperature variable(s) to filter on. 
+            If not provided and the input data contains multiple variables, an error is raised.
+        ssp_meta_col (str, optional): The metadata column name used in the `ssp_helper` function to identify the SSP of scenarios. Defaults to "Ssp_family".
+        default_ssp (str, optional): The default SSP scenario to use in the `ssp_helper` function if none is specified in the data. Defaults to "SSP2". This is needed when using exposure and vulnerability data.
+        df (pyam.IamDataFrame): The processed `IamDataFrame` after filtering based on temperature variables and applying the `ssp_helper` function.
+
+    Methods:
+        _load_dataframe(): Loads the input data into a `pyam.IamDataFrame`, automatically detecting the file type if a file path is provided.
+        _ensure_temperature_variable(): Validates the existence of specified temperature variables in the dataframe, raising an error if any are missing.
+        _process_dataframe(): Filters the dataframe based on specified temperature variables and applies the `ssp_helper` function for further processing.
+
+    Raises:
+        ValueError: If the input data type is unsupported, or if specified temperature variables are not found in the dataframe variables.
+    
+    Example:
+        >>> gwl_pathway = GwlPathway('path/to/data.csv', temperature_variable=['Surface Temperature'], ssp_meta_col='Scenario Family', default_ssp='SSP3')
+        >>> print(gwl_pathway.df)  # Display the processed IamDataFrame
+    """    
     def __init__(self, data_input, temperature_variable=None, ssp_meta_col="Ssp_family", default_ssp="SSP2"):
         self.data_input = data_input
         self.temperature_variable = temperature_variable
@@ -121,8 +149,8 @@ class GWLPathway:
         self.df = self._load_dataframe()
         self._process_dataframe()
         self._ensure_temperature_variable()
-        if len(self.df.meta==0):
-            raise ValueError("Empty dataframe.")
+        # if len(self.df.meta==0):
+            # raise ValueError("Empty dataframe.")
 
     def _load_dataframe(self):
         """Load the input file into a pyam.IamDataFrame."""
