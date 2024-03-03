@@ -276,6 +276,7 @@ def map_transform_gwl(
         # last_slice = data_interp.isel(gwl=-1)
         new_slice = xr.DataArray([999], dims=("gwl",), coords={"gwl": [999]})
         data_interp = xr.Dataset()
+        # mapdata_interp = mapdata_interp.to_dataset()
         for var_name in mapdata_interp.data_vars:
             data_interp[var_name] = xr.concat(
                 [mapdata_interp[var_name], new_slice], dim="gwl"
@@ -480,11 +481,11 @@ def map_transform_gwl_wrapper(
         model = df.model[0]
         scenario = df.scenario[0]
 
-        if len(mapdata.dims) > 2:
-            map_array = mapdata.isel({gwl_name: 0}).reset_coords(drop=True)
+        if len(mapdata.xrdataset.dims) > 2:
+            map_array = mapdata.xrdataset.isel({gwl_name: 0}).reset_coords(drop=True)
             map_array = map_array.drop_vars(map_array.data_vars)
         else:
-            map_array = xr.full_like(mapdata, np.nan).drop_vars(mapdata.data_vars)
+            map_array = xr.full_like(mapdata.xrdataset, np.nan).drop_vars(mapdata.xrdataset.data_vars)
 
         # needs to be outsite loop
         delayed_tasks = []
@@ -493,13 +494,13 @@ def map_transform_gwl_wrapper(
 
         # use_dask not working here
         if use_dask:
-            # Iterate through spatial indicators in DataSet
-            for var_name in mapdata.data_vars:
+            # Iterate through spatial indicators in DataSet by providing DataArrays
+            for var_name in mapdata.xrdataset.data_vars:
                 print(var_name)
                 # Create delayed task for map_transform_gwl_wrapper
                 delayed_map_transform = delayed(map_transform_gwl)(
                     df1, 
-                    mapdata[var_name], 
+                    mapdata.xrdataset[var_name], 
                     years, 
                     var_name, 
                     map_array,
@@ -515,7 +516,7 @@ def map_transform_gwl_wrapper(
         else:
             map_array = map_transform_gwl(
                 df1, 
-                mapdata, 
+                mapdata.xrdataset, 
                 years, 
                 map_array, 
                 caution_checks=caution_checks,
