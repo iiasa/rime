@@ -252,17 +252,14 @@ def map_transform_gwl(
 
         if gwl_values.max() > mapdata.gwl.values.max():
             temp_max = mapdata.gwl.values.max()
-            print(f'Warning! Provided scenario temperatures are higher than the available climate impacts GWLs. Setting temp_max to {mapdata.gwl.max()}')
+            print(f'Warning! Provided scenario temperatures are higher than the available climate impacts GWLs. Setting temp_max to {temp_max}')
         if gwl_values.min() < mapdata.gwl.values.min():
             temp_min = mapdata.gwl.values.min()
-            print(f'Warning! Provided scenario temperatures are lower than the available climate impacts GWLs. Setting temp_min to {mapdata.gwl.min()}')
-
-        
+            print(f'Warning! Provided scenario temperatures are lower than the available climate impacts GWLs. Setting temp_min to {temp_min}')
+      
         # Replace the values outside range with 999 index (of nans)
         gwl_values[gwl_values < temp_min] = 999
         gwl_values[gwl_values > temp_max] = 999
-
-        print(gwl_values)
 
         # Load and prepare the spatial impact data to be transformed
 
@@ -312,12 +309,12 @@ def map_transform_gwl(
         #     ] = np.full([len(data_interp.lat), len(data_interp.lon)], np.nan)
 
         # Create an array to store the updated data
-        # print(temp_max)sfsdff
-        print(gwl_values)
+        # print(gwl_values)
         updated_data = data_interp.sel(gwl=gwl_values)
         updated_data = updated_data.transpose("lat", "lon", "gwl")
         updated_data = updated_data.rename_dims({"gwl": "year"})
         updated_data = updated_data.rename({"gwl":"year"})
+        # updated_data = updated_data.set_index({"lon": "lon", "lat": "lat", "year": "year"}).reset_coords()
         updated_data = updated_data.assign_coords(
             coords={"lon": updated_data.lon, "lat": updated_data.lat, "year": years}
         )
@@ -409,44 +406,37 @@ def map_transform_gwl_wrapper(
             delayed_tasks = []
             indicator = list(mapdata.xrdataset.data_vars)[0]
 
-            if use_dask:
-                # Create delayed task for map_transform_gwl
-                delayed_map_transform = delayed(map_transform_gwl)(
-                    df,
-                    mapdata.xrdataset,
-                    years,
-                    map_array,
-                    var_name=None,
-                    caution_checks=caution_checks,
-                    include_orig_gwl=include_orig_gwl,
-                    gwl_name=gwl_name,
-                    drawdown_max=drawdown_max,
-                    temp_min=temp_min,
-                    temp_max=temp_max,
-                    interpolation=interpolation,                    
-                )
-                # delayed_map_transform = delayed_map_transform.drop('gwl')
-                delayed_tasks.append(delayed_map_transform)
+            for model, scenario in df.index:
+                modelstrip = model
+                repdic = [" ", "/", ",", "."]
+                for char in repdic:
+                    modelstrip = modelstrip.replace(char, "_")
+                var_name = f"{modelstrip}_{scenario}"  # f'{model}_{scenario}'
+                print(var_name)
 
-                # Compute delayed tasks concurrently
-                computed_results = dask.compute(*delayed_tasks)
+                df1 = df.df.filter(model=model, scenario=scenario)
 
-                # Merge the computed results into map_array
-                for result in computed_results:
-                    map_array.update(result)
+                if use_dask:
+                    # Create delayed task for map_transform_gwl
+                    delayed_map_transform = delayed(map_transform_gwl)(
+                        df1,
+                        mapdata.xrdataset,
+                        years,
+                        map_array,
+                        var_name=None,
+                        caution_checks=caution_checks,
+                        include_orig_gwl=include_orig_gwl,
+                        gwl_name=gwl_name,
+                        drawdown_max=drawdown_max,
+                        temp_min=temp_min,
+                        temp_max=temp_max,
+                        interpolation=interpolation,                    
+                    )
+                    # delayed_map_transform = delayed_map_transform.drop('gwl')
+                    delayed_tasks.append(delayed_map_transform)
             
-            # use_dask=False
-            else:                
-                for model, scenario in df.index:
-                    modelstrip = model
-                    repdic = [" ", "/", ",", "."]
-                    for char in repdic:
-                        modelstrip = modelstrip.replace(char, "_")
-                    var_name = f"{modelstrip}_{scenario}"  # f'{model}_{scenario}'
-                    print(var_name)
-    
-                    df1 = df.df.filter(model=model, scenario=scenario)
-
+                # use_dask=False
+                else:                
                     map_array[var_name] = map_transform_gwl(
                         df1, 
                         mapdata.xrdataset, 
@@ -464,6 +454,16 @@ def map_transform_gwl_wrapper(
                         indicator
                     ]  # .drop('gwl')  # drop here for alignment of coords (gwls are all different)
 
+            # run this after the loop
+            if use_dask:
+                # Compute delayed tasks concurrently
+                computed_results = dask.compute(*delayed_tasks)
+
+                # Merge the computed results into map_array
+                for result in computed_results:
+                    map_array.update(result)
+
+            
             map_array.attrs["indicator"] = indicator
 
         else:
