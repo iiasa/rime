@@ -1,0 +1,5 @@
+git+https://github.com/ISI-MIP/isimip-client
+numpy
+xarray
+PyYAML
+tqdm
