@@ -1,1 +1,1 @@
-import rimeX.config
+from rimeX.config import set_config

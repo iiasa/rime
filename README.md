@@ -5,3 +5,51 @@
 This repository contains code originally written for the [Climate Impact Explorer](https://climate-impact-explorer.climateanalytics.org).
 It started as a rewrite of the emulator intended for provide better statistical calculations with exact frequentist estimates.
 It was moved to a standalone repository for re-use in various projects, and is intended to supercede the code for the [Rapid Impact Model Emulator](https://github.com/iiasa/rime) (hence its name).
+
+
+## Install
+
+git clone https://github.com/NiklasSchwind/rimeX.git
+cd rimeX
+pip install .
+
+
+## Usage
+
+The following scripts are made available, for which inline help is available with `-h` or `--help`:
+
+- Data download and pre-processing scripts (presently ISIMIP only, variables tas and pr)
+
+	rime-download-isimip : download ISIMIP data
+	rime-pre-gmt : pre-processing: crunch global-mean-temperature
+	rime-pre-region : pre-precessing: crunch regional averages (=> this currently requires Climate Impact Explorer masks)
+
+- Actually use the emulator
+	
+	rime-init-wl : crunch the warming levels (required)
+	rime-init-digitize : pre-compute digitized regional average based on warming levels (optional)
+	rime : run the main emulator (time-series)
+
+Of course, any of the functions can be called directly. Inline documentation is available. 
+
+
+## Config files and default parameters
+
+Note the scripts sets default parameters from a [configuration file](rimeX/config_isimip3.yml), which is set to fetch ISIMIP3 data by default. 
+You can specify your own defaults by having a `rimeX.yml` or `rime.yml` or `config.yml` file in the working directory (from which any of the above scripts are called), or by specifying any file via the command-line argument `--config <FILE.yml>`.
+
+
+Note the config file also sets the defaults at the function level (that might be changed in the future).
+In case the functions are imported directly from rimeX, it is possible to read from a custom config via `rimeX.set_config`. 
+Note in case other modules have already been imported, they'll need to be reloaded for the defaults changes to take effect (see `importlib.reload`).
+
+
+## TODO
+
+- Provide test data
+- Function to download pyiam scenarios 
+- More options for data download
+- More options for regional averages
+	- options to download ISIMIP or CIE or other masks
+- Support various backend formats for data (CSV time-series organized in folder, netCDF files etc)
+- emulator functionality: add functionality while keeping the code clean --> consider adding class mechanism
