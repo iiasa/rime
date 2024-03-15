@@ -36,11 +36,11 @@ all = [
 
 [project.scripts]
 rime-download-isimip = "rimeX.download:main"
-rime-pre-gmt = "rimeX.global_mean_tas:main"
+rime-pre-gmt = "rimeX.global_average_tas:main"
 rime-pre-region = "rimeX.regional_average:main"
-rime-init-wl = "rimeX.calculate_isimip_warming_levels:main"
-rime-init-digitize = "rimeX.digitize_isimip:main"
-rime = "rimeX.calculate_quantile_timeseries:main"
+rime-init-wl = "rimeX.warminglevels:main"
+rime-init-digitize = "rimeX.digitize:main"
+rime = "rimeX.emulator:main"
 
 [project.urls]
 homepage = "https://github.com/NiklasSchwind/rimeX"

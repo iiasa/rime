@@ -12,8 +12,8 @@ import pandas as pd
 from rimeX.logs import logger, log_parser
 from rimeX.config import config, config_parser
 
-from rimeX.calculate_isimip_warming_levels import get_warming_level_file
-from rimeX.digitize_isimip import get_binned_isimip_records, make_models_equiprobable
+from rimeX.warminglevels import get_warming_level_file
+from rimeX.digitize import get_binned_isimip_records, make_models_equiprobable
 
 
 def load_magicc_ensemble(file, projection_baseline=config['projection_baseline'], projection_baseline_offset=config['projection_baseline_offset']):
@@ -292,7 +292,7 @@ def main():
         o.warming_level_file = get_warming_level_file(**{**config, **vars(o)})
 
     if not Path(o.warming_level_file).exists():
-        print(f"{o.warming_level_file} does not exist. Run calculate_isimip_warming_levels.py first.")
+        print(f"{o.warming_level_file} does not exist. Run warminglevels.py first.")
         parser.exit(1)
         return
 

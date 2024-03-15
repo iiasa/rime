@@ -1,6 +1,6 @@
-"""Preprocessing step. Followup of calculate_isimip_warming_levels.py to bin a given indicator variable into into warming level categories.
+"""Preprocessing step. Followup of warminglevels.py to bin a given indicator variable into into warming level categories.
 
-The script is optional. It provides preprocessing for all variables / region / season etc but could also be done on-the-fly in calculate_quantile_timeseries.py (specific combination)
+The script is optional. It provides preprocessing for all variables / region / season etc but could also be done on-the-fly in emulator.py (specific combination)
 """
 
 from pathlib import Path
@@ -16,7 +16,7 @@ import pandas as pd
 
 from rimeX.logs import logger
 from rimeX.config import config
-from rimeX.calculate_isimip_warming_levels import get_warming_level_file
+from rimeX.warminglevels import get_warming_level_file
 from rimeX.regional_average import get_regional_averages_file
 
 def load_seasonal_means_per_region(variable, model, experiment, region, subregion, weights, seasons=['annual', 'winter', 'spring', 'summer', 'autumn']):
@@ -425,7 +425,7 @@ def main():
         o.warming_level_file = get_warming_level_file(**{**config, **vars(o)})
 
     if not Path(o.warming_level_file).exists():
-        print(f"{o.warming_level_file} does not exist. Run calculate_isimip_warming_levels.py first.")
+        print(f"{o.warming_level_file} does not exist. Run warminglevels.py first.")
         parser.exit(1)
         return
 
