@@ -16,7 +16,7 @@ def search_default_config():
             return candidate
 
     # not found, so return default
-    logger.info(f"No config file found, use defaults.")
+    logger.debug(f"No config file found, use defaults.")
     return DEFAULT_CONFIG_FILE
 
 config_parser = argparse.ArgumentParser(add_help=False)
