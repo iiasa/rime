@@ -8,11 +8,12 @@ import tqdm
 from itertools import groupby
 import numpy as np
 import pandas as pd
-from logs import logger, log_parser
-from config import config, config_parser
 
-from calculate_isimip_warming_levels import get_warming_level_file
-from digitize_isimip import get_binned_isimip_records, make_models_equiprobable
+from rimeX.logs import logger, log_parser
+from rimeX.config import config, config_parser
+
+from rimeX.calculate_isimip_warming_levels import get_warming_level_file
+from rimeX.digitize_isimip import get_binned_isimip_records, make_models_equiprobable
 
 
 def load_magicc_ensemble(file, projection_baseline=config['projection_baseline'], projection_baseline_offset=config['projection_baseline_offset']):

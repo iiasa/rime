@@ -1,3 +1,4 @@
 build
 rimeX.egg-info
 rimeX/_version.py
+__pycache__

@@ -20,8 +20,9 @@ import warnings
 import numpy as np
 import pandas as pd
 import xarray as xa
-from logs import logger, log_parser
-from config import config, config_parser
+
+from rimeX.logs import logger, log_parser
+from rimeX.config import config, config_parser
 
 
 def get_files(variable, model, experiment, realm="*", domain="global", frequency="monthly", member="*", obs="*", year_start="*", year_end="*", root=config["download_folder"], simulation_round=config["simulation_round"]):

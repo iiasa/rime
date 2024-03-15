@@ -3,11 +3,12 @@
 import argparse
 import os
 from pathlib import Path
-from regional_average import get_files
-from tools import cdo
-from logs import logger, log_parser
-from config import config, config_parser
 import xarray as xa
+
+from rimeX.regional_average import get_files
+from rimeX.tools import cdo
+from rimeX.logs import logger, log_parser
+from rimeX.config import config, config_parser
 
 
 def global_mean_file(variable, model, experiment, root=config["climate_impact_explorer"]):

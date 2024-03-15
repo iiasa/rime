@@ -13,11 +13,11 @@ from itertools import groupby, product
 import numpy as np
 import pandas as pd
 # import xarray as xa
-from logs import logger
-from config import config
 
-from calculate_isimip_warming_levels import get_warming_level_file
-from regional_average import get_regional_averages_file
+from rimeX.logs import logger
+from rimeX.config import config
+from rimeX.calculate_isimip_warming_levels import get_warming_level_file
+from rimeX.regional_average import get_regional_averages_file
 
 def load_seasonal_means_per_region(variable, model, experiment, region, subregion, weights, seasons=['annual', 'winter', 'spring', 'summer', 'autumn']):
 

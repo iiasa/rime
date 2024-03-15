@@ -6,9 +6,9 @@ from pathlib import Path
 import datetime
 import numpy as np
 import pandas as pd
-from regional_average import get_files
-from logs import logger, log_parser
-from config import config, config_parser
+from rimeX.regional_average import get_files
+from rimeX.logs import logger, log_parser
+from rimeX.config import config, config_parser
 
 def global_mean_file(variable, model, experiment, root=config["climate_impact_explorer"]):
     return Path(root) / f"isimip_global_mean/{variable}/globalmean_{variable}_{model.lower()}_{experiment}.csv"
