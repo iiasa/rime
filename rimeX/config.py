@@ -21,9 +21,15 @@ def search_default_config():
 
 config_parser = argparse.ArgumentParser(add_help=False)
 g = config_parser.add_argument_group("config")
+g.add_argument("--version", action='store_true')
 g.add_argument("--config-file", default=search_default_config())
 
 o, _ = config_parser.parse_known_args()
+
+if o.version:
+    from rimeX._version import __version__
+    print(__version__)
+    config_parser.exit(0)
 
 
 def set_config(file_path):
