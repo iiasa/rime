@@ -45,7 +45,7 @@ set_config(o.config_file)
 
 def main():
     """show configuration file"""
-    parser = argparse.ArgumentParser(add_help=False, parents=[config_parser])
+    parser = argparse.ArgumentParser(parents=[config_parser])
     o = config_parser.parse_args()
     print(yaml.dump(config, default_flow_style=None, sort_keys=False))
     parser.exit(0)
