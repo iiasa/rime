@@ -35,6 +35,7 @@ all = [
 ]
 
 [project.scripts]
+rime-config = "rimeX.config:main"
 rime-download-isimip = "rimeX.download:main"
 rime-pre-gmt = "rimeX.global_average_tas:main"
 rime-pre-region = "rimeX.regional_average:main"

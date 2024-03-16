@@ -41,4 +41,16 @@ def set_config(file_path):
         config.setdefault(field, DEFAULT_CONFIG[field])
 
 set_config(o.config_file)
+
+
+def main():
+    """show configuration file"""
+    parser = argparse.ArgumentParser(add_help=False, parents=[config_parser])
+    o = config_parser.parse_args()
+    print(yaml.dump(config, default_flow_style=None, sort_keys=False))
+    parser.exit(0)
+
+
+if __name__ == "__main__":
+    main()
     
