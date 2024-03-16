@@ -9,9 +9,9 @@ It was moved to a standalone repository for re-use in various projects, and is i
 
 ## Install
 
-git clone https://github.com/NiklasSchwind/rimeX.git
-cd rimeX
-pip install .
+	git clone https://github.com/NiklasSchwind/rimeX.git
+	cd rimeX
+	pip install .
 
 
 ## Usage
@@ -20,19 +20,19 @@ The following scripts are made available, for which inline help is available wit
 
 - Data download and pre-processing scripts (presently ISIMIP only, variables tas and pr)
 
-	rime-download-isimip : download ISIMIP data
-	rime-pre-gmt : pre-processing: crunch global-mean-temperature
-	rime-pre-region : pre-precessing: crunch regional averages (=> this currently requires Climate Impact Explorer masks)
+	- `rime-download-isimip` : download ISIMIP data
+  	- `rime-pre-gmt` : pre-processing: crunch global-mean-temperature
+	- `rime-pre-region` : pre-precessing: crunch regional averages (=> this currently requires Climate Impact Explorer masks)
 
 - Actually use the emulator
 	
-	rime-init-wl : crunch the warming levels (required)
-	rime-init-digitize : pre-compute digitized regional average based on warming levels (optional)
-	rime : run the main emulator (time-series)
+	- `rime-init-wl` : crunch the warming levels (required)
+	- `rime-init-digitize` : pre-compute digitized regional average based on warming levels (optional)
+	- `rime` : run the main emulator (time-series)
 
 - Also useful:
 
-	rime-config : print the config to screen (yaml format)
+	- `rime-config` : print the config to screen (yaml format)
 
 Of course, any of the functions can be called directly. Inline documentation is available. 
 
