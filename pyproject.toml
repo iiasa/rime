@@ -31,7 +31,7 @@ dynamic = ["version"]
 
 [project.optional-dependencies]
 all = [
-    "pip @ https://github.com/ISI-MIP/isimip-client.git",
+    "isimip_client@https://github.com/ISI-MIP/isimip-client/archive/refs/tags/1.0.1.zip",
 ]
 
 [project.scripts]

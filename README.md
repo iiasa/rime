@@ -13,6 +13,10 @@ It was moved to a standalone repository for re-use in various projects, and is i
 	cd rimeX
 	pip install .
 
+To install all optional dependencies do instead:
+
+	pip install .[all]
+
 
 ## Usage
 
