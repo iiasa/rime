@@ -4,9 +4,10 @@ from itertools import product
 from pathlib import Path
 import argparse
 from isimip_client.client import ISIMIPClient
-from tools import cdo
-from config import config, config_parser
-from logs import log_parser
+
+from rimeX.tools import cdo
+from rimeX.config import config, config_parser
+from rimeX.logs import log_parser
 
 
 client = ISIMIPClient()
