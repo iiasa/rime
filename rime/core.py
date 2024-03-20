@@ -7,13 +7,16 @@ from rime.utils import ssp_helper  # Import ssp_helper from rime.utils
 
 class RegionArray:
     def __init__(self, data_input):
-        """Initialize the RegionArray class with either a file path or an xarray.Dataset."""
+        """Initialize the RegionArray class with either a file path, list of file paths or an xarray.Dataset."""
         if isinstance(data_input, xr.Dataset):
             self.dataset = data_input
         elif isinstance(data_input, str):
             self.dataset = xr.open_dataset(data_input)
+        elif isinstance(data_input, list):
+            # list of filepaths
+            self.dataset = xr.open_mfdataset(data_input)            
         else:
-            raise ValueError("Input must be an xarray.Dataset or a file path string compatible with xarray.open_dataset().")
+            raise ValueError("Input must be an xarray.Dataset, a file path string or a list of file path strings compatible with xarray.open_dataset() or xarray.open_mfdataset().")
         
         self._validate_and_adjust_dataset()
 
@@ -23,6 +26,8 @@ class RegionArray:
         # Convert all dimension names to lowercase to standardize
         self.dataset = self.dataset.rename({dim: dim.lower() for dim in self.dataset.dims})
 
+        self.dataset = self.dataset.rename({"gmt": "gwl"}) if "gmt" in self.dataset.dims else self.dataset
+        
         # Check dimensions, now using lowercase to ensure case-insensitive comparison
         required_dims = ['region', 'year', 'gwl', 'ssp']
         missing_dims = [dim for dim in required_dims if dim not in self.dataset.dims]
@@ -34,18 +39,18 @@ class RegionArray:
             raise ValueError("The 'gwl' dimension must have a length greater than 1.")
 
         # Validate coordinates
-        # Skip validation for 'year', only check if region and ssp are strings, gmt should be float
+        # Skip validation for 'year', only check if region and ssp are strings, gwl should be float
         if not all(isinstance(region, str) for region in self.dataset['region'].values):
             raise ValueError("All 'region' coordinates should be strings.")
-        if not all(isinstance(gwl, float) for gmt in self.dataset['gwl'].values):
+        if not all(isinstance(gwl, float) for gwl in self.dataset['gwl'].values):
             raise ValueError("All 'gwl' coordinates should be floats.")
         if not all(isinstance(ssp, str) for ssp in self.dataset['ssp'].values):
             raise ValueError("All 'ssp' coordinates should be strings.")
-        if not all(isinstance(year, (int, float)) for ssp in self.dataset['year'].values):
-            raise ValueError("All 'yea' coordinates should be ints or floats.")
+        if not all(isinstance(year, (int, np.int32, np.int64, float, np.float32, np.float64)) for year in self.dataset['year'].values):
+            raise ValueError("All 'year' coordinates should be ints or floats.")
             
         # Ensure all 'gwl' coordinate values are > 0.5
-        if not all(gwl > 0.5 for gmt in self.dataset['gwl'].values):
+        if not all(gwl > 0.5 for gwl in self.dataset['gwl'].values):
             raise ValueError("All 'gwl' coordinate values must be greater than 0.5.")
             
             
@@ -103,7 +108,7 @@ class RasterArray:
         # if not all(isinstance(ssp, str) for ssp in self.dataset['ssp'].values):
             # raise ValueError("All 'ssp' coordinates should be strings.")            
         
-        # Ensure all 'gmt' coordinate values are > 0.5
+        # Ensure all 'gwl' coordinate values are > 0.5
         if not all(gwl > 0.5 for gwl in self.dataset['gwl'].values):
             raise ValueError("All 'gwl' coordinate values must be greater than 0.5.")
 
@@ -123,9 +128,9 @@ class RasterArray:
         """String representation of the dataset for quick inspection."""
         return repr(self.dataset)
 
-class GWLPathway:
+class GMTPathway:
     """
-    A class for processing global warming level (GWL) pathways from input data files or existing dataframes, 
+    A class for processing global mean temperature pathways from input data files or existing dataframes, 
     with a focus on filtering and analyzing temperature-related variables.
 
     The class supports input data in the form of a CSV or Excel file path, or an existing `pyam.IamDataFrame`. 
@@ -149,7 +154,7 @@ class GWLPathway:
         ValueError: If the input data type is unsupported, or if specified temperature variables are not found in the dataframe variables.
     
     Example:
-        >>> gwl_pathway = GwlPathway('path/to/data.csv', temperature_variable=['Surface Temperature'], ssp_meta_col='Scenario Family', default_ssp='SSP3')
+        >>> gmt_pathway = GMTPathway('path/to/data.csv', temperature_variable=['Surface Temperature'], ssp_meta_col='Scenario Family', default_ssp='SSP3')
         >>> print(gwl_pathway.df)  # Display the processed IamDataFrame
     """    
     def __init__(self, data_input, temperature_variable=None, ssp_meta_col="Ssp_family", default_ssp="SSP2"):
