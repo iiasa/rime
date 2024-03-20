@@ -90,8 +90,10 @@ def ssp_helper(dft, ssp_meta_col="Ssp_family", default_ssp="SSP2", keep_meta=Tru
     dft = np.round(dft.as_pandas()[pyam.IAMC_IDX + ["year", "value"] + meta_cols], 3)
     # Check if SSP denoted by numbers only already?
     sspdic = {1.0: "SSP1", 2.0: "SSP2", 3.0: "SSP3", 4.0: "SSP4", 5.0: "SSP5"}
-    dft[ssp_meta_col] = dft[ssp_meta_col].replace(
-        sspdic)  # metadata must have Ssp_family column. If not SSP2 automatically chosen
+    dft.replace({ssp_meta_col: 
+        sspdic}, inplace=True
+    )  # metadata must have Ssp_family column. If not SSP2 automatically chosen
+
     dft.loc[dft[ssp_meta_col].isnull(), ssp_meta_col] = default_ssp
     dft.loc[dft[ssp_meta_col]=='', ssp_meta_col] = default_ssp
 
