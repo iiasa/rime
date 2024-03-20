@@ -1,6 +1,6 @@
 # RIME - Rapid Impact Model Emulator
 
-2023 IIASA
+2024 IIASA
 
 [![latest](https://img.shields.io/github/last-commit/iiasa/CWatM)](https://github.com/iiasa/CWatM)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)  
@@ -15,9 +15,10 @@
 
 When accompanied by climate impacts data (table and/or maps), RIME can be used to take a global mean temperature timeseries (e.g. from an IAM or climate model like [FaIR](https://github.com/OMS-NetZero/FAIR)/[MAGICC](https://live.magicc.org/)), and return tables and maps of climate impacts through time consistent with the warming of the scenario.  
 
+*** Key use cases ***
 There are two key use-cases for the RIME approach:  
 1. **Post-process**: Estimating a suite of climate impacts from a global emissions or temperature scenario.  
-2. **Input**: Reformulating climate impacts data to be used as an input to an integrated assessment model scenario.  
+2. **Input**: Reformulating climate impacts data to be used as an input to an integrated assessment model scenario. First the scenario is run without climate impacts, to determine the emissions and global warming trajectory. Then, RIME can be used to generate climate impact-adjusted input variables for the IAM scenario.
 
 ![RIME_use_cases](https://github.com/iiasa/rime/blob/main/assets/rime_use_cases.jpg?raw=true)  
 
@@ -49,10 +50,10 @@ Pre-processing of tabular impacts data of exposure by GWL, into netcdf datasets 
 ### [`process_tabledata.py`](https://github.com/iiasa/rime/blob/main/rime/process_tabledata.py)  
 Example script that takes input table of emissions scenarios with global temperature timeseries, and output tables of climate impacts data in IAMC format. Can be done for multiple scenarios and indicators at a time. 
 
-### [`process_maps.py`](https://github.com/iiasa/rime/blob/main/rime/process_tabledata.py)  
+### [`process_maps.py`](https://github.com/iiasa/rime/blob/main/rime/process_maps.py)  
 Example script that takes input table of emissions scenarios with global temperature timeseries, and output maps of climate impacts through time as netCDF. Ouptut netCDF can be specified for either for 1 scenario and multiple climate impacts, or multiple scenarios for 1 indicator.
 
-### [`pp_combined example.ipynb`](https://github.com/iiasa/rime/blob/main/rime/pp_combined_example.py)  
+### [`pp_combined example.ipynb`](https://github.com/iiasa/rime/blob/main/rime/pp_combined_example.ipynb)  
 Example jupyter notebook that demonstrates methods of processing both table and map impacts data for IAM scenarios.
 
 ### [`test_map_notebook.html`](https://github.com/iiasa/rime/blob/main/rime/test_map_notebook.html)
@@ -61,15 +62,21 @@ Example html maps dashboard. CLick download in the top right corner and open loc
 ![image](https://github.com/iiasa/rime/assets/17701232/801e2dbe-cbe8-482f-be9b-1457c92ea23e)
 
 
-## Installation
+## Code and installation
 
 At command line, navigate to the directory where you want the installation, e.g. your Github folder.  
 
 	git clone https://github.com/iiasa/rime.git
 
-Change to the rime folder and install the package including the requirements.  
+### Using a dedicated environment (Optional but recommended)
 
-	pip install --editable .
+Due to the dependencies, using a dedicated python environment for using RIME is recommended in order to avoid conflicts during installation. Depending on your python installation, this can be done using venv, pyenv, pipenv, (ana/mini)-conda, mamba.
+
+### Installation
+Activate the right environment, change to the rime folder (e.g. `cd c:/Github/rime`) and install the package including the requirements.  
+
+	pip install .
+
 
 ## Further information
 This package is in a pre-release mode, currently work in progress, under-going testing and not formally published.  
