@@ -5,8 +5,8 @@ Created on Sun Dec 11 00:24:36 2022
 @author: byers
 """
 if __name__ == "__main__":
-    from process_config import *
-    from rime_functions import *
+    from rime.process_config import *
+    from rime.rime_functions import *
 
     #  from alive_progress import alive_bar
     import dask.dataframe as dd
@@ -47,8 +47,8 @@ if __name__ == "__main__":
             "CO2 mode: Global mean temperatures will be derived from response \
               to cumulative CO2 emissions."
         )
-    elif mode == "GMT":
-        print("GMT mode: Global mean temperatures provided as input.")
+    elif mode == "GWL":
+        print("GWL mode: Global mean temperatures provided as input.")
 
     if parallel:
         dask.config.set(
@@ -99,11 +99,11 @@ if __name__ == "__main__":
             # SCENARIO DATA PRE-PROCESSING
             # Filter for temperature variable
 
-            if mode == "GMT":
+            if mode == "GWL":
                 dfp = df_scens_in.filter(variable=temp_variable)
             elif mode == "CO2":
                 dfp = prepare_cumulative(df_scens_in, years=years, use_dask=True)
-                ts = dfp.timeseries().apply(co2togmt_simple)
+                ts = dfp.timeseries().apply(co2togwl_simple)
                 ts = pyam.IamDataFrame(ts)
                 ts.rename(
                     {
@@ -113,7 +113,7 @@ if __name__ == "__main__":
                     inplace=True,
                 )
                 # Export data to check error and relationships
-                # ts.append(dfp).to_csv('c://users//byers//downloads//tcre_gmt_output.csv')
+                # ts.append(dfp).to_csv('c://users//byers//downloads//tcre_gwl_output.csv')
                 dfp = ts
                 dfp.meta = df_scens_in.meta.copy()
             dfp = dfp.filter(year=years)
@@ -146,9 +146,9 @@ if __name__ == "__main__":
 
                 # dfx = dft.iloc[0].squeeze()  # FOR DEBUIGGING THE FUNCTION
                 outd = ddf.apply(
-                    table_impacts_gmt, dsi=dsi, axis=1, meta=("result", None)
+                    table_impacts_gwl, dsi=dsi, axis=1, meta=("result", None)
                 )
-                # outdd = client.map(ddf.apply(table_impacts_gmt, dsi=dsi,  axis=1))
+                # outdd = client.map(ddf.apply(table_impacts_gwl, dsi=dsi,  axis=1))
 
                 with ProgressBar():
                     # try:
@@ -157,7 +157,7 @@ if __name__ == "__main__":
                 # except(InvalidIndexError):
                 # print(f'PROBLEM {f}')
             else:
-                df_new = dft.apply(table_impacts_gmt, dsi=dsi, axis=1)
+                df_new = dft.apply(table_impacts_gwl, dsi=dsi, axis=1)
 
             expandedd = pd.concat([df_new[x] for x in df_new.index])
             print(f" Done:  {time.time()-start}")
