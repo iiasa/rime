@@ -35,6 +35,9 @@ all = [
     "pyam-iamc",
 ]
 
+[tool.setuptools.packages.find]
+where = ["rimeX/"]
+
 [project.scripts]
 rime-config = "rimeX.config:main"
 rime-download-isimip = "rimeX.download:main"
