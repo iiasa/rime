@@ -9,11 +9,15 @@ It was moved to a standalone repository for re-use in various projects, and is i
 
 ## Install
 
-	git clone https://github.com/NiklasSchwind/rimeX.git
+	git clone --single-branch --branch rimeX https://github.com/iiasa/rime.git
 	cd rimeX
 	pip install .
 
-To install all optional dependencies do instead:
+It's also possible to do it in one go with pip, but the whole repo is cloned in the background so it's slower.
+
+ 	pip install git+https://github.com/iiasa/rime.git@rimeX
+
+To install all optional dependencies do instead (from the local clone):
 
 	pip install .[all]
 
