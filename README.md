@@ -36,7 +36,7 @@ The following scripts are made available, for which inline help is available wit
 	
 	- `rime-init-wl` : crunch the warming levels (required)
 	- `rime-init-digitize` : pre-compute digitized regional average based on warming levels (optional)
-	- `rime` : run the main emulator (time-series)
+	- `rime-run-timeseries` : run the main emulator (time-series)
 
 - Also useful:
 

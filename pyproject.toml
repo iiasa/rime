@@ -42,7 +42,7 @@ rime-pre-gmt = "rimeX.global_average_tas:main"
 rime-pre-region = "rimeX.regional_average:main"
 rime-init-wl = "rimeX.warminglevels:main"
 rime-init-digitize = "rimeX.digitize:main"
-rime = "rimeX.emulator:main"
+rime-run-timeseries = "rimeX.emulator:main"
 
 [project.urls]
 homepage = "https://github.com/iiasa/rime/tree/rimeX"
