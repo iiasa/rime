@@ -23,9 +23,9 @@ ab_present = True
 
 # start = time.time()
 
-from rime.rime_functions import *
-from rime.process_config import *
-from rime.utils import *
+from rimeX.legacy.rime_functions import *
+from rimeX.legacy.process_config import *
+from rimeX.legacy.utils import *
 
 few_vars = False
 

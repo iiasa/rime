@@ -22,8 +22,8 @@ import hvplot.xarray
 import itertools as it
 from scipy.interpolate import interp1d
 
-from rime.process_config import *
-from rime.rime_functions import *
+from rimeX.legacy.process_config import *
+from rimeX.legacy.rime_functions import *
 
 
 input_dir = "C:\\Users\\{user}\\IIASA\\ECE.prog - Research Theme - NEXUS\\Hotspots_Explorer_2p0\\Data\\1_mmm_stats"

@@ -23,9 +23,9 @@ import yaml
 from dask import delayed
 
 # from dask.distributed import Client
-from rime.process_config import *
-from rime.rime_functions import *
-from rime.utils import *
+from rimeX.legacy.process_config import *
+from rimeX.legacy.rime_functions import *
+from rimeX.legacy.utils import *
 
 
 # from dask.diagnostics import Profiler, ResourceProfiles, CacheProfiler

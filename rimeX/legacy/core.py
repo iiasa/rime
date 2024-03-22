@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pyam
 import xarray as xr
-from rime.utils import ssp_helper  # Import ssp_helper from rime.utils
+from rimeX.legacy.utils import ssp_helper  # Import ssp_helper from rimeX.legacy.utils
 
 
 class RegionArray:
@@ -71,7 +71,7 @@ class RasterArray:
         elif isinstance(data_input, str):
             self.dataset = xr.open_dataset(data_input)
         elif isinstance(data_input, list):
-            from rime.utils import remove_ssp_from_ds
+            from rimeX.legacy.utils import remove_ssp_from_ds
 
             self.dataset = xr.open_mfdataset(data_input, preprocess=remove_ssp_from_ds, combine="nested", concat_dim="gwl"
 )
@@ -135,7 +135,7 @@ class GMTPathway:
 
     The class supports input data in the form of a CSV or Excel file path, or an existing `pyam.IamDataFrame`. 
     It determines the appropriate temperature variables to filter on, either automatically (if there's only one unique variable in the input data) 
-    or based on user specification. The class also uses the `ssp_helper` function from `rime.utils` for further data processing.
+    or based on user specification. The class also uses the `ssp_helper` function from `rimeX.legacy.utils` for further data processing.
 
     Attributes:
         data_input (str or pyam.IamDataFrame): The input data source, which can be a file path (CSV or Excel) or an existing `pyam.IamDataFrame`.

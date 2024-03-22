@@ -171,7 +171,7 @@ def load_indicator_params():
     params : dict
 
     """
-    with open("rime.indicator_params.yml", "r") as f:
+    with open("rimeX.legacy.indicator_params.yml", "r") as f:
         params = yaml.full_load(f)
         
     return params

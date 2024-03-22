@@ -16,7 +16,7 @@ import pyam
 from scipy.stats import linregress
 import xarray as xr
 
-from rime.utils import check_ds_dims
+from rimeX.legacy.utils import check_ds_dims
 
 
 def loop_interpolate_gwl(df, yr_start, yr_end, interval=50):
