@@ -5,3 +5,4 @@ rimeX/_version.py
 __pycache__
 notebooks/test.ipynb
 .ipynb_checkpoints
+*.xlsx#
