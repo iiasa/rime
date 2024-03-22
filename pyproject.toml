@@ -44,7 +44,7 @@ rime-init-digitize = "rimeX.digitize:main"
 rime = "rimeX.emulator:main"
 
 [project.urls]
-homepage = "https://github.com/NiklasSchwind/rimeX"
+homepage = "https://github.com/iiasa/rime/tree/rimeX"
 
 [tool.setuptools_scm]
 write_to = "rimeX/_version.py"
