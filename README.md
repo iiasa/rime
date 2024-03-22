@@ -7,6 +7,14 @@ It started as a rewrite of the emulator intended for provide better statistical 
 It was moved to a standalone repository for re-use in various projects, and is intended to supercede the code for the [Rapid Impact Model Emulator](https://github.com/iiasa/rime) (hence its name).
 
 
+## Back-compatibility and transition period
+
+For users who want to use the original module by Edward Byers instead, the `rimeX.legacy` subpackage is made available.
+All `rime` imports were updated with `rimeX.legacy`, but it is otherwise left unedited since import on March 22nd, 2024: `sed -i "s/rime\./rimeX.legacy./g" *.py wip_scraps/*.py`.
+
+It is possible to import via `import rimeX.legacy as rime` to use existing code. Eventually this subpackage will be deprecated.
+
+
 ## Install
 
 	git clone --single-branch --branch rimeX https://github.com/iiasa/rime.git
