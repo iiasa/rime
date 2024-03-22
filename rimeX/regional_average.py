@@ -12,7 +12,6 @@ Memory usage is moderate (5G VIRT, 3G RES), mostly due to pre-loading all (parti
 """
 from pathlib import Path
 import argparse
-import yaml
 import glob
 import tqdm
 from itertools import groupby, product

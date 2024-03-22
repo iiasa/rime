@@ -40,15 +40,15 @@ The following scripts are made available, for which inline help is available wit
 
 - Also useful:
 
-	- `rime-config` : print the config to screen (yaml format)
+	- `rime-config` : print the config to screen (toml format)
 
 Of course, any of the functions can be called directly. Inline documentation is available. 
 
 
 ## Config files and default parameters
 
-Note the scripts sets default parameters from a [configuration file](rimeX/config_isimip3.yml), which is set to fetch ISIMIP3 data by default. 
-You can specify your own defaults by having a `rimeX.yml` or `rime.yml` or `config.yml` file in the working directory (from which any of the above scripts are called), or by specifying any file via the command-line argument `--config <FILE.yml>`. The `rime-config` script is provided to output the default config to standard output, to save it to file e.g. `rime-config > config.yml` and later edit `config.yml` for custom use. Note it is OK to only define a few fields in the config file -- all others will be take from the default config.
+Note the scripts sets default parameters from a [configuration file](rimeX/config.toml), which is set to fetch ISIMIP3 data by default. 
+You can specify your own defaults by having a `rimeX.toml` or `rime.toml` file in the working directory (from which any of the above scripts are called), or by specifying any file via the command-line argument `--config <FILE.toml>`. The `rime-config` script is provided to output the default config to standard output, to save it to file e.g. `rime-config > rime.toml` and later edit `rime.toml` for custom use. Note it is OK to only define a few fields in the config file -- all others will be take from the default config.
 
 
 Note the config file also sets the defaults at the function level (that might be changed in the future).

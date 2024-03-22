@@ -100,7 +100,7 @@ def calculate_interannual_variability_standard_deviation(all_annual, running_mea
     ----------
     all_annual: DataFrame with all experiments but historical runs
     running_mean_window: 21 or 31 years typically (to define "climate")
-    start_year: set in config.yml as "temperature_sigma_first_year", i.e. 2015 for CMIP6
+    start_year: set in config.toml as "temperature_sigma_first_year", i.e. 2015 for CMIP6
         => used to exclude historical values from the calculation
 
     Returns

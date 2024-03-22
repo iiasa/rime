@@ -192,9 +192,9 @@ def _bin_isimip_records(indicator_data, warming_levels,
     warming_levels: pandas DataFrame (loaded from the warming level file)
         note it is expected to be consistent with the methods parameters
     variable, region, subregion, weights, season : ...
-    matching_method : "time" or "temperature", default from config.yml file
+    matching_method : "time" or "temperature", default from config.toml file
         see documentation in calculate_warming_levels.py module
-    running_mean_window : int, a number of year, default from config.yml file
+    running_mean_window : int, a number of year, default from config.toml file
     warming_levels_reached: set, optional
         by default all warming levels are used, but a subset can be provided to limit the calculations to fewer values actually used
 
@@ -282,9 +282,9 @@ def bin_isimip_records(indicator_data, warming_levels,
     warming_levels: pandas DataFrame (loaded from the warming level file)
         note it is expected to be consistent with the methods parameters
     variable, region, subregion, weights, season : ...
-    matching_method : "time" or "temperature", default from config.yml file
+    matching_method : "time" or "temperature", default from config.toml file
         see documentation in calculate_warming_levels.py module
-    running_mean_window : int, a number of year, default from config.yml file
+    running_mean_window : int, a number of year, default from config.toml file
     individual_years : bool, False by default
         if True, all years are included, thus including signal from natural variability. Otherwise only the climatological mean is included.
     average_scenarios : bool, False by default

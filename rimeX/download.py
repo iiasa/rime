@@ -62,7 +62,7 @@ def main():
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser])
     parser.add_argument("-v", "--variable", nargs='+', choices=config["variables"])
         # default=['tas', 'pr', 'sfcwind', 'twet'])
-    # parser.add_argument("--country", nargs='+', default=[], help='alpha-3 code or custom name from countries.yml')
+    # parser.add_argument("--country", nargs='+', default=[], help='alpha-3 code or custom name from countries.toml')
     # parser.add_argument("--download-region", help='specify a region larger than --countries for the download')
 
     group = parser.add_argument_group('Experiments')

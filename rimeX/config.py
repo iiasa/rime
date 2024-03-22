@@ -1,15 +1,15 @@
 import argparse
 from pathlib import Path
-import yaml
+import toml
 
 from rimeX.logs import logger
 
-DEFAULT_CONFIG_FILE = Path(__file__).parent/"config_isimip3.yml"
-DEFAULT_CONFIG = yaml.safe_load(open(DEFAULT_CONFIG_FILE))
+DEFAULT_CONFIG_FILE = Path(__file__).parent/"config.toml"
+DEFAULT_CONFIG = toml.load(open(DEFAULT_CONFIG_FILE))
 
 def search_default_config():
     # seach current working directory
-    candidates = ['rimeX.yml', 'rime.yml', 'config.yml']
+    candidates = ['rimeX.toml', 'rime.toml']
     for candidate in candidates:
         if Path(candidate).exists():
             logger.info(f"Found config file: {candidate}")
@@ -34,7 +34,7 @@ if o.version:
 
 def set_config(file_path):
     global config
-    config = yaml.safe_load(open(file_path))
+    config = toml.load(open(file_path))
 
     # update undefined fields with defaults
     for field in DEFAULT_CONFIG:
@@ -47,7 +47,7 @@ def main():
     """show configuration file"""
     parser = argparse.ArgumentParser(parents=[config_parser])
     o = config_parser.parse_args()
-    print(yaml.dump(config, default_flow_style=None, sort_keys=False))
+    print(toml.dumps(config))
     parser.exit(0)
 
 

@@ -105,7 +105,7 @@ def recombine_magicc_vectorized(binned_isimip_data, magicc_ensemble, quantile_le
     ----------
     binned_isimip_data : list of records with fields {"value": ..., "warming_level": ...}
     magicc_ensemble : pandas DataFrame with years as index and ensemble members as columns (warming since P.I.)
-    quantile_levels : quantiles to include in the output, default from config.yml files
+    quantile_levels : quantiles to include in the output, default from config.toml files
 
     Returns
     -------
@@ -158,7 +158,7 @@ def recombine_magicc(binned_isimip_data, magicc_ensemble, quantile_levels=config
     ----------
     binned_isimip_data : list of records with fields {"value": ..., "warming_level": ...}
     magicc_ensemble : pandas DataFrame with years as index and ensemble members as columns (warming since P.I.)
-    quantile_levels : quantiles to include in the output, default from config.yml files
+    quantile_levels : quantiles to include in the output, default from config.toml files
 
     Returns
     -------
