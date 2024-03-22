@@ -20,11 +20,11 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-      "pyyaml",
-      "numpy",
-      "pandas",
-      "xarray",
-      "tqdm",
+  "toml",
+  "numpy",
+  "pandas",
+  "xarray",
+  "tqdm",
 ]
 
 dynamic = ["version"]
