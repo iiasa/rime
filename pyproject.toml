@@ -32,6 +32,7 @@ dynamic = ["version"]
 [project.optional-dependencies]
 all = [
     "isimip_client@https://github.com/ISI-MIP/isimip-client/archive/refs/tags/1.0.1.zip",
+    "pyam-iamc",
 ]
 
 [project.scripts]
