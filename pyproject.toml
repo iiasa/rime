@@ -36,7 +36,8 @@ all = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["rimeX/"]
+where = ["."]
+include = ["rimeX"]
 
 [project.scripts]
 rime-config = "rimeX.config:main"
