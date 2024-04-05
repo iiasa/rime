@@ -2,7 +2,7 @@
 
 2023 IIASA
 
-[![latest](https://img.shields.io/github/last-commit/iiasa/CWatM)](https://github.com/iiasa/CWatM)
+[![latest](https://img.shields.io/github/last-commit/iiasa/RIME)](https://github.com/iiasa/RIME)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)  
 [![license](https://www.gnu.org/graphics/gplv3-with-text-136x68.png)](https://choosealicense.com/licenses/gpl-3.0/)
 
@@ -46,14 +46,17 @@ Settings for `Dask`, filepaths and data directories should be configured in here
 ### [`generate_aggregated_inputs.py`](https://github.com/iiasa/rime/blob/main/rime/generate_aggregated_inputs.py)  
 Pre-processing of tabular impacts data of exposure by GWL, into netcdf datasets that will be used in emulation. Only needs to run once to pre-process the impacts data. Only required if working with IAMC table impacts data.
 
-### [`process_tabledata.py`](https://github.com/iiasa/rime/blob/main/rime/process_tabledata.py)  
-Example script that takes input table of emissions scenarios with global temperature timeseries, and output tables of climate impacts data in IAMC format. Can be done for multiple scenarios and indicators at a time. 
-
-### [`process_maps.py`](https://github.com/iiasa/rime/blob/main/rime/process_tabledata.py)  
-Example script that takes input table of emissions scenarios with global temperature timeseries, and output maps of climate impacts through time as netCDF. Ouptut netCDF can be specified for either for 1 scenario and multiple climate impacts, or multiple scenarios for 1 indicator.
-
 ### [`pp_combined example.ipynb`](https://github.com/iiasa/rime/blob/main/rime/pp_combined_example.py)  
 Example jupyter notebook that demonstrates methods of processing both table and map impacts data for IAM scenarios.
+
+or [
+### [`process_tabledata.py`](https://github.com/iiasa/rime/blob/main/rime/process_tabledata.py)  
+Example script that takes input table of emissions scenarios with global temperature timeseries, and output tables of climate impacts data in IAMC format. Can be done for multiple scenarios and indicators at a time. 
+and
+### [`process_maps.py`](https://github.com/iiasa/rime/blob/main/rime/process_tabledata.py)  
+Example script that takes input table of emissions scenarios with global temperature timeseries, and output maps of climate impacts through time as netCDF. Ouptut netCDF can be specified for either for 1 scenario and multiple climate impacts, or multiple scenarios for 1 indicator.
+]
+
 
 ### [`test_map_notebook.html`](https://github.com/iiasa/rime/blob/main/rime/test_map_notebook.html)
 Example html maps dashboard. CLick download in the top right corner and open locally in your browser.
@@ -72,7 +75,7 @@ Change to the rime folder and install the package including the requirements.
 	pip install --editable .
 
 ## Further information
-This package is in a pre-release mode, currently work in progress, under-going testing and not formally published.  
+This package is in a pre-release mode, currently work in progress, under-going testing and not yet formally published.  
 
-Examples provided use climate impacts data that is also in a pre-release stage [(Werning et al. 2023)](https://zenodo.org/records/8134869), currently hosted on the [Climate Solutions Explorer](https://www.climate-solutions-explorer.eu/).
+Examples provided use climate impacts data that is currently under-going peer-review [(Werning et al. 2024)](https://zenodo.org/records/10868066), currently hosted on the [Climate Solutions Explorer](https://www.climate-solutions-explorer.eu/).
 
