@@ -300,9 +300,9 @@ def bin_isimip_records(indicator_data, warming_levels,
     -------
     binned_isimip_data: list of records with fields {"value": ..., "warming_level": ...} and more
     """
-    if matching_method is None: matching_method = CONFIG["emulator.matching_method"]
+    if matching_method is None: matching_method = CONFIG["emulator.experimental.matching_method"]
     if running_mean_window is None: running_mean_window = CONFIG["emulator.running_mean_window"]
-    if gmt_interannual_variability_sd is None: gmt_interannual_variability_sd = CONFIG["emulator.pure.gmt_interannual_variability_sd"]
+    if gmt_interannual_variability_sd is None: gmt_interannual_variability_sd = CONFIG["emulator.experimental.gmt_interannual_variability_sd"]
 
     logger.info("bin ISIMIP data")
     binned_isimip_data = _bin_isimip_records(indicator_data, warming_levels, 
@@ -341,9 +341,9 @@ def get_binned_isimip_file(variable, region, subregion, weights, season,
     root=None, ext='.csv'):
 
     if root is None: root = CONFIG["isimip.climate_impact_explorer"]
-    if matching_method is None: matching_method = CONFIG["emulator.matching_method"]
+    if matching_method is None: matching_method = CONFIG["emulator.experimental.matching_method"]
     if running_mean_window is None: running_mean_window = CONFIG["emulator.running_mean_window"]
-    if gmt_interannual_variability_sd is None: gmt_interannual_variability_sd = CONFIG["emulator.pure.gmt_interannual_variability_sd"]
+    if gmt_interannual_variability_sd is None: gmt_interannual_variability_sd = CONFIG["emulator.experimental.gmt_interannual_variability_sd"]
 
     scenarioavg = "_scenarioavg" if average_scenarios else ""
     natvartag = f"natvar-sd-{gmt_interannual_variability_sd}" if matching_method == "pure" else f"_{running_mean_window}yrs_natvar{individual_years}"
@@ -412,7 +412,7 @@ def main():
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter)
     
     group = parser.add_argument_group('Warming level matching')
-    group.add_argument("--matching-method", default=CONFIG["emulator.matching_method"])
+    group.add_argument("--matching-method", default=CONFIG["emulator.experimental.matching_method"])
     group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"])
     group.add_argument("--warming-level-file", default=None)
     group.add_argument("--individual-years", action="store_true")

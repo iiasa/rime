@@ -225,7 +225,7 @@ def main():
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser])
     
     group = parser.add_argument_group('Warming level matching')
-    group.add_argument("--matching-method", default=CONFIG["emulator.matching_method"])
+    group.add_argument("--matching-method", default=CONFIG["emulator.experimental.matching_method"])
     group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"])
     group.add_argument("--warming-level-file", default=None)
 

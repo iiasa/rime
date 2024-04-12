@@ -210,11 +210,11 @@ def main():
     parser.add_argument("--running-mean-window", type=int, default=CONFIG["emulator.running_mean_window"])
     parser.add_argument("--projection-baseline", nargs=2, type=int, default=CONFIG["emulator.projection_baseline"])
     parser.add_argument("--projection-baseline-offset", type=float, default=CONFIG["emulator.projection_baseline_offset"])
-    parser.add_argument("--matching-method", default=CONFIG["emulator.matching_method"], choices=["time", "temperature", "pure"])
+    parser.add_argument("--matching-method", default=CONFIG["emulator.experimental.matching_method"], choices=["time", "temperature", "pure"])
 
     group = parser.add_argument_group('argument specific to the temperature matching method')
-    parser.add_argument("--temperature-sigma-range", type=float, default=CONFIG["emulator.temperature.temperature_sigma_range"])
-    parser.add_argument("--temperature-sigma-first-year", type=int, default=CONFIG["emulator.temperature.temperature_sigma_first_year"])
+    parser.add_argument("--temperature-sigma-range", type=float, default=CONFIG["emulator.experimental.temperature_sigma_range"])
+    parser.add_argument("--temperature-sigma-first-year", type=int, default=CONFIG["emulator.experimental.temperature_sigma_first_year"])
 
     parser.add_argument("-o", "--output-file")
     parser.add_argument("-O", "--overwrite", action="store_true")
