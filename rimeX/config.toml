@@ -31,9 +31,12 @@ warming_level_min = 1
 warming_level_step = 0.1
 matching_method = "time"
 running_mean_window = 21
-temperature_sigma_first_year = 2015
-temperature_sigma_range = 2.6
-temperature_bin_size = 0.1
-gmt_interannual_variability_sd = 0.14
 isimip_binned_backend = [ "csv",]
 quantiles = [ 0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99,]
+
+[emulator.temperature]
+temperature_sigma_first_year = 2015
+temperature_sigma_range = 2.6
+
+[emulator.pure]
+gmt_interannual_variability_sd = 0.14

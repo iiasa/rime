@@ -302,7 +302,7 @@ def bin_isimip_records(indicator_data, warming_levels,
     """
     if matching_method is None: matching_method = CONFIG["emulator.matching_method"]
     if running_mean_window is None: running_mean_window = CONFIG["emulator.running_mean_window"]
-    if gmt_interannual_variability_sd is None: gmt_interannual_variability_sd = CONFIG["emulator.gmt_interannual_variability_sd"]
+    if gmt_interannual_variability_sd is None: gmt_interannual_variability_sd = CONFIG["emulator.pure.gmt_interannual_variability_sd"]
 
     logger.info("bin ISIMIP data")
     binned_isimip_data = _bin_isimip_records(indicator_data, warming_levels, 
@@ -343,7 +343,7 @@ def get_binned_isimip_file(variable, region, subregion, weights, season,
     if root is None: root = CONFIG["isimip.climate_impact_explorer"]
     if matching_method is None: matching_method = CONFIG["emulator.matching_method"]
     if running_mean_window is None: running_mean_window = CONFIG["emulator.running_mean_window"]
-    if gmt_interannual_variability_sd is None: gmt_interannual_variability_sd = CONFIG["emulator.gmt_interannual_variability_sd"]
+    if gmt_interannual_variability_sd is None: gmt_interannual_variability_sd = CONFIG["emulator.pure.gmt_interannual_variability_sd"]
 
     scenarioavg = "_scenarioavg" if average_scenarios else ""
     natvartag = f"natvar-sd-{gmt_interannual_variability_sd}" if matching_method == "pure" else f"_{running_mean_window}yrs_natvar{individual_years}"

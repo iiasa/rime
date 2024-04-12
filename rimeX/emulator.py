@@ -228,7 +228,6 @@ def main():
     group.add_argument("--matching-method", default=CONFIG["emulator.matching_method"])
     group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"])
     group.add_argument("--warming-level-file", default=None)
-    group.add_argument("--gmt-interannual-variability-sd", type=float, default=CONFIG["emulator.gmt_interannual_variability_sd"])
 
     group = parser.add_argument_group('Indicator variable')
     group.add_argument("-v", "--variable", choices=CONFIG["isimip.variables"], required=True)
