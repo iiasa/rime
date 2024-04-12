@@ -55,13 +55,12 @@ Of course, any of the functions can be called directly. Inline documentation is 
 
 ## Config files and default parameters
 
-Note the scripts sets default parameters from a [configuration file](rimeX/config.toml), which is set to fetch ISIMIP3 data by default. 
+Note the scripts sets default parameters from a [configuration file](rimeX/config.toml).
 You can specify your own defaults by having a `rimeX.toml` or `rime.toml` file in the working directory (from which any of the above scripts are called), or by specifying any file via the command-line argument `--config <FILE.toml>`. The `rime-config` script is provided to output the default config to standard output, to save it to file e.g. `rime-config > rime.toml` and later edit `rime.toml` for custom use. Note it is OK to only define a few fields in the config file -- all others will be take from the default config.
 
+If used interactively or imported from a custom script, the config can be changed on-the-fly by accessing the `rimeX.config.CONFIG` flat dictionary.
 
-Note the config file also sets the defaults at the function level (that might be changed in the future).
-In case the functions are imported directly from rimeX, it is possible to read from a custom config via `rimeX.set_config`. 
-Note in case other modules have already been imported, they'll need to be reloaded for the defaults changes to take effect (see `importlib.reload`).
+By default, ISIMIP3b data are used, but that can be changed to ISIMIP2b via the `--simulation-round` flag (available models and experiments and defaults are adjusted automatically).
 
 
 ## TODO
