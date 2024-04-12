@@ -6,11 +6,12 @@ from pathlib import Path
 import datetime
 import numpy as np
 import pandas as pd
-from rimeX.regional_average import get_files
+from rimeX.regional_average import get_files, isimip_parser
 from rimeX.logs import logger, log_parser
 from rimeX.config import CONFIG, config_parser
 
-def global_mean_file(variable, model, experiment, root=CONFIG["isimip.climate_impact_explorer"]):
+def global_mean_file(variable, model, experiment, root=None):
+    if root is None: root = CONFIG["isimip.climate_impact_explorer"]
     return Path(root) / f"isimip_global_mean/{variable}/globalmean_{variable}_{model.lower()}_{experiment}.csv"
 
 
@@ -197,10 +198,7 @@ def get_warming_level_file(matching_method, running_mean_window, temperature_sig
     return Path(CONFIG["isimip.climate_impact_explorer"]) / "warming_levels" / warming_level_name
 
 def main():
-    parser = argparse.ArgumentParser(parents=[log_parser, config_parser])
-    # parser.add_argument("--variable", nargs="+", default=["tas"], choices=["tas"])
-    parser.add_argument("--models", nargs="+", default=CONFIG["isimip.models"], choices=CONFIG["isimip.models"])
-    parser.add_argument("--experiments", nargs="+", default=CONFIG["isimip.experiments"], choices=CONFIG["isimip.experiments"])
+    parser = argparse.ArgumentParser(parents=[log_parser, config_parser, isimip_parser])
     
     egroup = parser.add_mutually_exclusive_group()
     group = egroup.add_argument_group('warming levels')

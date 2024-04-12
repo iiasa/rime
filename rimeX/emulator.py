@@ -16,7 +16,7 @@ from rimeX.warminglevels import get_warming_level_file
 from rimeX.digitize import get_binned_isimip_records, make_models_equiprobable
 
 
-def load_magicc_ensemble(file, projection_baseline=CONFIG["emulator.projection_baseline"], projection_baseline_offset=CONFIG["emulator.projection_baseline_offset"]):
+def load_magicc_ensemble(file, projection_baseline=None, projection_baseline_offset=None):
     """Read a MAGICC output file as a pandas DataFrame
 
     By default express w.r.t pre-industrial levels adjusted with observations around the projection baseline.
@@ -95,8 +95,7 @@ def digitize_magicc(magicc_ensemble, warming_levels):
     return np.digitize(magicc_ensemble, bins)
 
 
-def recombine_magicc_vectorized(binned_isimip_data, magicc_ensemble, quantile_levels=CONFIG["emulator.quantiles"], 
-    samples=CONFIG.get('emulator.samples', 5000), seed=CONFIG.get('emulator.seed', None)):
+def recombine_magicc_vectorized(binned_isimip_data, magicc_ensemble, quantile_levels, samples=5000, seed=None):
     """Take binned ISIMIP data and MAGICC time-series as input and  returns quantiles as output
 
     This method uses Monte Carlo sampling.
@@ -149,7 +148,7 @@ def recombine_magicc_vectorized(binned_isimip_data, magicc_ensemble, quantile_le
     return pd.DataFrame(quantiles, index=magicc_years, columns=quantile_levels)
 
 
-def recombine_magicc(binned_isimip_data, magicc_ensemble, quantile_levels=CONFIG["emulator.quantiles"]):
+def recombine_magicc(binned_isimip_data, magicc_ensemble, quantile_levels):
     """Take binned ISIMIP data and MAGICC time-series as input and  returns quantiles as output
 
     Determinisitc method. This is the original method for "temperature" and "time" matching methods. 
@@ -230,7 +229,6 @@ def main():
     group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"])
     group.add_argument("--warming-level-file", default=None)
     group.add_argument("--gmt-interannual-variability-sd", type=float, default=CONFIG["emulator.gmt_interannual_variability_sd"])
-    group.add_argument("--samples", type=int, default=CONFIG["emulator.samples"])
 
     group = parser.add_argument_group('Indicator variable')
     group.add_argument("-v", "--variable", choices=CONFIG["isimip.variables"], required=True)
@@ -253,6 +251,8 @@ def main():
 
     group = parser.add_argument_group('Scenario')
     group.add_argument("--magicc-files", nargs='+', required=True)
+    group.add_argument("--projection-baseline", type=int, nargs=2, default=CONFIG['emulator.projection_baseline'])
+    group.add_argument("--projection-baseline-offset", type=float, default=CONFIG['emulator.projection_baseline_offset'])
 
     group = parser.add_argument_group('Result')
     group.add_argument("-O", "--overwrite", action='store_true', help='overwrite final results')
@@ -315,7 +315,7 @@ def main():
     # Load MAGICC data
     magicc_ensemble = []
     for file in o.magicc_files:
-        magicc_ensemble.append(load_magicc_ensemble(file))
+        magicc_ensemble.append(load_magicc_ensemble(file, o.projection_baseline, o.projection_baseline_offset))
     magicc_ensemble = pd.concat(magicc_ensemble, axis=1)
 
     # Only use future values to avoid getting in trouble with the warming levels.

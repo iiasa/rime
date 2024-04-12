@@ -10,6 +10,7 @@ def load_config(file):
         cfg = toml.load(f)
     return FlatDict(cfg, delimiter=".")
 
+
 DEFAULT_CONFIG_FILE = Path(__file__).parent/"config.toml"
 DEFAULT_CONFIG = load_config(DEFAULT_CONFIG_FILE)
 CONFIG = DEFAULT_CONFIG.copy()

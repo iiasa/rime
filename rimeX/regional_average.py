@@ -22,11 +22,14 @@ import xarray as xa
 
 from rimeX.logs import logger, log_parser
 from rimeX.config import CONFIG, config_parser
+from rimeX.isimip import get_models, get_experiments, get_variables, isimip_parser
 
 
-def get_files(variable, model, experiment, realm="*", domain="global", frequency="monthly", member="*", obs="*", year_start="*", year_end="*", root=CONFIG["isimip.download_folder"], simulation_round=CONFIG["isimip.simulation_round"]):
+def get_files(variable, model, experiment, realm="*", domain="global", frequency="monthly", member="*", obs="*", year_start="*", year_end="*", root=None, simulation_round=None):
+    if root is None: root = CONFIG["isimip.download_folder"]
+    if simulation_round is None: simulation_round = CONFIG["isimip.simulation_round"]
     model_lower = model.lower()
-    model_upper = {m.lower():m for m in CONFIG["isimip.models"]}[model_lower]
+    model_upper = {m.lower():m for m in get_models()}[model_lower]
     input_data = "*"
     if "ISIMIP2" in simulation_round:
         frequency2 = {"monthly":"month", "daily": "day"}.get(frequency, frequency)
@@ -37,7 +40,8 @@ def get_files(variable, model, experiment, realm="*", domain="global", frequency
     return sorted(glob.glob(pattern))
 
 
-def get_regional_averages_file(variable, model, experiment, region, weights, root=CONFIG["isimip.climate_impact_explorer"]):
+def get_regional_averages_file(variable, model, experiment, region, weights, root=None):
+    if root is None: root = CONFIG["isimip.climate_impact_explorer"]
     return Path(root) / f"isimip_regional_data/{region}/{weights}/{model.lower()}_{experiment}_{variable}_{region.lower()}_{weights.lower()}.csv"
 
 
@@ -47,8 +51,9 @@ def get_coords(res=0.5):
     return lon, lat
 
 
-def get_region_mask(region, weights, masks_folder=CONFIG["preprocessing.regional.masks_folder"]):
+def get_region_mask(region, weights, masks_folder=None):
     """return DataArray mask from a subregion"""
+    if masks_folder is None: masks_folder = CONFIG["preprocessing.regional.masks_folder"]
     path = Path(masks_folder) / f"{region}/masks/{region}_360x720lat89p75to-89p75lon-179p75to179p75_{weights}.nc4"
     with xa.open_dataset(path) as ds:
         # return ds[region].load()
@@ -94,16 +99,12 @@ def main():
 
     ALL_MASKS = sorted([o.name for o in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
 
-    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser])
-    parser.add_argument("-v", "--variable", nargs='+', choices=CONFIG["isimip.variables"], required=True)
+    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, isimip_parser])
+    parser.add_argument("-v", "--variable", nargs='+', choices=get_variables(), required=True)
     parser.add_argument("--overwrite", action='store_true')
     group = parser.add_argument_group('mask')
     group.add_argument("--region", nargs='+', default=ALL_MASKS, choices=ALL_MASKS)
     group.add_argument("--weights", nargs='+', default=CONFIG["preprocessing.regional.weights"], choices=CONFIG["preprocessing.regional.weights"])
-
-    group = parser.add_argument_group('Experiments')
-    group.add_argument("--experiment", nargs='+', default=CONFIG["isimip.experiments"], choices=CONFIG["isimip.experiments"])
-    group.add_argument("--model", nargs='+', help='e.g. --model gfdl-esm4', default=CONFIG["isimip.models"], choices=CONFIG["isimip.models"])
 
     o = parser.parse_args()
 

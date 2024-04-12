@@ -36,7 +36,7 @@ def load_seasonal_means_per_region(variable, model, experiment, region, subregio
     return pd.DataFrame(seasonal_means, index=[datetime.datetime.fromisoformat(ts).year for ts in monthly.index.values[11::12]])
 
 
-def load_regional_indicator_data(variable, region, subregion, weights, season='annual', models=CONFIG["isimip.models"], experiments=CONFIG["isimip.experiments"]):
+def load_regional_indicator_data(variable, region, subregion, weights, season, models, experiments):
     """higher level function than load_seasonal_means_per_region
 
     => add historical data
@@ -81,7 +81,7 @@ def load_regional_indicator_data(variable, region, subregion, weights, season='a
 
 def resample_with_natural_variability(records,
     sigma=0.14,
-    binsize=CONFIG["emulator.warming_level_step"],
+    binsize=None,
     ):
     """Enlarge the warming_level: value mapping to account for natural variability
 
@@ -98,6 +98,8 @@ def resample_with_natural_variability(records,
     """
     import math
     from scipy.stats import norm
+
+    if binsize is None: binsize = CONFIG["emulator.warming_level_step"]
 
     natvar_dist = norm(0, sigma)
     n = math.ceil(3 * sigma / binsize) # that's about 0.001 probability we cut-off on each side
@@ -183,8 +185,7 @@ def make_models_equiprobable(records):
 
 
 def _bin_isimip_records(indicator_data, warming_levels, 
-    matching_method=CONFIG["emulator.matching_method"], running_mean_window=CONFIG["emulator.running_mean_window"],
-    warming_levels_reached=None):
+    matching_method, running_mean_window, warming_levels_reached=None):
     """Load ISISMIP data for a {variable, region, subregion, weights, season}, binned according to warming levels. 
 
     Parameters
@@ -271,14 +272,15 @@ def _bin_isimip_records(indicator_data, warming_levels,
 
 
 def bin_isimip_records(indicator_data, warming_levels, 
-    matching_method=CONFIG["emulator.matching_method"], running_mean_window=CONFIG["emulator.running_mean_window"],
+    matching_method=None, running_mean_window=None,
     individual_years=False, average_scenarios=False, equiprobable_models=False,
-    gmt_interannual_variability_sd=CONFIG["emulator.gmt_interannual_variability_sd"], 
+    gmt_interannual_variability_sd=None, 
     warming_levels_reached=None):
     """Load ISISMIP data for a {variable, region, subregion, weights, season}, binned according to warming levels, and apply some additional filtering
 
     Parameters
     ----------
+    indicator_data: isimip timeseries data (see load_regional_indicator_data)
     warming_levels: pandas DataFrame (loaded from the warming level file)
         note it is expected to be consistent with the methods parameters
     variable, region, subregion, weights, season : ...
@@ -298,8 +300,10 @@ def bin_isimip_records(indicator_data, warming_levels,
     -------
     binned_isimip_data: list of records with fields {"value": ..., "warming_level": ...} and more
     """
+    if matching_method is None: matching_method = CONFIG["emulator.matching_method"]
+    if running_mean_window is None: running_mean_window = CONFIG["emulator.running_mean_window"]
+    if gmt_interannual_variability_sd is None: gmt_interannual_variability_sd = CONFIG["emulator.gmt_interannual_variability_sd"]
 
-    # Load ISIMIP data
     logger.info("bin ISIMIP data")
     binned_isimip_data = _bin_isimip_records(indicator_data, warming_levels, 
         matching_method=matching_method, running_mean_window=running_mean_window, warming_levels_reached=warming_levels_reached)
@@ -328,13 +332,18 @@ def bin_isimip_records(indicator_data, warming_levels,
 
 
 def get_binned_isimip_file(variable, region, subregion, weights, season, 
-    matching_method=CONFIG["emulator.matching_method"], 
-    running_mean_window=CONFIG["emulator.matching_method"], 
+    matching_method=None, 
+    running_mean_window=None, 
     individual_years=False, 
     average_scenarios=False, 
     equiprobable_models=False,
-    gmt_interannual_variability_sd=CONFIG["emulator.gmt_interannual_variability_sd"], 
-    root=CONFIG["isimip.climate_impact_explorer"], ext='.csv'):
+    gmt_interannual_variability_sd=None,
+    root=None, ext='.csv'):
+
+    if root is None: root = CONFIG["isimip.climate_impact_explorer"]
+    if matching_method is None: matching_method = CONFIG["emulator.matching_method"]
+    if running_mean_window is None: running_mean_window = CONFIG["emulator.running_mean_window"]
+    if gmt_interannual_variability_sd is None: gmt_interannual_variability_sd = CONFIG["emulator.gmt_interannual_variability_sd"]
 
     scenarioavg = "_scenarioavg" if average_scenarios else ""
     natvartag = f"natvar-sd-{gmt_interannual_variability_sd}" if matching_method == "pure" else f"_{running_mean_window}yrs_natvar{individual_years}"
@@ -369,7 +378,10 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
                 raise NotImplementedError(backend)
             return df.to_dict("records")
 
-    indicator_data = load_regional_indicator_data(variable, region, subregion, weights, season)
+    models = warming_levels['model'].unique().values.tolist()
+    experiments = warming_levels['experiment'].unique().values.tolist()
+
+    indicator_data = load_regional_indicator_data(variable, region, subregion, weights, season, models, experiments)
     all_data = bin_isimip_records(indicator_data, warming_levels, **kw)
 
     for file, backend in zip(binned_records_files, backends):

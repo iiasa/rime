@@ -3,21 +3,65 @@ import re
 from itertools import product
 from pathlib import Path
 import argparse
-from isimip_client.client import ISIMIPClient
 
 from rimeX.tools import cdo
 from rimeX.config import CONFIG, config_parser
 from rimeX.logs import log_parser
 
 
-client = ISIMIPClient()
+client = None
 
+def _init_client():
+    global client
+    if client is None:
+        from isimip_client.client import ISIMIPClient
+        client = ISIMIPClient()
+    return client
+
+def get_models(simulation_round=None):
+    if simulation_round is None: simulation_round = CONFIG['isimip.simulation_round']
+    return CONFIG["isimip"][simulation_round]["models"]
+
+def get_experiments(simulation_round=None):
+    if simulation_round is None: simulation_round = CONFIG['isimip.simulation_round']
+    return CONFIG["isimip"][simulation_round]["experiments"]
+
+def get_variables(simulation_round=None):
+    return CONFIG["isimip.variables"]
+
+def iterate_model_experiment(simulation_round=None):
+    yield from product(get_models(simulation_round), get_experiments(simulation_round))
+
+def _preparse_isimip_protocol():
+    """First parse isimip protocol so that defaults models and experiments are correct
+    """
+    isimip_preparser = _get_isimip_parser()
+    o, _ = isimip_preparser.parse_known_args()
+    if o.simulation_round is not None:
+        CONFIG["isimip.simulation_round"] = o.simulation_round
+
+def _get_isimip_parser():
+    """Determine if --simulation-round is provided in any script that relies on isimip, 
+    so that get_models() and get_experiments() have the proper choices and default.
+    The isimip_parser can be used in any 
+    """
+    isimip_parser = argparse.ArgumentParser(add_help=False)
+    group = isimip_parser.add_argument_group('ISIMIP')
+    group.add_argument("--experiment", nargs='+', default=get_experiments(), choices=get_experiments())
+    _lower_to_upper = {m.lower():m for m in get_models()}
+    group.add_argument("--model", nargs='+', default=get_models(), choices=get_models(), type=lambda s: _lower_to_upper.get(s, s))
+    group.add_argument("--simulation-round", default=CONFIG["isimip.simulation_round"]) # already set in _prepare_isimip_protocol, but here for help
+
+    return isimip_parser
+
+_preparse_isimip_protocol()
+isimip_parser = _get_isimip_parser()
 
 _YEARS_ISIMIP3_RE = re.compile(r'(\d{4})_(\d{4}).nc')
 _YEARS_ISIMIP2_RE = re.compile(r'(\d{4})\d{4}-(\d{4})\d{4}.nc')
 
-
-def parse_years(path, simulation_round=CONFIG["isimip.simulation_round"]):
+def parse_years(path, simulation_round=None):
+    if simulation_round is None: simulation_round = CONFIG['isimip.simulation_round']
     _YEARS_RE = _YEARS_ISIMIP2_RE if simulation_round is None or "ISIMIP2" in simulation_round else _YEARS_ISIMIP3_RE
     y1s, y2s = _YEARS_RE.search(Path(path).name).groups()
     y1, y2 = int(y1s), int(y2s)
@@ -28,8 +72,10 @@ def get_region_tag(bbox):
     return f"lat{b}to{t}lon{l}to{r}"
 
 
-def request_dataset(variables, experiment=None, model=None, download_folder='downloads', year_min=CONFIG["isimip.historical_year_min"], simulation_round=CONFIG["isimip.simulation_round"]):
-
+def request_dataset(variables, experiment=None, model=None, download_folder='downloads', year_min=None, simulation_round=None):
+    if year_min is None: year_min = CONFIG["isimip.historical_year_min"]
+    if simulation_round is None: simulation_round = CONFIG['isimip.simulation_round']
+    client = _init_client()
     results = []
     for v in variables:
 
@@ -59,16 +105,11 @@ def request_dataset(variables, experiment=None, model=None, download_folder='dow
 
 
 def main():
-    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser])
+    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, isimip_parser])
     parser.add_argument("-v", "--variable", nargs='+', choices=CONFIG["isimip.variables"])
         # default=['tas', 'pr', 'sfcwind', 'twet'])
     # parser.add_argument("--country", nargs='+', default=[], help='alpha-3 code or custom name from countries.toml')
     # parser.add_argument("--download-region", help='specify a region larger than --countries for the download')
-
-    group = parser.add_argument_group('Experiments')
-    group.add_argument("--experiment", nargs='+', default=CONFIG["isimip.experiments"], choices=CONFIG["isimip.experiments"])
-    group.add_argument("--model", nargs='+', default=CONFIG["isimip.models"], choices=CONFIG["isimip.models"] + [m.lower() for m in CONFIG["isimip.models"]])
-    group.add_argument("--simulation-round", default=CONFIG["isimip.simulation_round"])
 
     # These arguments come from an earlier, more general version of the code. They are not supposed to be changed here.
     # They are kept for back-compatibility but removed from the --help message to avoid confusion.
@@ -79,9 +120,7 @@ def main():
     group.add_argument("--mirror", help=argparse.SUPPRESS)  # in case we have direct access to PIK cluster, say
     group.add_argument("--download-folder", default=CONFIG["isimip.download_folder"], help=argparse.SUPPRESS)
 
-
     o = parser.parse_args()
-
 
     if not o.variable:
         print("At least one variable must be indicated. E.g. `--variable tas`")
@@ -141,7 +180,7 @@ def main():
 
 
     def download(path, queue=False, country=None, bbox=None, monthly=not o.daily, remove_daily=o.remove_daily, remove_zip=True):
-
+        client = _init_client()
         target_file = get_file(path, country, bbox, monthly=monthly)
         if target_file.exists(): return target_file
 

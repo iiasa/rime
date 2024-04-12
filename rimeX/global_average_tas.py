@@ -11,7 +11,8 @@ from rimeX.logs import logger, log_parser
 from rimeX.config import CONFIG, config_parser
 
 
-def global_mean_file(variable, model, experiment, root=CONFIG["isimip.climate_impact_explorer"]):
+def global_mean_file(variable, model, experiment, root=None):
+    if root is None: root = CONFIG["isimip.climate_impact_explorer"]
     return Path(root) / f"isimip_global_mean/{variable}/globalmean_{variable}_{model.lower()}_{experiment}.csv"
 
 
