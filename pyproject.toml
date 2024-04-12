@@ -24,7 +24,8 @@ dependencies = [
   "numpy",
   "pandas",
   "xarray",
-  "tqdm",
+  "tqdm", 
+  "flatdict",
 ]
 
 dynamic = ["version"]
