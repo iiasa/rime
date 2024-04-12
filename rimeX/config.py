@@ -5,9 +5,6 @@ import toml
 
 from rimeX.logs import logger
 
-def _flatten_config(cfg):
-    retu
-
 def load_config(file):
     with open(file) as f:
         cfg = toml.load(f)
