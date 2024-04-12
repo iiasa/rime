@@ -89,21 +89,21 @@ def vectorize_impact_values(binned_isimip_data, samples, warming_levels, rng=Non
     return impacts
 
 
-def digitize_magicc(magicc_ensemble, warming_levels):
-    logger.info(f"Digitize MAGICC values")
+def digitize_gmt(gmt_ensemble, warming_levels):
+    logger.info(f"Digitize GMT values")
     bins = warming_levels[1:] - np.diff(all_warming_levels)/2
-    return np.digitize(magicc_ensemble, bins)
+    return np.digitize(gmt_ensemble, bins)
 
 
-def recombine_magicc_vectorized(binned_isimip_data, magicc_ensemble, quantile_levels, samples=5000, seed=None):
-    """Take binned ISIMIP data and MAGICC time-series as input and  returns quantiles as output
+def recombine_gmt_vectorized(binned_isimip_data, gmt_ensemble, quantile_levels, samples=5000, seed=None):
+    """Take binned ISIMIP data and GMT time-series as input and  returns quantiles as output
 
     This method uses Monte Carlo sampling.
 
     Parameters
     ----------
     binned_isimip_data : list of records with fields {"value": ..., "warming_level": ...}
-    magicc_ensemble : pandas DataFrame with years as index and ensemble members as columns (warming since P.I.)
+    gmt_ensemble : pandas DataFrame with years as index and ensemble members as columns (warming since P.I.)
     quantile_levels : quantiles to include in the output, default from config.toml files
 
     Returns
@@ -121,22 +121,22 @@ def recombine_magicc_vectorized(binned_isimip_data, magicc_ensemble, quantile_le
 
     impacts_resampled = vectorize_impact_values(binned_isimip_data, samples=samples, rng=rng, warming_levels=warming_levels)
 
-    magicc_years = np.floor(magicc_ensemble.index.values).astype(int)
-    magicc_ensemble = magicc_ensemble.values
+    gmt_years = np.floor(gmt_ensemble.index.values).astype(int)
+    gmt_ensemble = gmt_ensemble.values
 
-    # resample MAGICC
-    logger.info(f"Re-sample MAGICC values (samples={samples})")
-    # resample_magicc_idx = rng.integers(magicc_ensemble.shape[1], size=samples)
-    # magicc_ensemble = magicc_ensemble[:, resample_magicc_idx] # climate
-    magicc_ensemble = deterministic_resampling(magicc_ensemble, size=samples, rng=rng, axis=1)
+    # resample GMT
+    logger.info(f"Re-sample GMT values (samples={samples})")
+    # resample_gmt_idx = rng.integers(gmt_ensemble.shape[1], size=samples)
+    # gmt_ensemble = gmt_ensemble[:, resample_gmt_idx] # climate
+    gmt_ensemble = deterministic_resampling(gmt_ensemble, size=samples, rng=rng, axis=1)
 
-    # Digitize MAGICC
+    # Digitize GMT
     # 0 means first warming level or less
     # bins.size = warming_level.size - 1  means last  warming level or more
     # bins can be irregularly spaced, that's OK (e.g. holes in the data)
-    logger.info("Digitize MAGICC")
+    logger.info("Digitize GMT")
     bins = warming_levels[1:] - np.diff(warming_levels)/2  
-    indices = np.digitize(magicc_ensemble, bins)
+    indices = np.digitize(gmt_ensemble, bins)
 
     allvalues = impacts_resampled[np.arange(samples), indices.T]
 
@@ -145,18 +145,18 @@ def recombine_magicc_vectorized(binned_isimip_data, magicc_ensemble, quantile_le
         logger.warning("Some NaNs found: intermediate ")
 
     quantiles = np.percentile(allvalues, np.array(quantile_levels)*100, axis=1).T
-    return pd.DataFrame(quantiles, index=magicc_years, columns=quantile_levels)
+    return pd.DataFrame(quantiles, index=gmt_years, columns=quantile_levels)
 
 
-def recombine_magicc(binned_isimip_data, magicc_ensemble, quantile_levels):
-    """Take binned ISIMIP data and MAGICC time-series as input and  returns quantiles as output
+def recombine_gmt_ensemble(binned_isimip_data, gmt_ensemble, quantile_levels):
+    """Take binned ISIMIP data and GMT time-series as input and  returns quantiles as output
 
     Determinisitc method. This is the original method for "temperature" and "time" matching methods. 
 
     Parameters
     ----------
     binned_isimip_data : list of records with fields {"value": ..., "warming_level": ...}
-    magicc_ensemble : pandas DataFrame with years as index and ensemble members as columns (warming since P.I.)
+    gmt_ensemble : pandas DataFrame with years as index and ensemble members as columns (warming since P.I.)
     quantile_levels : quantiles to include in the output, default from config.toml files
 
     Returns
@@ -167,8 +167,8 @@ def recombine_magicc(binned_isimip_data, magicc_ensemble, quantile_levels):
     ----
     any weight normalization can be done prior to calling this function with define_weight_within_warming_levels
     """
-    magicc_years = magicc_ensemble.index
-    magicc_ensemble = magicc_ensemble.values
+    gmt_years = gmt_ensemble.index
+    gmt_ensemble = gmt_ensemble.values
 
     # digitize MAGICC temperature
     # bins for digitization
@@ -176,7 +176,7 @@ def recombine_magicc(binned_isimip_data, magicc_ensemble, quantile_levels):
     binsize = CONFIG["emulator.warming_level_step"] # this could possibly be derived from the above
     # assign any outlier to the edges, to keep the median unbiased
     bins = all_warming_levels[1:] - binsize/2
-    indices = np.digitize(magicc_ensemble, bins)
+    indices = np.digitize(gmt_ensemble, bins)
 
     # Group data records by warming level
     key_wl = lambda r: r['warming_level']    
@@ -184,22 +184,22 @@ def recombine_magicc(binned_isimip_data, magicc_ensemble, quantile_levels):
 
     # Now calculate quantiles for each year
     logger.info("Re-combine all data and calculate quantiles for each year")
-    quantiles = np.empty((magicc_ensemble.shape[0], len(quantile_levels)))
+    quantiles = np.empty((gmt_ensemble.shape[0], len(quantile_levels)))
                     
-    for i, year in enumerate(tqdm.tqdm(magicc_years)):
+    for i, year in enumerate(tqdm.tqdm(gmt_years)):
         
         all_values = []
         all_weights = []
 
         # bincount: [0, 1, 0, 5, 2, 3, 0, 5] => [3, 1, 1, 1, 0, 2] (it count the occurences of w.l. indices: 3 x 0, 1 x 1, 1 x 2, 1 x 3, 0 x 4, 2 x 5)
-        for idx, number_of_magicc_simulations in enumerate(np.bincount(indices[i])):
+        for idx, number_of_gmt_simulations in enumerate(np.bincount(indices[i])):
             # no need to calculate when no warming level bin is present
-            if number_of_magicc_simulations == 0:
+            if number_of_gmt_simulations == 0:
                 continue  # i.e. idx = 0
             wl = all_warming_levels[idx]
 
             # probability p(GMT == wl)
-            p_gmt = number_of_magicc_simulations / indices[i].size
+            p_gmt = number_of_gmt_simulations / indices[i].size
             records = binned_isimip_data_by_wl[wl]
             
             values, weights = np.array([(r['value'], r.get('weight', 1)) for r in records]).T
@@ -217,7 +217,12 @@ def recombine_magicc(binned_isimip_data, magicc_ensemble, quantile_levels):
         logger.debug(f"{year}: compute quantiles on {len(values[valid])} values")
         quantiles[i] = weighted_quantiles(values[valid], weights[valid], quantile_levels)
 
-    return pd.DataFrame(quantiles, index=magicc_years.values.astype(int), columns=quantile_levels)
+    return pd.DataFrame(quantiles, index=gmt_years.values.astype(int), columns=quantile_levels)
+
+
+def validate_iam_filter(keyval):
+    key, val = keyval.split("=")
+    return key, val
 
 
 def main():
@@ -249,7 +254,13 @@ def main():
     group.add_argument("--quantiles", nargs='+', default=CONFIG["emulator.quantiles"])
 
     group = parser.add_argument_group('Scenario')
-    group.add_argument("--magicc-files", nargs='+', required=True)
+    group.add_argument("--iam-file", default=Path(__file__).parent.parent/"test_data"/"emissions_temp_AR6_small.xlsx", help='pyam-readable data')
+    group.add_argument("--iam-variable", default="*GSAT*", help="Filter iam variable")
+    group.add_argument("--iam-scenario", help="Filter iam scenario e.g. --iam-scenario SSP1.26")
+    group.add_argument("--iam-model", help="Filter iam model")
+    group.add_argument("--iam-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
+        help="other fields e.g. --iam model='IMAGE 3.0.1' scenario=SSP1.26")
+    group.add_argument("--magicc-files", nargs='+', help='if provided these files will be used instead if iam scenario')
     group.add_argument("--projection-baseline", type=int, nargs=2, default=CONFIG['emulator.projection_baseline'])
     group.add_argument("--projection-baseline-offset", type=float, default=CONFIG['emulator.projection_baseline_offset'])
 
@@ -269,6 +280,37 @@ def main():
     if not o.overwrite and Path(o.output_file).exists():
         logger.info(f"{o.output_file} already exist. Use -O or --overwrite to reprocess.")
         parse.exit(0)
+
+    # Load GMT data
+    if o.magicc_files:
+        gmt_ensemble = []
+        for file in o.magicc_files:
+            gmt_ensemble.append(load_magicc_ensemble(file, o.projection_baseline, o.projection_baseline_offset))
+        gmt_ensemble = pd.concat(gmt_ensemble, axis=1)
+
+    else:
+        if not o.iam_file:
+            parser.error("Need to indicate MAGICC or IAM data file --iam-file")
+            parser.exit(1)
+        import pyam
+        iamdf = pyam.IamDataFrame(o.iam_file)
+        filter_kw = dict(o.iam_filter)
+        if o.iam_variable: filter_kw['variable'] = o.iam_variable
+        if o.iam_scenario: filter_kw['scenario'] = o.iam_scenario
+        if o.iam_model: filter_kw['model'] = o.iam_model
+        iamdf_filtered = iamdf.filter(**filter_kw)
+
+        if len(iamdf_filtered) == 0:
+            logger.error(f"0-length dataframe after applying filter: {repr(filter_kw)}")
+            parser.exit(1)
+
+        if len(iamdf_filtered.index) > 1:
+            logger.error(f"More than one index after applying filter: {repr(filter_kw)}")
+            logger.error(f"Remaining index: {str(iamdf_filtered.index)}")
+            parser.exit(1)
+
+        df = iamdf_filtered.as_pandas()
+        gmt_ensemble = df.set_index('year')[['value']]
 
 
     if o.region is None:
@@ -291,7 +333,7 @@ def main():
         o.warming_level_file = get_warming_level_file(**{**config, **vars(o)})
 
     if not Path(o.warming_level_file).exists():
-        print(f"{o.warming_level_file} does not exist. Run warminglevels.py first.")
+        parser.error(f"{o.warming_level_file} does not exist. Run warminglevels.py first.")
         parser.exit(1)
         return
 
@@ -311,22 +353,15 @@ def main():
     if o.experiment is not None:
         binned_isimip_data = [r for r in binned_isimip_data if r['experiment'] in set(o.experiment)]
 
-    # Load MAGICC data
-    magicc_ensemble = []
-    for file in o.magicc_files:
-        magicc_ensemble.append(load_magicc_ensemble(file, o.projection_baseline, o.projection_baseline_offset))
-    magicc_ensemble = pd.concat(magicc_ensemble, axis=1)
-
     # Only use future values to avoid getting in trouble with the warming levels.
-    magicc_ensemble = magicc_ensemble.loc[2015:]  
+    gmt_ensemble = gmt_ensemble.loc[2015:]  
 
-    assert np.isfinite(magicc_ensemble.values).all(), 'some NaN in MAGICC run'
+    assert np.isfinite(gmt_ensemble.values).all(), 'some NaN in MAGICC run'
 
+    # Recombine GMT ensemble with binned ISIMIP data
+    quantiles = recombine_gmt_ensemble(binned_isimip_data, gmt_ensemble, o.quantiles)
 
-    # Recombine MAGICC with binned ISIMIP data
-    quantiles = recombine_magicc(binned_isimip_data, magicc_ensemble, o.quantiles)
-
-    # Write result to disk
+    # GMT result to disk
     logger.info(f"Write output to {o.output_file}")
     Path(o.output_file).parent.mkdir(exist_ok=True, parents=True)
     quantiles.to_csv(o.output_file)
