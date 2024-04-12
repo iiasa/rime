@@ -6,7 +6,7 @@ import argparse
 from isimip_client.client import ISIMIPClient
 
 from rimeX.tools import cdo
-from rimeX.config import config, config_parser
+from rimeX.config import CONFIG, config_parser
 from rimeX.logs import log_parser
 
 
@@ -17,7 +17,7 @@ _YEARS_ISIMIP3_RE = re.compile(r'(\d{4})_(\d{4}).nc')
 _YEARS_ISIMIP2_RE = re.compile(r'(\d{4})\d{4}-(\d{4})\d{4}.nc')
 
 
-def parse_years(path, simulation_round=config['simulation_round']):
+def parse_years(path, simulation_round=CONFIG["isimip.simulation_round"]):
     _YEARS_RE = _YEARS_ISIMIP2_RE if simulation_round is None or "ISIMIP2" in simulation_round else _YEARS_ISIMIP3_RE
     y1s, y2s = _YEARS_RE.search(Path(path).name).groups()
     y1, y2 = int(y1s), int(y2s)
@@ -28,7 +28,7 @@ def get_region_tag(bbox):
     return f"lat{b}to{t}lon{l}to{r}"
 
 
-def request_dataset(variables, experiment=None, model=None, download_folder='downloads', year_min=config["historical_year_min"], simulation_round=config["simulation_round"]):
+def request_dataset(variables, experiment=None, model=None, download_folder='downloads', year_min=CONFIG["isimip.historical_year_min"], simulation_round=CONFIG["isimip.simulation_round"]):
 
     results = []
     for v in variables:
@@ -60,15 +60,15 @@ def request_dataset(variables, experiment=None, model=None, download_folder='dow
 
 def main():
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser])
-    parser.add_argument("-v", "--variable", nargs='+', choices=config["variables"])
+    parser.add_argument("-v", "--variable", nargs='+', choices=CONFIG["isimip.variables"])
         # default=['tas', 'pr', 'sfcwind', 'twet'])
     # parser.add_argument("--country", nargs='+', default=[], help='alpha-3 code or custom name from countries.toml')
     # parser.add_argument("--download-region", help='specify a region larger than --countries for the download')
 
     group = parser.add_argument_group('Experiments')
-    group.add_argument("--experiment", nargs='+', default=config["experiments"], choices=config["experiments"])
-    group.add_argument("--model", nargs='+', default=config["models"], choices=config["models"] + [m.lower() for m in config["models"]])
-    group.add_argument("--simulation-round", default=config["simulation_round"])
+    group.add_argument("--experiment", nargs='+', default=CONFIG["isimip.experiments"], choices=CONFIG["isimip.experiments"])
+    group.add_argument("--model", nargs='+', default=CONFIG["isimip.models"], choices=CONFIG["isimip.models"] + [m.lower() for m in CONFIG["isimip.models"]])
+    group.add_argument("--simulation-round", default=CONFIG["isimip.simulation_round"])
 
     # These arguments come from an earlier, more general version of the code. They are not supposed to be changed here.
     # They are kept for back-compatibility but removed from the --help message to avoid confusion.
@@ -77,7 +77,7 @@ def main():
     group.add_argument("--daily", action='store_true', dest='daily', help=argparse.SUPPRESS)
     group.add_argument("--keep-daily", action='store_false', dest='remove_daily', help=argparse.SUPPRESS)
     group.add_argument("--mirror", help=argparse.SUPPRESS)  # in case we have direct access to PIK cluster, say
-    group.add_argument("--download-folder", default=config["download_folder"], help=argparse.SUPPRESS)
+    group.add_argument("--download-folder", default=CONFIG["isimip.download_folder"], help=argparse.SUPPRESS)
 
 
     o = parser.parse_args()

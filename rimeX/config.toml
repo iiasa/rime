@@ -1,12 +1,24 @@
+[isimip]
 simulation_round = "ISIMIP3b"
 download_folder = "/mnt/PROVIDE/isimip"
-climate_impact_explorer_orig = "/mnt/PROVIDE/climate_impact_explorer/data"
 climate_impact_explorer = "/mnt/PROVIDE/climate_impact_explorer/isimip3"
 models = [ "CanESM5", "CNRM-CM6-1", "CNRM-ESM2-1", "EC-Earth3", "MIROC6", "GFDL-ESM4", "IPSL-CM6A-LR", "MPI-ESM1-2-HR", "MRI-ESM2-0", "UKESM1-0-LL",]
 experiments = [ "historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460", "ssp585",]
 variables = [ "tas", "pr", "tasmax", "tasmin", "sfcwind", "hurs", "huss", "ps", "prsn", "rlds", "rsds"]
-weights = [ "latWeight", "gdp2005", "pop2005",]
 historical_year_min = 1980
+
+[preprocessing.regional]
+weights = [ "latWeight", "gdp2005", "pop2005",]
+masks_folder = "/mnt/PROVIDE/climate_impact_explorer/data/masks"
+
+[preprocessing.seasons]
+annual = [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,]
+winter = [ 12, 1, 2,]
+spring = [ 3, 4, 5,]
+summer = [ 6, 7, 8,]
+autumn = [ 9, 10, 11,]
+
+[emulator]
 projection_baseline = [ 1995, 2014,]
 projection_baseline_offset = 0.85
 warming_level_min = 1
@@ -20,10 +32,3 @@ gmt_interannual_variability_sd = 0.14
 samples = 20000
 isimip_binned_backend = [ "csv",]
 quantiles = [ 0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99,]
-
-[seasons]
-annual = [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,]
-winter = [ 12, 1, 2,]
-spring = [ 3, 4, 5,]
-summer = [ 6, 7, 8,]
-autumn = [ 9, 10, 11,]

@@ -10,13 +10,13 @@ import numpy as np
 import pandas as pd
 
 from rimeX.logs import logger, log_parser
-from rimeX.config import config, config_parser
+from rimeX.config import CONFIG, config_parser
 
 from rimeX.warminglevels import get_warming_level_file
 from rimeX.digitize import get_binned_isimip_records, make_models_equiprobable
 
 
-def load_magicc_ensemble(file, projection_baseline=config['projection_baseline'], projection_baseline_offset=config['projection_baseline_offset']):
+def load_magicc_ensemble(file, projection_baseline=CONFIG["emulator.projection_baseline"], projection_baseline_offset=CONFIG["emulator.projection_baseline_offset"]):
     """Read a MAGICC output file as a pandas DataFrame
 
     By default express w.r.t pre-industrial levels adjusted with observations around the projection baseline.
@@ -95,8 +95,8 @@ def digitize_magicc(magicc_ensemble, warming_levels):
     return np.digitize(magicc_ensemble, bins)
 
 
-def recombine_magicc_vectorized(binned_isimip_data, magicc_ensemble, quantile_levels=config["quantiles"], 
-    samples=config.get('samples', 5000), seed=config.get('seed', None)):
+def recombine_magicc_vectorized(binned_isimip_data, magicc_ensemble, quantile_levels=CONFIG["emulator.quantiles"], 
+    samples=CONFIG.get('emulator.samples', 5000), seed=CONFIG.get('emulator.seed', None)):
     """Take binned ISIMIP data and MAGICC time-series as input and  returns quantiles as output
 
     This method uses Monte Carlo sampling.
@@ -149,7 +149,7 @@ def recombine_magicc_vectorized(binned_isimip_data, magicc_ensemble, quantile_le
     return pd.DataFrame(quantiles, index=magicc_years, columns=quantile_levels)
 
 
-def recombine_magicc(binned_isimip_data, magicc_ensemble, quantile_levels=config["quantiles"]):
+def recombine_magicc(binned_isimip_data, magicc_ensemble, quantile_levels=CONFIG["emulator.quantiles"]):
     """Take binned ISIMIP data and MAGICC time-series as input and  returns quantiles as output
 
     Determinisitc method. This is the original method for "temperature" and "time" matching methods. 
@@ -174,7 +174,7 @@ def recombine_magicc(binned_isimip_data, magicc_ensemble, quantile_levels=config
     # digitize MAGICC temperature
     # bins for digitization
     all_warming_levels = np.sort(np.fromiter(set(r['warming_level'] for r in binned_isimip_data), float))
-    binsize = config["warming_level_step"] # this could possibly be derived from the above
+    binsize = CONFIG["emulator.warming_level_step"] # this could possibly be derived from the above
     # assign any outlier to the edges, to keep the median unbiased
     bins = all_warming_levels[1:] - binsize/2
     indices = np.digitize(magicc_ensemble, bins)
@@ -226,22 +226,22 @@ def main():
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser])
     
     group = parser.add_argument_group('Warming level matching')
-    group.add_argument("--matching-method", default=config['matching_method'])
-    group.add_argument("--running-mean-window", default=config['running_mean_window'])
+    group.add_argument("--matching-method", default=CONFIG["emulator.matching_method"])
+    group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"])
     group.add_argument("--warming-level-file", default=None)
-    group.add_argument("--gmt-interannual-variability-sd", type=float, default=config['gmt_interannual_variability_sd'])
-    group.add_argument("--samples", type=int, default=config['samples'])
+    group.add_argument("--gmt-interannual-variability-sd", type=float, default=CONFIG["emulator.gmt_interannual_variability_sd"])
+    group.add_argument("--samples", type=int, default=CONFIG["emulator.samples"])
 
     group = parser.add_argument_group('Indicator variable')
-    group.add_argument("-v", "--variable", choices=config["variables"], required=True)
+    group.add_argument("-v", "--variable", choices=CONFIG["isimip.variables"], required=True)
     group.add_argument("--region")
     group.add_argument("--subregion", help="if not provided, will default to region average")
     group.add_argument("--list-subregions", action='store_true', help="print all subregions and exit")
-    group.add_argument("--weights", required=True, choices=config["weights"])
-    group.add_argument("--season", required=True, choices=list(config["seasons"]))
+    group.add_argument("--weights", required=True, choices=CONFIG["preprocessing.regional.weights"])
+    group.add_argument("--season", required=True, choices=list(CONFIG["preprocessing.seasons"]))
 
     # egroup = group.add_mutually_exclusive_group()
-    # egroup.add_argument("--remove-baseline-temp", choices=config["variables"], required=True)
+    # egroup.add_argument("--remove-baseline-temp", choices=CONFIG["isimip.variables"], required=True)
 
     group = parser.add_argument_group('Aggregation')
     group.add_argument("--individual-years", action="store_true")
@@ -249,14 +249,14 @@ def main():
     group.add_argument("--equiprobable-models", action="store_true", help="if True, each model will have the same probability")
     group.add_argument("--model", nargs="+", help="if provided, only consider a set of specified model(s)")
     group.add_argument("--experiment", nargs="+", help="if provided, only consider a set of specified experiment(s)")
-    group.add_argument("--quantiles", nargs='+', default=config['quantiles'])
+    group.add_argument("--quantiles", nargs='+', default=CONFIG["emulator.quantiles"])
 
     group = parser.add_argument_group('Scenario')
     group.add_argument("--magicc-files", nargs='+', required=True)
 
     group = parser.add_argument_group('Result')
     group.add_argument("-O", "--overwrite", action='store_true', help='overwrite final results')
-    group.add_argument("--backend-isimip-bins", nargs="+", default=config["isimip_binned_backend"], choices=["csv", "feather"])
+    group.add_argument("--backend-isimip-bins", nargs="+", default=CONFIG["emulator.isimip_binned_backend"], choices=["csv", "feather"])
     parser.add_argument("--overwrite-isimip-bins", action='store_true', help='overwrite the intermediate calculations (binned isimip)')
     parser.add_argument("--overwrite-all", action='store_true', help='overwrite intermediate and final')
     group.add_argument("-o", "--output-file", required=True)
@@ -273,14 +273,14 @@ def main():
 
 
     if o.region is None:
-        all_regions = sorted([o.name for o in (Path(config["climate_impact_explorer_orig"])/"masks").glob("*")])
+        all_regions = sorted([o.name for o in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
         print(f"--region required. Please choose a region from {', '.join(all_regions)}")
         parser.exit(1)
         return
 
     if o.list_subregions:
         import pickle
-        pickle.load(open(f"{config['climate_impact_explorer_orig']}/masks/{o.region}/region_names.pkl", "rb"))
+        pickle.load(open(f'{CONFIG["preprocessing.regional.masks_folder"]}/{o.region}/region_names.pkl', "rb"))
         print(f"All subregions for {o.region}: {', '.join(all_subregions)}")
         parser.exit(0)
         return

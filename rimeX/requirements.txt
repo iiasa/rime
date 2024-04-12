@@ -3,3 +3,4 @@ numpy
 xarray
 PyYAML
 tqdm
+flatdict

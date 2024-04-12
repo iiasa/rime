@@ -8,9 +8,9 @@ import numpy as np
 import pandas as pd
 from rimeX.regional_average import get_files
 from rimeX.logs import logger, log_parser
-from rimeX.config import config, config_parser
+from rimeX.config import CONFIG, config_parser
 
-def global_mean_file(variable, model, experiment, root=config["climate_impact_explorer"]):
+def global_mean_file(variable, model, experiment, root=CONFIG["isimip.climate_impact_explorer"]):
     return Path(root) / f"isimip_global_mean/{variable}/globalmean_{variable}_{model.lower()}_{experiment}.csv"
 
 
@@ -58,7 +58,7 @@ def get_matching_years_by_time_bucket(model, all_annual, warming_levels, running
         smoothed = all_smoothed[experiment].dropna()
         warming_rate = all_smoothed[experiment].diff()
         accumulated_warming = all_annual[experiment].cumsum()
-        y1, y2 = config['projection_baseline']
+        y1, y2 = CONFIG["emulator.projection_baseline"]
         accumulated_warming -= accumulated_warming.loc[y1:y2].mean()
 
         sort = np.argsort(smoothed.values)
@@ -139,7 +139,7 @@ def get_matching_years_by_temperature_bucket(model, all_annual, warming_levels, 
 
     for experiment in all_annual:
         data = all_annual[experiment].dropna()
-        y1, y2 = config['projection_baseline']
+        y1, y2 = CONFIG["emulator.projection_baseline"]
         accumulated_warming = data.cumsum()
         warming_rate = all_smoothed[experiment].diff()
         accumulated_warming -= accumulated_warming.loc[y1:y2].mean()
@@ -166,7 +166,7 @@ def get_matching_years_by_pure_temperature(model, all_annual, warming_levels):
 
     for experiment in all_annual:
         data = all_annual[experiment].dropna()
-        y1, y2 = config['projection_baseline']
+        y1, y2 = CONFIG["emulator.projection_baseline"]
         accumulated_warming = data.cumsum()
         accumulated_warming -= accumulated_warming.loc[y1:y2].mean()
         # warming_rate = data.diff()
@@ -194,33 +194,33 @@ def get_warming_level_file(matching_method, running_mean_window, temperature_sig
         natvarlab = "" if matching_method == "pure" else f"-bucket_climate-{running_mean_window}-years"
         warming_level_name = f"warming_level_year_by_{matching_method_label}{natvarlab}.csv"
     # return Path(__file__).parent / warming_level_folder / warming_level_name
-    return Path(config["climate_impact_explorer"]) / "warming_levels" / warming_level_name
+    return Path(CONFIG["isimip.climate_impact_explorer"]) / "warming_levels" / warming_level_name
 
 def main():
     parser = argparse.ArgumentParser(parents=[log_parser, config_parser])
     # parser.add_argument("--variable", nargs="+", default=["tas"], choices=["tas"])
-    parser.add_argument("--models", nargs="+", default=config["models"], choices=config["models"])
-    parser.add_argument("--experiments", nargs="+", default=config["experiments"], choices=config["experiments"])
+    parser.add_argument("--models", nargs="+", default=CONFIG["isimip.models"], choices=CONFIG["isimip.models"])
+    parser.add_argument("--experiments", nargs="+", default=CONFIG["isimip.experiments"], choices=CONFIG["isimip.experiments"])
     
     egroup = parser.add_mutually_exclusive_group()
     group = egroup.add_argument_group('warming levels')
-    group.add_argument("--min-warming-level", type=float, default=config["warming_level_min"])
-    group.add_argument("--step-warming-level", type=float, default=config["warming_level_step"])
-    group.add_argument("--max-warming-level", type=float, default=config.get("warming_level_max", 10))
+    group.add_argument("--min-warming-level", type=float, default=CONFIG["emulator.warming_level_min"])
+    group.add_argument("--step-warming-level", type=float, default=CONFIG["emulator.warming_level_step"])
+    group.add_argument("--max-warming-level", type=float, default=CONFIG.get("emulator.warming_level_max", 10))
     egroup.add_argument("--warming-levels", nargs='*', type=float)
 
-    parser.add_argument("--running-mean-window", type=int, default=config['running_mean_window'])
-    parser.add_argument("--projection-baseline", nargs=2, type=int, default=config['projection_baseline'])
-    parser.add_argument("--projection-baseline-offset", type=float, default=config['projection_baseline_offset'])
-    parser.add_argument("--matching-method", default=config["matching_method"], choices=["time", "temperature", "pure"])
-    parser.add_argument("--temperature-sigma-range", type=float, default=config["temperature_sigma_range"])
-    parser.add_argument("--temperature-sigma-first-year", type=int, default=config["temperature_sigma_first_year"])
-    parser.add_argument("--temperature-bin-size", type=float, default=config["temperature_bin_size"])
+    parser.add_argument("--running-mean-window", type=int, default=CONFIG["emulator.running_mean_window"])
+    parser.add_argument("--projection-baseline", nargs=2, type=int, default=CONFIG["emulator.projection_baseline"])
+    parser.add_argument("--projection-baseline-offset", type=float, default=CONFIG["emulator.projection_baseline_offset"])
+    parser.add_argument("--matching-method", default=CONFIG["emulator.matching_method"], choices=["time", "temperature", "pure"])
+    parser.add_argument("--temperature-sigma-range", type=float, default=CONFIG["emulator.temperature_sigma_range"])
+    parser.add_argument("--temperature-sigma-first-year", type=int, default=CONFIG["emulator.temperature_sigma_first_year"])
+    parser.add_argument("--temperature-bin-size", type=float, default=CONFIG["emulator.temperature_bin_size"])
 
     parser.add_argument("-o", "--output-file")
     parser.add_argument("-O", "--overwrite", action="store_true")
 
-    # parser.add_argument("-o", "--output-file", default=config["warming_level_file"])
+    # parser.add_argument("-o", "--output-file", default=CONFIG["emulator.warming_level_file"])
 
     o = parser.parse_args()
 

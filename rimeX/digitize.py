@@ -15,7 +15,7 @@ import pandas as pd
 # import xarray as xa
 
 from rimeX.logs import logger
-from rimeX.config import config
+from rimeX.config import CONFIG
 from rimeX.warminglevels import get_warming_level_file
 from rimeX.regional_average import get_regional_averages_file
 
@@ -30,13 +30,13 @@ def load_seasonal_means_per_region(variable, model, experiment, region, subregio
     seasonal_means = {}
 
     for season in seasons:
-        month_indices = np.asarray(config['seasons'][season]) - 1
+        month_indices = np.asarray(CONFIG["preprocessing.seasons"][season]) - 1
         seasonal_means[season] = matrix[:, month_indices].mean(axis=1)
 
     return pd.DataFrame(seasonal_means, index=[datetime.datetime.fromisoformat(ts).year for ts in monthly.index.values[11::12]])
 
 
-def load_regional_indicator_data(variable, region, subregion, weights, season='annual', models=config['models'], experiments=config['experiments']):
+def load_regional_indicator_data(variable, region, subregion, weights, season='annual', models=CONFIG["isimip.models"], experiments=CONFIG["isimip.experiments"]):
     """higher level function than load_seasonal_means_per_region
 
     => add historical data
@@ -67,11 +67,11 @@ def load_regional_indicator_data(variable, region, subregion, weights, season='a
 
             # indicator-dependent treatment
             if variable == "tas":
-                y1, y2 = config["projection_baseline"]
+                y1, y2 = CONFIG["emulator.projection_baseline"]
                 data -= data.loc[y1:y2].mean()
 
             elif variable == "pr":
-                y1, y2 = config["projection_baseline"]
+                y1, y2 = CONFIG["emulator.projection_baseline"]
                 data = (data / data.loc[y1:y2].mean() - 1) * 100
 
             all_data[(model, experiment)] = data
@@ -81,7 +81,7 @@ def load_regional_indicator_data(variable, region, subregion, weights, season='a
 
 def resample_with_natural_variability(records,
     sigma=0.14,
-    binsize=config["warming_level_step"],
+    binsize=CONFIG["emulator.warming_level_step"],
     ):
     """Enlarge the warming_level: value mapping to account for natural variability
 
@@ -183,7 +183,7 @@ def make_models_equiprobable(records):
 
 
 def _bin_isimip_records(indicator_data, warming_levels, 
-    matching_method=config["matching_method"], running_mean_window=config["running_mean_window"],
+    matching_method=CONFIG["emulator.matching_method"], running_mean_window=CONFIG["emulator.running_mean_window"],
     warming_levels_reached=None):
     """Load ISISMIP data for a {variable, region, subregion, weights, season}, binned according to warming levels. 
 
@@ -271,9 +271,9 @@ def _bin_isimip_records(indicator_data, warming_levels,
 
 
 def bin_isimip_records(indicator_data, warming_levels, 
-    matching_method=config["matching_method"], running_mean_window=config["running_mean_window"],
+    matching_method=CONFIG["emulator.matching_method"], running_mean_window=CONFIG["emulator.running_mean_window"],
     individual_years=False, average_scenarios=False, equiprobable_models=False,
-    gmt_interannual_variability_sd=config['gmt_interannual_variability_sd'], 
+    gmt_interannual_variability_sd=CONFIG["emulator.gmt_interannual_variability_sd"], 
     warming_levels_reached=None):
     """Load ISISMIP data for a {variable, region, subregion, weights, season}, binned according to warming levels, and apply some additional filtering
 
@@ -328,13 +328,13 @@ def bin_isimip_records(indicator_data, warming_levels,
 
 
 def get_binned_isimip_file(variable, region, subregion, weights, season, 
-    matching_method=config["matching_method"], 
-    running_mean_window=config["matching_method"], 
+    matching_method=CONFIG["emulator.matching_method"], 
+    running_mean_window=CONFIG["emulator.matching_method"], 
     individual_years=False, 
     average_scenarios=False, 
     equiprobable_models=False,
-    gmt_interannual_variability_sd=config['gmt_interannual_variability_sd'], 
-    root=config["climate_impact_explorer"], ext='.csv'):
+    gmt_interannual_variability_sd=CONFIG["emulator.gmt_interannual_variability_sd"], 
+    root=CONFIG["isimip.climate_impact_explorer"], ext='.csv'):
 
     scenarioavg = "_scenarioavg" if average_scenarios else ""
     natvartag = f"natvar-sd-{gmt_interannual_variability_sd}" if matching_method == "pure" else f"_{running_mean_window}yrs_natvar{individual_years}"
@@ -388,34 +388,34 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
 
 def get_subregions(region):
     import pickle
-    pkl = pickle.load(open(f"{config['climate_impact_explorer_orig']}/masks/{o.region}/region_names.pkl", "rb"))
+    pkl = pickle.load(open(f'{CONFIG["preprocessing.regional.masks_folder"]}/{o.region}/region_names.pkl', "rb"))
     return pkl["all_subregions"]
         # all_subregions = get_regional_averages_file(o.variable, o.model, o.experiment, o.region, o.weights).columns
 
 
 def main():
 
-    all_regions = sorted([f.name for f in (Path(config["climate_impact_explorer_orig"])/"masks").glob("*")])    
+    all_regions = sorted([f.name for f in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
 
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter)
     
     group = parser.add_argument_group('Warming level matching')
-    group.add_argument("--matching-method", default=config['matching_method'])
-    group.add_argument("--running-mean-window", default=config['running_mean_window'])
+    group.add_argument("--matching-method", default=CONFIG["emulator.matching_method"])
+    group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"])
     group.add_argument("--warming-level-file", default=None)
     group.add_argument("--individual-years", action="store_true")
     group.add_argument("--average-scenarios", action="store_true")
 
     group = parser.add_argument_group('Indicator variable')
-    group.add_argument("-v", "--variable", nargs="+", choices=config["variables"], default=config["variables"])
+    group.add_argument("-v", "--variable", nargs="+", choices=CONFIG["isimip.variables"], default=CONFIG["isimip.variables"])
     group.add_argument("--region", nargs="+", default=all_regions, choices=all_regions)
     # group.add_argument("--subregion", nargs="+", help="if not provided, will default to region average")
     # group.add_argument("--list-subregions", action='store_true', help="print all subregions and exit")
-    group.add_argument("--weights", nargs="+", default=config["weights"], choices=config["weights"])
-    group.add_argument("--season", nargs="+", default=list(config["seasons"]), choices=list(config["seasons"]))
+    group.add_argument("--weights", nargs="+", default=CONFIG["preprocessing.regional.weights"], choices=CONFIG["preprocessing.regional.weights"])
+    group.add_argument("--season", nargs="+", default=list(CONFIG["preprocessing.seasons"]), choices=list(CONFIG["preprocessing.seasons"]))
 
     group = parser.add_argument_group('Result')
-    group.add_argument("--backend", nargs="+", default=config["isimip_binned_backend"], choices=["csv", "feather"])
+    group.add_argument("--backend", nargs="+", default=CONFIG["emulator.isimip_binned_backend"], choices=["csv", "feather"])
     group.add_argument("-O", "--overwrite", action='store_true')
     group.add_argument("--cpus", type=int)
 

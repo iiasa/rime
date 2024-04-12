@@ -1,11 +1,21 @@
 import argparse
 from pathlib import Path
+from flatdict import FlatDict
 import toml
 
 from rimeX.logs import logger
 
+def _flatten_config(cfg):
+    retu
+
+def load_config(file):
+    with open(file) as f:
+        cfg = toml.load(f)
+    return FlatDict(cfg, delimiter=".")
+
 DEFAULT_CONFIG_FILE = Path(__file__).parent/"config.toml"
-DEFAULT_CONFIG = toml.load(open(DEFAULT_CONFIG_FILE))
+DEFAULT_CONFIG = load_config(DEFAULT_CONFIG_FILE)
+CONFIG = DEFAULT_CONFIG.copy()
 
 def search_default_config():
     # seach current working directory
@@ -31,14 +41,13 @@ if o.version:
     print(__version__)
     config_parser.exit(0)
 
-
 def set_config(file_path):
-    global config
-    config = toml.load(open(file_path))
+    global CONFIG
+    CONFIG = load_config(file_path)
 
     # update undefined fields with defaults
-    for field in DEFAULT_CONFIG:
-        config.setdefault(field, DEFAULT_CONFIG[field])
+    for field, default_value in DEFAULT_CONFIG.items():
+        CONFIG.setdefault(field, default_value)
 
 set_config(o.config_file)
 
@@ -46,8 +55,8 @@ set_config(o.config_file)
 def main():
     """show configuration file"""
     parser = argparse.ArgumentParser(parents=[config_parser])
-    o = config_parser.parse_args()
-    print(toml.dumps(config))
+    o = parser.parse_args()
+    print(toml.dumps(CONFIG.as_dict()))
     parser.exit(0)
 
 

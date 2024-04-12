@@ -8,18 +8,18 @@ import xarray as xa
 from rimeX.regional_average import get_files
 from rimeX.tools import cdo
 from rimeX.logs import logger, log_parser
-from rimeX.config import config, config_parser
+from rimeX.config import CONFIG, config_parser
 
 
-def global_mean_file(variable, model, experiment, root=config["climate_impact_explorer"]):
+def global_mean_file(variable, model, experiment, root=CONFIG["isimip.climate_impact_explorer"]):
     return Path(root) / f"isimip_global_mean/{variable}/globalmean_{variable}_{model.lower()}_{experiment}.csv"
 
 
 def main():
     parser = argparse.ArgumentParser(parents=[log_parser, config_parser])
     # parser.add_argument("--variable", nargs="+", default=["tas"], choices=["tas"])
-    parser.add_argument("--model", nargs="+", default=config["models"], choices=config["models"])
-    parser.add_argument("--experiment", nargs="+", default=config["experiments"], choices=config["experiments"])
+    parser.add_argument("--model", nargs="+", default=CONFIG["isimip.models"], choices=CONFIG["isimip.models"])
+    parser.add_argument("--experiment", nargs="+", default=CONFIG["isimip.experiments"], choices=CONFIG["isimip.experiments"])
     o = parser.parse_args()
 
     variable = "tas"
