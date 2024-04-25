@@ -14,7 +14,7 @@ from rimeX.logs import logger
 
 import rimeX_datasets
 _DEFAULTDATADIR = rimeX_datasets.__path__[0]
-
+ALL_DATASETS = ['werning2024']
 
 def get_downloadpath(relpath=''):
     return Path(CONFIG.get('downloaddir', CACHE_FOLDER / "download")) / relpath
@@ -213,7 +213,7 @@ def maybe_download_module_data(name):
 def main():
     import argparse
     parser = argparse.ArgumentParser(__name__)
-    parser.add_argument("--name", nargs='+', default=[])
+    parser.add_argument("--name", nargs='+', default=[], choices=ALL_DATASETS)
     parser.add_argument("--json")
     parser.add_argument("--all", action='store_true')
 
@@ -234,6 +234,10 @@ def main():
 
     else:
         if o.all:
-            o.name = ['werning2024']
+            o.name = ALL_DATASETS
+        if not o.name:
+            print("Available datasets are {' '.join(ALL_DATASETS)}. Use the --name NAME or --all flag.")
+            parser.exit(1)
+
         for name in o.name:
             maybe_download_module_data(name)

@@ -42,6 +42,7 @@ The following scripts are made available, for which inline help is available wit
 - Data download and pre-processing scripts (presently ISIMIP only, variables tas and pr)
 
 	- `rime-download-isimip` : download ISIMIP data
+	- `rime-download` : download other datasets (Werning et al 2024) etc. (platform-independent)
   	- `rime-pre-gmt` : pre-processing: crunch global-mean-temperature
 	- `rime-pre-region` : pre-precessing: crunch regional averages (=> this currently requires Climate Impact Explorer masks)
 
