@@ -38,7 +38,7 @@ all = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["rimeX", "rimeX.legacy"]
+include = ["rimeX", "rimeX.legacy", "rimeX_datasets"]
 
 [project.scripts]
 rime-config = "rimeX.config:main"
@@ -54,6 +54,3 @@ homepage = "https://github.com/iiasa/rime/tree/rimeX"
 
 [tool.setuptools_scm]
 write_to = "rimeX/_version.py"
-
-[tool.setuptools.package-data]
-myModule = ["*.yml"]

@@ -292,6 +292,7 @@ def main():
         if not o.iam_file:
             parser.error("Need to indicate MAGICC or IAM data file --iam-file")
             parser.exit(1)
+            
         import pyam
         iamdf = pyam.IamDataFrame(o.iam_file)
         filter_kw = dict(o.iam_filter)

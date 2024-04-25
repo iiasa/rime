@@ -1,8 +1,10 @@
+import os
 import argparse
 from pathlib import Path
 from flatdict import FlatDict
 import toml
 
+import rimeX
 from rimeX.logs import logger
 
 def load_config(file):
@@ -14,6 +16,14 @@ def load_config(file):
 DEFAULT_CONFIG_FILE = Path(__file__).parent/"config.toml"
 DEFAULT_CONFIG = load_config(DEFAULT_CONFIG_FILE)
 CONFIG = DEFAULT_CONFIG.copy()
+
+# Source: https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
+_HOME = os.getenv("HOME")
+_CACHE_FOLDER_SYSTEM = os.getenv("XDG_CACHE_HOME", os.path.join(_HOME, ".cache"))
+CACHE_FOLDER = Path(_CACHE_FOLDER_SYSTEM) / rimeX.__name__
+
+_CONFIG_FOLDER_SYSTEM = os.getenv("XDG_CONFIG_HOME", os.path.join(_HOME, ".config"))
+GLOBAL_CONFIG_FILE = Path(_CONFIG_FOLDER_SYSTEM) / (rimeX.__name__ + ".toml")
 
 def search_default_config():
     # seach current working directory
@@ -48,7 +58,6 @@ def set_config(file_path):
         CONFIG.setdefault(field, default_value)
 
 set_config(o.config_file)
-
 
 def main():
     """show configuration file"""
