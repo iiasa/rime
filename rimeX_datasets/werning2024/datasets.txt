@@ -1,8 +1,0 @@
-https://zenodo.org/records/10868066/files/table_output_avoided_impacts.zip?download=1
-https://zenodo.org/records/10868066/files/table_output_climate_exposure.zip?download=1
-https://zenodo.org/records/10868066/files/precipitation.zip?download=1
-https://zenodo.org/records/10868066/files/temperature.zip?download=1
-https://zenodo.org/records/10868066/files/air_pollution.zip?download=1
-https://zenodo.org/records/10868066/files/energy.zip?download=1
-https://zenodo.org/records/10868066/files/hydrology.zip?download=1
-https://zenodo.org/records/10868066/files/land.zip?download=1

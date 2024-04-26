@@ -88,7 +88,7 @@ def _resume_download(url, destination, chunk_size=MEGABYTES):
     return response
 
 
-def _get_extension(downloaded):
+def _get_extension(archive):
     stripped = archive.strip().split("?")[0]
     if stripped.endswith(".tar.gz"):
         ext = ".tar.gz"
@@ -116,7 +116,6 @@ def extract_archive(downloaded, path, ext=None, members=None, recursive=False, d
         import zipfile
         with zipfile.ZipFile(archive, 'r') as zip_ref:
             zip_ref.extractall(path, members=members)
-            extract_zip(archive, path, recursive=recursive, members=members)
             if members is None: members = zip_ref.namelist()
 
     elif ext in (".tar", ".tar.gz"):
@@ -147,10 +146,9 @@ def extract_archive(downloaded, path, ext=None, members=None, recursive=False, d
         os.remove(archive)
 
 def get_filename_from_url(url):
-    import urllib
-    return os.path.basename(urllib.parse.urlparse(url).path)
+    return os.path.basename(url)
 
-def require_dataset(name, url=None, extract=True, force_download=None, extract_name=None, members=None, recursive=False, skip_download=False, **metadata):
+def require_dataset(name, url=None, extract=True, force_download=None, extract_name=None, members=None, recursive=False, skip_download=False, ext=None, **metadata):
 
     filepath = get_datapath(name)
     dataset_json = get_datapath("datasets.json")
@@ -160,11 +158,10 @@ def require_dataset(name, url=None, extract=True, force_download=None, extract_n
     if not skip_download and (not filepath.exists() or force_download):
 
         download_name = get_filename_from_url(url)
-        downloaded = download_folder / download_name
+        downloaded = download_folder / name / download_name
         download_folder.mkdir(exist_ok=True, parents=True)
 
         if not (downloaded).exists() or force_download:
-            downloaded.parent.mkdir()
             download(url, downloaded)
 
         if extract:
@@ -226,17 +223,18 @@ def main():
 
         # download select only one out of several
         if o.name:
-            datasets = [ dataset for dataset in datasets if dataset[name] in o.name ]
+            datasets = [ dataset for dataset in datasets if dataset in o.name ]
 
         # download all
         for dataset in datasets:
+            print(dataset)
             require_dataset(**dataset)
 
     else:
         if o.all:
             o.name = ALL_DATASETS
         if not o.name:
-            print("Available datasets are {' '.join(ALL_DATASETS)}. Use the --name NAME or --all flag.")
+            print(f"Available datasets are:\n  {' '.join(ALL_DATASETS)}\nUse the --name NAME or --all flag.")
             parser.exit(1)
 
         for name in o.name:
