@@ -1,20 +1,21 @@
 """Handle remote datasets to be downloaded
 """
 import os
+import fnmatch
 from pathlib import Path
 import json
 import copy
 import datetime
 import tqdm
 import shutil
+import functools
 
 import rimeX
-from rimeX.config import CACHE_FOLDER, CONFIG
-from rimeX.logs import logger
+from rimeX.config import CACHE_FOLDER, CONFIG, config_parser
+from rimeX.logs import logger, log_parser
 
 import rimeX_datasets
 _DEFAULTDATADIR = rimeX_datasets.__path__[0]
-ALL_DATASETS = ['werning2024']
 
 def get_downloadpath(relpath=''):
     return Path(CONFIG.get('downloaddir', CACHE_FOLDER / "download")) / relpath
@@ -200,42 +201,101 @@ def require_dataset(name, url=None, extract=True, force_download=None, extract_n
 
     return filepath
 
-def maybe_download_module_data(name):
-    " just import a module (which presumably contains a require_dataset statement or download function) "
-    from importlib import import_module
-    m = import_module(rimeX.datasets.__name__ + "." + name)
-    if hasattr(m, "download"):
-        m.download()
 
+DATASET_REGISTER = { "records": [] }
+
+def register_dataset(name, url=None, **kwargs):
+    """Add dataset to the DATASET_REGISTER (useful for download scripts) and return require function
+    """
+    record = {"name": name, "url": url, **kwargs }
+    DATASET_REGISTER['records'].append(record)
+    return functools.partial(require_dataset, **record)
+
+
+def download_by_records(records, **kwargs):
+
+    for r in records:
+        require_dataset(**r, **kwargs)
+
+def expand_names(names):
+    """The input list may contain wild cards
+    """
+    all_datasets = [r['name'] for r in DATASET_REGISTER['records']]    
+    expanded_names = []
+    for name in names:
+        expanded_names.extend(fnmatch.filter(all_datasets, name))
+    return expanded_names
+
+def download_by_names(names, **kwargs):
+    return download_by_records([r for r in DATASET_REGISTER['records'] if r['name'] in names], **kwargs)
+
+def print_available_datasets():
+    all_datasets = [r['name'] for r in DATASET_REGISTER['records']]
+    print(f"Available datasets are:\n  {' '.join(all_datasets)}")
+
+def print_local_datasets():
+    available_datasets = [r['name'] for r in DATASET_REGISTER['records'] if get_datapath(r['name']).exists()]
+    print(f"Datasets found locally are:\n  {' '.join(available_datasets)}")
+
+
+def import_all_dataset_modules():
+    """Populate the DATASET_REGISTER dictionary. 
+    This is equivalent to top-module-level statement `from rimeX.datasets import *`
+    """
+    from importlib import import_module
+    import rimeX.datasets
+    for name in rimeX.datasets.__all__:
+        import_module("." + name, "rimeX.datasets")
+
+
+# Needs to be packed in 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(__name__)
-    parser.add_argument("--name", nargs='+', default=[], choices=ALL_DATASETS)
-    parser.add_argument("--json")
-    parser.add_argument("--all", action='store_true')
+    import_all_dataset_modules()
+
+    all_datasets = [r['name'] for r in DATASET_REGISTER['records']]
+
+    parser = argparse.ArgumentParser(__name__, parents=[config_parser, log_parser])
+    e = parser.add_mutually_exclusive_group()
+    e.add_argument("--name", nargs='+', default=[], help="List of dataset names to be downloaded. Wildcard are allowed.")
+    e.add_argument("--json", action='store_true', help=f"Download datasets from json file (custom selection of datasets).")
+    parser.add_argument("--json-files", nargs='+', default=[get_datapath('datasets.json')], help='specify alternative json file(s)')
+    parser.add_argument("--ls", action="store_true", help='show all available datasets')
+    parser.add_argument("--ls-local", action="store_true", help='list locally available datasets (datasets that have already been downloaded)')
+    parser.add_argument("--all", action='store_true', help='download all available datasets')
+    parser.add_argument("--force", action='store_true', help='force new download')
 
     o = parser.parse_args()
 
+    if o.ls:
+        print_available_datasets()
+        return
+
+    if o.ls_local:
+        print_local_datasets()
+        return
+
+    if o.all:
+        o.name = all_datasets
+
     # download from json file
     if o.json:
-        js = json.load(open(o.json))    
-        datasets = js["records"]
+        records = []
+        for jsfile in o.json_files:
+            js = json.load(open(jsfile))
+            records.extend(js["records"])
+        download_by_records(records, force_download=o.force)
+        return
 
-        # download select only one out of several
-        if o.name:
-            datasets = [ dataset for dataset in datasets if dataset in o.name ]
+    # download select only one out of several
+    if not o.name:
+        print_available_datasets()
+        print(f"Use the --name NAME or --all flag to specify datasets to download.")
+        parser.exit(1)
 
-        # download all
-        for dataset in datasets:
-            print(dataset)
-            require_dataset(**dataset)
+    expanded_names = expand_names(o.name)
+    download_by_names(expanded_names, force_download=o.force)
 
-    else:
-        if o.all:
-            o.name = ALL_DATASETS
-        if not o.name:
-            print(f"Available datasets are:\n  {' '.join(ALL_DATASETS)}\nUse the --name NAME or --all flag.")
-            parser.exit(1)
 
-        for name in o.name:
-            maybe_download_module_data(name)
+if __name__ == "__main__":
+    main()    
