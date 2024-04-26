@@ -9,6 +9,7 @@ import datetime
 import tqdm
 import shutil
 import functools
+from importlib import import_module
 
 import rimeX
 from rimeX.config import CACHE_FOLDER, CONFIG, config_parser
@@ -242,8 +243,6 @@ def import_all_dataset_modules():
     """Populate the DATASET_REGISTER dictionary. 
     This is equivalent to top-module-level statement `from rimeX.datasets import *`
     """
-    from importlib import import_module
-    import rimeX.datasets
     for name in rimeX.datasets.__all__:
         import_module("." + name, "rimeX.datasets")
 
