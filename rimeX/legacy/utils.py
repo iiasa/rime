@@ -1,11 +1,11 @@
 # utils.py
 # Small helper functions for preparation of data and used also within functions.
 
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyam
 import yaml
-
 
 def fix_duplicate_temps(df, years):
     """
@@ -171,7 +171,7 @@ def load_indicator_params():
     params : dict
 
     """
-    with open("rimeX.legacy.indicator_params.yml", "r") as f:
+    with open(Path(__file__).parent / "indicator_params.yml", "r") as f:
         params = yaml.full_load(f)
         
     return params
