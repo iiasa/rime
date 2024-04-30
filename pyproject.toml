@@ -38,6 +38,10 @@ all = [
     "dask[distributed]",
     "holoviews", 
     "hvplot",
+    # rimeX.legacy : plot dashboard:
+    "cartopy",
+    "geoviews",
+    "pyproj",
 ]
 
 [tool.setuptools.packages.find]

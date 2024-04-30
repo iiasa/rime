@@ -7,3 +7,4 @@ notebooks/test.ipynb
 .ipynb_checkpoints
 *.xlsx#
 rimeX_datasets.downloads
+notebooks
