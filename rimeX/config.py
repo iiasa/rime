@@ -59,6 +59,10 @@ def set_config(file_path):
 
 set_config(o.config_file)
 
+
+def get_outputpath(relpath):
+    return Path(CONFIG.get("output_folder", "output")) / relpath
+
 def main():
     """show configuration file"""
     parser = argparse.ArgumentParser(parents=[config_parser])

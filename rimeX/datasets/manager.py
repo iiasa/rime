@@ -12,7 +12,7 @@ import functools
 from importlib import import_module
 
 import rimeX
-from rimeX.config import CACHE_FOLDER, CONFIG, config_parser
+from rimeX.config import CACHE_FOLDER, CONFIG, config_parser, get_outputpath
 from rimeX.logs import logger, log_parser
 
 import rimeX_datasets
