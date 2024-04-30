@@ -91,12 +91,21 @@ def _resume_download(url, destination, chunk_size=MEGABYTES):
 
 
 def _get_extension(archive):
-    stripped = archive.strip().split("?")[0]
+    stripped = str(archive).strip().split("?")[0]
     if stripped.endswith(".tar.gz"):
         ext = ".tar.gz"
     else:
         basename, ext = os.path.splitext(stripped)
     return ext
+
+
+def _is_archive(path, ext=None):
+    if ext is None:
+        ext = _get_extension(path)
+    return ext in KNOWN_ARCHIVE_EXTENSIONS
+
+
+KNOWN_ARCHIVE_EXTENSIONS = [".zip", ".tar", ".gz"]
 
 
 def extract_archive(downloaded, path, ext=None, members=None, recursive=False, delete_archive=False):
@@ -150,7 +159,7 @@ def extract_archive(downloaded, path, ext=None, members=None, recursive=False, d
 def get_filename_from_url(url):
     return os.path.basename(url)
 
-def require_dataset(name, url=None, extract=True, force_download=None, extract_name=None, members=None, recursive=False, skip_download=False, ext=None, **metadata):
+def require_dataset(name, url=None, extract=None, force_download=None, extract_name=None, members=None, recursive=False, skip_download=False, ext=None, **metadata):
 
     filepath = get_datapath(name)
     dataset_json = get_datapath("datasets.json")
@@ -166,12 +175,21 @@ def require_dataset(name, url=None, extract=True, force_download=None, extract_n
         if not (downloaded).exists() or force_download:
             download(url, downloaded)
 
+        if extract is None:
+            if _is_archive(downloaded, ext=ext):
+                extract = True
+            else:
+                extract = False
+
+        target = get_datapath(extract_name or name)
+
         if extract:
-            extract_archive(downloaded, get_datapath(extract_name or name), ext=ext, members=members, recursive=recursive)
+            extract_archive(downloaded, target, ext=ext, members=members, recursive=recursive)
 
         else:
-            logger.info(f"mv {downloaded} {extract_path}")
-            shutil.move(downloaded, extract_path)
+            logger.info(f"mv {downloaded} {target}")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(downloaded, target)
 
         # also keep a centralized .json that can be git-tracked
         metadata.update({"url": url, "date": str(datetime.datetime.now()), "extract_name": str(extract_name) if extract_name else None, "name": str(name), "ext": ext, "members": members, "recursive": recursive})
