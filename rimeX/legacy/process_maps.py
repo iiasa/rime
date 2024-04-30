@@ -23,9 +23,12 @@ import yaml
 from dask import delayed
 
 # from dask.distributed import Client
-from rimeX.legacy.process_config import *
-from rimeX.legacy.rime_functions import *
-from rimeX.legacy.utils import *
+from rimeX.legacy.process_config import (
+    yaml_path, fname_input_scenarios, ftype,
+    temp_variable, num_workers, output_folder_maps, impact_data_dir, 
+    years, interpolation)
+from rimeX.legacy.rime_functions import map_transform_gwl_wrapper, plot_maps_dashboard
+from rimeX.legacy.utils import tidy_mapdata, remove_ssp_from_ds, ssp_helper
 
 
 # from dask.diagnostics import Profiler, ResourceProfiles, CacheProfiler
@@ -36,7 +39,7 @@ dask.config.set(num_workers=num_workers)
 # dask.config.set(scheduler='synchronous')
 
 
-with open("rime" + yaml_path, "r") as f:
+with open(yaml_path, "r") as f:
     params = yaml.full_load(f)
 
 
@@ -58,7 +61,7 @@ short = params["indicators"][ind][var]["short_name"]
 
 ssp = "ssp2"
 # Test multiple scenarios, 1 indicator
-files = glob.glob(os.path.join(impact_data_dir, ind, f"*{short}_{ssp}*{ftype}.nc4"))
+files = glob.glob(os.path.join(impact_data_dir, ind+"*", f"*{short}_{ssp}*{ftype}.nc4"))
 mapdata = xr.open_mfdataset(
     files, preprocess=remove_ssp_from_ds, combine="nested", concat_dim="gwl"
 )
@@ -79,7 +82,8 @@ map_out_MS = map_transform_gwl_wrapper(
 
 comp = dict(zlib=True, complevel=5)
 encoding = {var: comp for var in map_out_MS.data_vars}
-filename = f"{output_folder_maps}scenario_maps_multiscenario_{ftype}.nc"
+filename = os.path.join(output_folder_maps, f"scenario_maps_multiscenario_{ftype}.nc")
+os.makedirs(output_folder_maps, exist_ok=True)
 map_out_MS.to_netcdf(filename, encoding=encoding)
 
 
@@ -120,7 +124,7 @@ for ind in indicators:
     for var in params["indicators"][ind]:
         short = params["indicators"][ind][var]["short_name"]
         files = glob.glob(
-            os.path.join(impact_data_dir, ind, f"*{short}_{ssp}*{ftype}.nc4")
+            os.path.join(impact_data_dir, "*", f"*{short}_{ssp}*{ftype}.nc4")
         )
         mapdata[short] = xr.open_mfdataset(
             files, preprocess=remove_ssp_from_ds, combine="nested", concat_dim="gwl"
