@@ -34,6 +34,10 @@ dynamic = ["version"]
 all = [
     "isimip_client@https://github.com/ISI-MIP/isimip-client/archive/refs/tags/1.0.1.zip",
     "pyam-iamc",
+    # below for rimeX legacy code and postprocessing to work as expected
+    "dask[distributed]",
+    "holoviews", 
+    "hvplot",
 ]
 
 [tool.setuptools.packages.find]
