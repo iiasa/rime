@@ -14,17 +14,14 @@ from process_config import *
 # =============================================================================
 import os
 
-import rimeX.legacy as oldrime
-from rimeX.datasets import get_datapath
-from rimeX.config import get_outputpath
-
 # Run and environment settings
-
-env = "pip"
-# env = "pc"
+user = "byers"
+env = "pc"
 # env = 'server'
 # env = 'ebro3'
 
+# git_path = f"C:\\users\\{user}\\Github\\"
+git_path = f"C:\\Github\\"
 
 
 # From generate_aggregated_inputs.py
@@ -50,20 +47,12 @@ caution_checks = True
 # %% Working directories
 # =============================================================================
 
-TEST_DATA = get_datapath("test_data")
-yaml_path = os.path.join(oldrime.__path__[0], "indicator_params.yml")
 
-if env != "pip":
-    landmask_path = os.path.join(git_path, "climate_impacts_processing", "landareamaskmap0.nc")
-    kg_class_path = os.path.join(git_path, "climate_impacts_processing", "kg_class.nc")
-else:
-    landmask_path = TEST_DATA
-    kg_class_path = TEST_DATA
+yaml_path = "indicator_params.yml"
+landmask_path = git_path + "climate_impacts_processing\\landareamaskmap0.nc"
+kg_class_path = git_path + "climate_impacts_processing\\kg_class.nc"
 
 if env == "pc":
-    # git_path = f"C:\\users\\{user}\\Github\\"    
-    git_path = f"C:\\Github\\"    
-    user = "byers"    
     # Main working directory
     wd = f"C:\\Users\\{user}\\IIASA\\ECE.prog - Documents\\Research Theme - NEXUS\\Hotspots_Explorer_2p0\\"
     wd_input = f"P:\\watxene\\ISIMIP_postprocessed\\cse\\"  # Input data branch
@@ -79,33 +68,12 @@ if env == "pc":
     fname_input_climate = f"{wd}{wd2}{folder_input_climate}*_{region}*.nc"
 
     # Input IAMC scenarios file, must have a temperature variable
-    fname_input_scenarios = get_datapath("test_data/emissions_temp_AR6_small.xlsx")
+    fname_input_scenarios = f"emissions_temp_AR6_small.xlsx"
 
     # Directory of map files to read as input
     impact_data_dir = f"{wd}\\data\\4_split_files_for_geoserver"
     # impact_data_dir = f"{wd_input}split_files"
 
-else:
-    # Main working directory
-    # wd = f"C:\\Users\\{user}\\IIASA\\ECE.prog - Documents\\Research Theme - NEXUS\\Hotspots_Explorer_2p0\\"
-    # wd_input = f"P:\\watxene\\ISIMIP_postprocessed\\cse\\"  # Input data branch
-    # Directory of table files to read as input
-    # wdtable_input = "table_output\\"
-
-    # Output directory
-    # wd2 = "rcre_testing\\testing_3\\"
-    # output_dir = f"{wd}{wd2}aggregated_region_datafiles\\"
-
-    # Input source of processed climate data by ssp/year/variable/region
-    # folder_input_climate = "aggregated_region_datafiles\\"
-    fname_input_climate = str(TEST_DATA / f"*_{region}*.nc")
-
-    # Input IAMC scenarios file, must have a temperature variable
-    fname_input_scenarios = get_datapath("test_data/emissions_temp_AR6_small.xlsx")
-
-    # Directory of map files to read as input
-    impact_data_dir = get_datapath("werning2024")
-    # impact_data_dir = f"{wd_input}split_files"
 
 # =============================================================================
 # %% From process-iamc_scenarios_gwl.py
@@ -119,13 +87,9 @@ temp_variable = (
 )
 ssp_meta_col = "Ssp_family"  # meta column name of SSP assignment
 
-if env != "pip":
-    output_folder_tables = f"{wd}{wd2}output\\tables\\"
-    output_folder_maps = f"{wd}{wd2}output\\maps\\"
-else:
-    output_folder_tables = get_outputpath("tables")
-    output_folder_maps = get_outputpath("maps")
 
+output_folder_tables = f"{wd}{wd2}output\\tables\\"
+output_folder_maps = f"{wd}{wd2}output\\maps\\"
 
 prefix_indicator = "Climate impacts|RIME|"
 
