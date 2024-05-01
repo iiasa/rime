@@ -59,6 +59,21 @@ The following scripts are made available, for which inline help is available wit
 Of course, any of the functions can be called directly. Inline documentation is available. 
 
 
+## Example Usage:
+
+Below a simple example using [ixmp4](https://docs.ece.iiasa.ac.at/projects/ixmp4/en/latest/data-model.html) input files from AR6 WG3 scenarios with [Werning et al 2024](https://zenodo.org/records/6496232) datasets:
+
+	$ rime-download --ls
+	Available datasets are:
+	  werning2024/table_output_avoided_impacts werning2024/table_output_climate_exposure werning2024/precipitation werning2024/temperature werning2024/air_pollution werning2024/energy werning2024/hydrology werning2024/land AR6-WG3-plots/spm-box1-fig1-warming-data.csv AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv
+
+	$ rime-download --name AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv werning2024/table_output_climate_exposure
+
+	$ rime-run-timeseries --iam-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --iam-variable "*GSAT*median*" --iam-filter category_show_lhs=C6 --impact-file werning2024/table_output_climate_exposure/table_output_heatwave_COUNTRIES.csv --impact-region ITA --impact-variable "hw_95_10|Exposure|Population|%" -o output.csv --overwrite
+
+The example above requires the filtering of exactly one time-series and one impact type from the multidimensional input files. It will issue an error message if more than one temperatrure scenario is present. This preliminary version only accounts from the warming level in the impact dataset. The years and ssp family are considered an "uncertainty" and they show up as quantiles in the output file (in this example they are the only contributor). More functionality will be added soon.
+
+
 ## Config files and default parameters
 
 Note the scripts sets default parameters from a [configuration file](rimeX/config.toml).

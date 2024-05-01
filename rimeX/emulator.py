@@ -4,6 +4,8 @@ For a given scenario, return the mapped percentile for an indicator
 from pathlib import Path
 import argparse
 import glob
+import fnmatch
+import itertools
 import tqdm
 from itertools import groupby
 import numpy as np
@@ -227,6 +229,8 @@ def validate_iam_filter(keyval):
 
 def main():
 
+    from rimeX.datasets import get_datapath
+
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser])
     
     group = parser.add_argument_group('Warming level matching')
@@ -234,16 +238,19 @@ def main():
     group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"])
     group.add_argument("--warming-level-file", default=None)
 
-    group = parser.add_argument_group('Indicator variable')
-    group.add_argument("-v", "--variable", choices=CONFIG["isimip.variables"], required=True)
+    group = parser.add_argument_group('Indicator variable (CIE format)')
+    group.add_argument("-v", "--variable", choices=CONFIG["isimip.variables"])
     group.add_argument("--region")
     group.add_argument("--subregion", help="if not provided, will default to region average")
     group.add_argument("--list-subregions", action='store_true', help="print all subregions and exit")
-    group.add_argument("--weights", required=True, choices=CONFIG["preprocessing.regional.weights"])
-    group.add_argument("--season", required=True, choices=list(CONFIG["preprocessing.seasons"]))
+    group.add_argument("--weights", default='LonLatWeight', choices=CONFIG["preprocessing.regional.weights"])
+    group.add_argument("--season", default='annual', choices=list(CONFIG["preprocessing.seasons"]))
 
-    # egroup = group.add_mutually_exclusive_group()
-    # egroup.add_argument("--remove-baseline-temp", choices=CONFIG["isimip.variables"], required=True)
+    group = parser.add_argument_group('IIASA indicators (Werning et al 2024)')
+    group.add_argument("--impact-file", nargs='+', default=[], 
+        help=f'Glob * search string for files downloaded in {get_datapath("werning2024")}. See also rime-download-ls.')
+    group.add_argument("--impact-variable", help="Glob search string (with *) to filter the variables contained in the impact file")
+    group.add_argument("--impact-region")
 
     group = parser.add_argument_group('Aggregation')
     group.add_argument("--individual-years", action="store_true")
@@ -254,7 +261,7 @@ def main():
     group.add_argument("--quantiles", nargs='+', default=CONFIG["emulator.quantiles"])
 
     group = parser.add_argument_group('Scenario')
-    group.add_argument("--iam-file", default=Path(__file__).parent.parent/"test_data"/"emissions_temp_AR6_small.xlsx", help='pyam-readable data')
+    group.add_argument("--iam-file", default=get_datapath("test_data/emissions_temp_AR6_small.xlsx"), help='pyam-readable data')
     group.add_argument("--iam-variable", default="*GSAT*", help="Filter iam variable")
     group.add_argument("--iam-scenario", help="Filter iam scenario e.g. --iam-scenario SSP1.26")
     group.add_argument("--iam-model", help="Filter iam model")
@@ -279,7 +286,7 @@ def main():
 
     if not o.overwrite and Path(o.output_file).exists():
         logger.info(f"{o.output_file} already exist. Use -O or --overwrite to reprocess.")
-        parse.exit(0)
+        parser.exit(0)
 
     # Load GMT data
     if o.magicc_files:
@@ -310,49 +317,148 @@ def main():
             logger.error(f"Remaining index: {str(iamdf_filtered.index)}")
             parser.exit(1)
 
+        if len(iamdf_filtered.variable) > 1:
+            logger.error(f"More than one variable after applying filter: {repr(filter_kw)}")
+            logger.error(f"Remaining variable: {str(iamdf_filtered.variable)}")
+            parser.exit(1)
+
+        if len(iamdf_filtered) != len(iamdf_filtered.year):
+            logger.error(f"More entries than years after applying filter: {repr(filter_kw)}")
+            logger.error(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=iamdf_filtered.year[0]).as_pandas())}")
+            parser.exit(1)
+
         df = iamdf_filtered.as_pandas()
         gmt_ensemble = df.set_index('year')[['value']]
 
 
-    if o.region is None:
-        all_regions = sorted([o.name for o in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
-        print(f"--region required. Please choose a region from {', '.join(all_regions)}")
-        parser.exit(1)
-        return
+    # IIASA format like Wernings et al 2024
+    if o.impact_file or o.impact_variable or o.impact_region:
 
-    if o.list_subregions:
-        import pickle
-        pickle.load(open(f'{CONFIG["preprocessing.regional.masks_folder"]}/{o.region}/region_names.pkl', "rb"))
-        print(f"All subregions for {o.region}: {', '.join(all_subregions)}")
-        parser.exit(0)
-        return
+        import pyam
+        import rimeX.datasets.werning2024
+        all_records = [r for r in rimeX.datasets.manager.DATASET_REGISTER['records'] if r['name'].startswith("werning2024") and "table" in r['name']]
+        all_filenames = list(itertools.chain(*[sorted(get_datapath(r['name']).glob("*.csv")) for r in all_records]))
 
-    if o.subregion is None:
-        o.subregion = o.region
-        
-    if o.warming_level_file is None:
-        o.warming_level_file = get_warming_level_file(**{**config, **vars(o)})
+        if o.impact_file:
+            filtered_files = []
+            for file in o.impact_file:
+                # file can be provided directly
+                if Path(file).exists():
+                    filtered_files.append(file)
+                
+                # or as filter expression on Werning et al datafiles
+                else:
+                    werning2024_files = fnmatch.filter(all_filenames, file)
+                    if any(not f.exists() in werning2024_files):
+                        logger.warn("Werning et al 2024 table files not found")
+                        print("See rime-download")
+                        parser.exit(1)
 
-    if not Path(o.warming_level_file).exists():
-        parser.error(f"{o.warming_level_file} does not exist. Run warminglevels.py first.")
-        parser.exit(1)
-        return
+                    filtered_files.extend(werning2024_files)
+        else:
+            filtered_files = all_filenames
 
-    # Load Warming level table and bin ISIMIP data
-    logger.info(f"Load warming level file {o.warming_level_file}")
-    warming_levels = pd.read_csv(o.warming_level_file)
+        if not len(filtered_files):
+            logger.warn("Empty list of impact files.")
+            print("See rime-download. E.g. rime-download --all")
+            parser.exit(1)
 
-    binned_isimip_data = get_binned_isimip_records(warming_levels, o.variable, o.region, o.subregion, o.weights, o.season, 
-        matching_method=o.matching_method, running_mean_window=o.running_mean_window, 
-        individual_years=o.individual_years, average_scenarios=o.average_scenarios, 
-        equiprobable_models=o.equiprobable_models,
-        overwrite=o.overwrite_isimip_bins, backends=o.backend_isimip_bins)
+        sep = '\n'
+        logger.info(f"Load {len(filtered_files)} impact files")
+        impact_data_table = pyam.concat([pyam.IamDataFrame(f).filter(variable=o.impact_variable, region=o.impact_region) for f in filtered_files])
 
-    # Filter input data (experimental)
-    if o.model is not None:
-        binned_isimip_data = [r for r in binned_isimip_data if r['model'] in set(o.model)]
-    if o.experiment is not None:
-        binned_isimip_data = [r for r in binned_isimip_data if r['experiment'] in set(o.experiment)]
+        if len(impact_data_table.variable) == 0:
+            logger.error("Empty climate impact file")
+            parser.exit(1)
+
+
+        # Only handle one variable at a time
+        if len(impact_data_table.variable) > 1:
+            print(f"More than one variable found.\n {sep.join(impact_data_table.variable)}\nPlease restrict the --impact-variable filter.")
+            parser.exit(1)
+
+
+        # Only handle one regoin at a time
+        if len(impact_data_table.region) > 1:
+            print(f"More than one region found.\n {sep.join(impact_data_table.region)}\nPlease restrict the --impact-region filter.")
+            parser.exit(1)
+
+        # Now convert into the records format 
+        impact_data_frame = impact_data_table.as_pandas()
+        impact_data_records = impact_data_frame.to_dict('records')
+
+        # ADD 'warming_level' threshold if absent. For now assume scenarios like ssp1_2p0 ==> warming level = 2.0 
+        for record in impact_data_records:
+            if "warming_level" not in record:
+                try:
+                    ssp, gwl = record.pop("scenario").split("_")
+                    record["warming_level"] = float(gwl.replace('p', '.'))
+                    record["ssp_family"] = ssp
+                except:
+                    logger.error(f"Missing 'warming_level' field. Expected scenario such as ssp1_2p0 to derive warming_level. Got: {record.get('scenario')}")
+                    raise
+
+        # Interpolate records
+        key = lambda r: (r['ssp_family'], r['year'])
+        input_gwls = set(r['warming_level'] for r in impact_data_records)
+        gwls = np.arange(min(input_gwls), max(input_gwls)+CONFIG["emulator.warming_level_step"], CONFIG["emulator.warming_level_step"])
+        interpolated_records = []
+        for (ssp_family, year), group in groupby(sorted(impact_data_records, key=key), key=key):
+            igwls, ivalues = np.array([(r['warming_level'], r['value']) for r in group]).T
+            assert len(igwls) == 6, f"Expected 6 warming level for {ssp_family},{year}. Got {len(igwls)}: {repr(igwls)}"
+            values = np.interp(gwls, igwls, ivalues)
+            interpolated_records.extend([{"warming_level":wl, "value": v, "year": year, "ssp_family": ssp_family} for wl, v in zip(gwls, values)])
+
+        iamdf_filtered.as_pandas().to_csv("gmt_filtered.csv", index=None)
+        gmt_ensemble.to_csv("gmt.csv")
+        impact_data_frame.to_csv("impacts_filtered.csv", index=None)
+        pd.DataFrame(interpolated_records).to_csv("impacts_interpolated.csv", index=None)
+
+        binned_impact_data = interpolated_records
+
+
+    # CIE format as used in March 2024
+    else:
+        if o.region is None:
+            all_regions = sorted([o.name for o in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
+            print(f"--region required. Please choose a region from {', '.join(all_regions)}")
+            parser.exit(1)
+            return
+
+        if o.list_subregions:
+            import pickle
+            pickle.load(open(f'{CONFIG["preprocessing.regional.masks_folder"]}/{o.region}/region_names.pkl', "rb"))
+            print(f"All subregions for {o.region}: {', '.join(all_subregions)}")
+            parser.exit(0)
+            return
+
+        if o.subregion is None:
+            o.subregion = o.region
+            
+        if o.warming_level_file is None:
+            o.warming_level_file = get_warming_level_file(**{**config, **vars(o)})
+
+        if not Path(o.warming_level_file).exists():
+            parser.error(f"{o.warming_level_file} does not exist. Run warminglevels.py first.")
+            parser.exit(1)
+            return
+
+        # Load Warming level table and bin ISIMIP data
+        logger.info(f"Load warming level file {o.warming_level_file}")
+        warming_levels = pd.read_csv(o.warming_level_file)
+
+        binned_impact_data = get_binned_isimip_records(warming_levels, o.variable, o.region, o.subregion, o.weights, o.season, 
+            matching_method=o.matching_method, running_mean_window=o.running_mean_window, 
+            individual_years=o.individual_years, average_scenarios=o.average_scenarios, 
+            equiprobable_models=o.equiprobable_models,
+            overwrite=o.overwrite_isimip_bins, backends=o.backend_isimip_bins)
+
+        # Filter input data (experimental)
+        if o.model is not None:
+            binned_impact_data = [r for r in binned_impact_data if r['model'] in set(o.model)]
+        if o.experiment is not None:
+            binned_impact_data = [r for r in binned_impact_data if r['experiment'] in set(o.experiment)]
+
 
     # Only use future values to avoid getting in trouble with the warming levels.
     gmt_ensemble = gmt_ensemble.loc[2015:]  
@@ -360,7 +466,7 @@ def main():
     assert np.isfinite(gmt_ensemble.values).all(), 'some NaN in MAGICC run'
 
     # Recombine GMT ensemble with binned ISIMIP data
-    quantiles = recombine_gmt_ensemble(binned_isimip_data, gmt_ensemble, o.quantiles)
+    quantiles = recombine_gmt_ensemble(binned_impact_data, gmt_ensemble, o.quantiles)
 
     # GMT result to disk
     logger.info(f"Write output to {o.output_file}")
