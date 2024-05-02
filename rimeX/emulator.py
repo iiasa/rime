@@ -150,7 +150,7 @@ def recombine_gmt_vectorized(binned_isimip_data, gmt_ensemble, quantile_levels, 
     return pd.DataFrame(quantiles, index=gmt_years, columns=quantile_levels)
 
 
-def recombine_gmt_ensemble(binned_isimip_data, gmt_ensemble, quantile_levels):
+def recombine_gmt_ensemble(binned_isimip_data, gmt_ensemble, quantile_levels, match_year=False):
     """Take binned ISIMIP data and GMT time-series as input and  returns quantiles as output
 
     Determinisitc method. This is the original method for "temperature" and "time" matching methods. 
@@ -160,6 +160,10 @@ def recombine_gmt_ensemble(binned_isimip_data, gmt_ensemble, quantile_levels):
     binned_isimip_data : list of records with fields {"value": ..., "warming_level": ...}
     gmt_ensemble : pandas DataFrame with years as index and ensemble members as columns (warming since P.I.)
     quantile_levels : quantiles to include in the output, default from config.toml files
+    match_year : bool, False by default. 
+        If True, the data will be grouped according to year as well as temperature.
+        Some of the impact data has a "year" attribute for population growth scenario, which
+        is not related to the year of the climate model time-series. The option is introduced for that situation.
 
     Returns
     -------
@@ -181,8 +185,12 @@ def recombine_gmt_ensemble(binned_isimip_data, gmt_ensemble, quantile_levels):
     indices = np.digitize(gmt_ensemble, bins)
 
     # Group data records by warming level
-    key_wl = lambda r: r['warming_level']    
-    binned_isimip_data_by_wl = {wl : list(group) for wl, group in groupby(sorted(binned_isimip_data, key=key_wl), key=key_wl)}
+    if match_year:
+        key_wl_year = lambda r: (r['warming_level'], r['year'])
+        binned_isimip_data_by_wl_and_year = {(wl, year) : list(group) for (wl, year), group in groupby(sorted(binned_isimip_data, key=key_wl_year), key=key_wl_year)}
+    else:
+        key_wl = lambda r: r['warming_level']    
+        binned_isimip_data_by_wl = {wl : list(group) for wl, group in groupby(sorted(binned_isimip_data, key=key_wl), key=key_wl)}
 
     # Now calculate quantiles for each year
     logger.info("Re-combine all data and calculate quantiles for each year")
@@ -202,7 +210,10 @@ def recombine_gmt_ensemble(binned_isimip_data, gmt_ensemble, quantile_levels):
 
             # probability p(GMT == wl)
             p_gmt = number_of_gmt_simulations / indices[i].size
-            records = binned_isimip_data_by_wl[wl]
+            if match_year:
+                records = binned_isimip_data_by_wl_and_year[(wl, year)]
+            else:
+                records = binned_isimip_data_by_wl[wl]
             
             values, weights = np.array([(r['value'], r.get('weight', 1)) for r in records]).T
             p_record = weights / weights.sum()
@@ -258,6 +269,7 @@ def main():
     group.add_argument("--model", nargs="+", help="if provided, only consider a set of specified model(s)")
     group.add_argument("--experiment", nargs="+", help="if provided, only consider a set of specified experiment(s)")
     group.add_argument("--quantiles", nargs='+', default=CONFIG["emulator.quantiles"])
+    group.add_argument("--match-year-population", action="store_true")
 
     group = parser.add_argument_group('Scenario')
     group.add_argument("--iam-file", default=get_datapath("test_data/emissions_temp_AR6_small.xlsx"), help='pyam-readable data')
@@ -453,6 +465,7 @@ def main():
                     raise
 
         # Interpolate records
+        logger.info("Impact data: interpolate warming levels...")
         key = lambda r: (r['ssp_family'], r['year'])
         input_gwls = set(r['warming_level'] for r in impact_data_records)
         gwls = np.arange(min(input_gwls), max(input_gwls)+CONFIG["emulator.warming_level_step"], CONFIG["emulator.warming_level_step"])
@@ -462,13 +475,34 @@ def main():
             assert len(igwls) == 6, f"Expected 6 warming level for {ssp_family},{year}. Got {len(igwls)}: {repr(igwls)}"
             values = np.interp(gwls, igwls, ivalues)
             interpolated_records.extend([{"warming_level":wl, "value": v, "year": year, "ssp_family": ssp_family} for wl, v in zip(gwls, values)])
+        # inplace operation
+        impact_data_records = interpolated_records
+        logger.info("Impact data: interpolate warming levels...done")
 
-        iamdf_filtered.as_pandas().to_csv("gmt_filtered.csv", index=None)
-        gmt_ensemble.to_csv("gmt.csv")
-        impact_data_frame.to_csv("impacts_filtered.csv", index=None)
-        pd.DataFrame(interpolated_records).to_csv("impacts_interpolated.csv", index=None)
+        # For population dataset the year can be matched to temperatrure time-series. It must be interpolated to yearly values first.
+        if o.match_year_population:
+            logger.info("Impact data: interpolate years...")
+            interpolated_records = []
+            key = lambda r: (r['ssp_family'], r['warming_level'])
+            input_years = set(r['year'] for r in impact_data_records)
+            years = gmt_ensemble.index
+            for (ssp_family, wl), group in groupby(sorted(impact_data_records, key=key), key=key):
+                group = list(group)
+                input_years = np.sort([r["year"] for r in group])
+                iyears, ivalues = np.array([(r['year'], r['value']) for r in group]).T
+                # assert len(iyears) == 6, f"Expected 6 warming level for {ssp_family},{year}. Got {len(iyears)}: {repr(iyears)}"
+                values = np.interp(years, iyears, ivalues)
+                interpolated_records.extend([{"warming_level":wl, "value": v, "year": year, "ssp_family": ssp_family} for year, v in zip(years, values)])
+            # inplace operation
+            impact_data_records = interpolated_records
+            logger.info("Impact data: interpolate years...done")
 
-        binned_impact_data = interpolated_records
+        # iamdf_filtered.as_pandas().to_csv("gmt_filtered.csv", index=None)
+        # gmt_ensemble.to_csv("gmt.csv")
+        # impact_data_frame.to_csv("impacts_filtered.csv", index=None)
+        # pd.DataFrame(interpolated_records).to_csv("impacts_interpolated.csv", index=None)
+
+        binned_impact_data = impact_data_records
 
 
     # CIE format as used in March 2024
@@ -520,7 +554,7 @@ def main():
     assert np.isfinite(gmt_ensemble.values).all(), 'some NaN in MAGICC run'
 
     # Recombine GMT ensemble with binned ISIMIP data
-    quantiles = recombine_gmt_ensemble(binned_impact_data, gmt_ensemble, o.quantiles)
+    quantiles = recombine_gmt_ensemble(binned_impact_data, gmt_ensemble, o.quantiles, match_year=o.match_year_population)
 
     # GMT result to disk
     logger.info(f"Write output to {o.output_file}")
