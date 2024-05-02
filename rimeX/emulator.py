@@ -387,7 +387,7 @@ def main():
                 quants = [50, 5, 95]
                 dist = fit_dist(gmt_q.iloc[i][quants], quants, o.iam_dist)
                 logger.debug(f"{i}: {dist.dist.name}({','.join([str(r) for r in dist.args])})")
-                
+
                 # resample (equally spaced percentiles)
                 step = 1/o.iam_samples
                 ens[i] = dist.ppf(np.linspace(step/2, 1-step/2, o.iam_samples))
@@ -428,13 +428,13 @@ def main():
 
         # Only handle one variable at a time
         if len(impact_data_table.variable) > 1:
-            print(f"More than one variable found.\n {sep.join(impact_data_table.variable)}\nPlease restrict the --impact-variable filter.")
+            print(f"More than one variable found.\n {sep.join(impact_data_table.variable)}\nPlease restrict the --variable filter.")
             parser.exit(1)
 
 
         # Only handle one regoin at a time
         if len(impact_data_table.region) > 1:
-            print(f"More than one region found.\n {sep.join(impact_data_table.region)}\nPlease restrict the --impact-region filter.")
+            print(f"More than one region found.\n {sep.join(impact_data_table.region)}\nPlease restrict the --region filter.")
             parser.exit(1)
 
         # Now convert into the records format 
