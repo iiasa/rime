@@ -69,7 +69,7 @@ Below a simple example using [ixmp4](https://docs.ece.iiasa.ac.at/projects/ixmp4
 
 	$ rime-download --name AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv werning2024/table_output_climate_exposure
 
-	$ rime-run-timeseries --iam-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --iam-variable "*GSAT*median*" --iam-filter category_show_lhs=C6 --impact-file werning2024/table_output_climate_exposure/table_output_heatwave_COUNTRIES.csv --impact-region ITA --impact-variable "hw_95_10|Exposure|Population|%" -o output.csv --overwrite
+	$ rime-run-timeseries --iam-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --iam-variable "*GSAT*median*" --iam-filter category_show_lhs=C6 --impact-file werning2024/table_output_climate_exposure/table_output_heatwave_COUNTRIES.csv --region ITA --variable "hw_95_10|Exposure|Population|%" -o output.csv --overwrite
 
 The example above requires the filtering of exactly one time-series and one impact type from the multidimensional input files. It will issue an error message if more than one temperatrure scenario is present. This preliminary version only accounts from the warming level in the impact dataset. The years and ssp family are considered an "uncertainty" and they show up as quantiles in the output file (in this example they are the only contributor). More functionality will be added soon.
 

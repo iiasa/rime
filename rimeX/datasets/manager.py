@@ -248,13 +248,13 @@ def expand_names(names):
 def download_by_names(names, **kwargs):
     return download_by_records([r for r in DATASET_REGISTER['records'] if r['name'] in names], **kwargs)
 
-def print_available_datasets():
-    all_datasets = [r['name'] for r in DATASET_REGISTER['records']]
+def print_all_datasets():
+    all_datasets = get_all_datasets()
     print(f"Available datasets are:\n  {' '.join(all_datasets)}")
 
 def print_local_datasets():
-    available_datasets = [r['name'] for r in DATASET_REGISTER['records'] if get_datapath(r['name']).exists()]
-    print(f"Datasets found locally are:\n  {' '.join(available_datasets)}")
+    local_datasets = get_local_datasets()
+    print(f"Datasets found locally are:\n  {' '.join(local_datasets)}")
 
 
 def import_all_dataset_modules():
@@ -263,6 +263,14 @@ def import_all_dataset_modules():
     """
     for name in rimeX.datasets.__all__:
         import_module("." + name, "rimeX.datasets")
+
+def get_all_datasets():
+    import_all_dataset_modules()
+    return [r['name'] for r in DATASET_REGISTER['records']]
+
+def get_local_datasets():
+    return [r['name'] for r in get_all_datasets() if get_datapath(r['name']).exists()]
+
 
 
 # Needs to be packed in 

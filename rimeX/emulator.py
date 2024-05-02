@@ -238,19 +238,18 @@ def main():
     group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"])
     group.add_argument("--warming-level-file", default=None)
 
-    group = parser.add_argument_group('Indicator variable (CIE format)')
-    group.add_argument("-v", "--variable", choices=CONFIG["isimip.variables"])
-    group.add_argument("--region")
+    group = parser.add_argument_group('Impact indicator')
+    group.add_argument("-v", "--variable", required=True)
+    group.add_argument("--region", required=True)
+    group.add_argument("--format", default="ixmp4", choices=["ixmp4", "custom"])
+    group.add_argument("--impact-file", nargs='+', default=[], 
+        help=f'Files such as produced by Werning et al 2014 (.csv with ixmp4 standard). Also accepted is a glob * pattern to match downloaded datasets (see also rime-download-ls).')
+
+    group = parser.add_argument_group('Impact indicator (custom)')
     group.add_argument("--subregion", help="if not provided, will default to region average")
     group.add_argument("--list-subregions", action='store_true', help="print all subregions and exit")
     group.add_argument("--weights", default='LonLatWeight', choices=CONFIG["preprocessing.regional.weights"])
     group.add_argument("--season", default='annual', choices=list(CONFIG["preprocessing.seasons"]))
-
-    group = parser.add_argument_group('IIASA indicators (Werning et al 2024)')
-    group.add_argument("--impact-file", nargs='+', default=[], 
-        help=f'Glob * search string for files downloaded in {get_datapath("werning2024")}. See also rime-download-ls.')
-    group.add_argument("--impact-variable", help="Glob search string (with *) to filter the variables contained in the impact file")
-    group.add_argument("--impact-region")
 
     group = parser.add_argument_group('Aggregation')
     group.add_argument("--individual-years", action="store_true")
@@ -301,6 +300,8 @@ def main():
             parser.exit(1)
             
         import pyam
+        if not Path(o.iam_file).exists() and get_datapath(o.iam_file).exists():
+            o.iam_file = str(get_datapath(o.iam_file))
         iamdf = pyam.IamDataFrame(o.iam_file)
         filter_kw = dict(o.iam_filter)
         if o.iam_variable: filter_kw['variable'] = o.iam_variable
@@ -332,31 +333,18 @@ def main():
 
 
     # IIASA format like Wernings et al 2024
-    if o.impact_file or o.impact_variable or o.impact_region:
+    if o.impact_file:
 
         import pyam
-        import rimeX.datasets.werning2024
-        all_records = [r for r in rimeX.datasets.manager.DATASET_REGISTER['records'] if r['name'].startswith("werning2024") and "table" in r['name']]
-        all_filenames = list(itertools.chain(*[sorted(get_datapath(r['name']).glob("*.csv")) for r in all_records]))
-
-        if o.impact_file:
-            filtered_files = []
-            for file in o.impact_file:
-                # file can be provided directly
-                if Path(file).exists():
-                    filtered_files.append(file)
-                
-                # or as filter expression on Werning et al datafiles
-                else:
-                    werning2024_files = fnmatch.filter(all_filenames, file)
-                    if any(not f.exists() in werning2024_files):
-                        logger.warn("Werning et al 2024 table files not found")
-                        print("See rime-download")
-                        parser.exit(1)
-
-                    filtered_files.extend(werning2024_files)
-        else:
-            filtered_files = all_filenames
+        filtered_files = []
+        for file in o.impact_file:
+            # file can be provided directly
+            if Path(file).exists():
+                filtered_files.append(file)
+            # Provided as data name (glob pattern) under rimeX_datasets
+            else:
+                for f in sorted(glob.glob(str(get_datapath(file)))):
+                    filtered_files.append(f)
 
         if not len(filtered_files):
             logger.warn("Empty list of impact files.")
@@ -365,7 +353,7 @@ def main():
 
         sep = '\n'
         logger.info(f"Load {len(filtered_files)} impact files")
-        impact_data_table = pyam.concat([pyam.IamDataFrame(f).filter(variable=o.impact_variable, region=o.impact_region) for f in filtered_files])
+        impact_data_table = pyam.concat([pyam.IamDataFrame(f).filter(variable=o.variable, region=o.region) for f in filtered_files])
 
         if len(impact_data_table.variable) == 0:
             logger.error("Empty climate impact file")
