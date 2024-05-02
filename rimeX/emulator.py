@@ -264,6 +264,12 @@ def main():
     group.add_argument("--iam-variable", default="*GSAT*", help="Filter iam variable")
     group.add_argument("--iam-scenario", help="Filter iam scenario e.g. --iam-scenario SSP1.26")
     group.add_argument("--iam-model", help="Filter iam model")
+    group.add_argument("--iam-fit", action="store_true", help="Fit a distribution to GSAT from which to resample")
+    group.add_argument("--iam-dist", default="auto", 
+        choices=["auto", "norm", "lognorm"], 
+        # choices=["auto", "norm", "lognorm"], 
+        help="In auto mode, a normal or log-normal distribution will be fitted if percentiles are provided")
+    group.add_argument("--iam-samples", default=100, type=int, help="GSAT samples to draw if --iam-fit is set")
     group.add_argument("--iam-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
         help="other fields e.g. --iam model='IMAGE 3.0.1' scenario=SSP1.26")
     group.add_argument("--magicc-files", nargs='+', help='if provided these files will be used instead if iam scenario')
@@ -318,18 +324,78 @@ def main():
             logger.error(f"Remaining index: {str(iamdf_filtered.index)}")
             parser.exit(1)
 
-        if len(iamdf_filtered.variable) > 1:
+        if not o.iam_fit and len(iamdf_filtered.variable) > 1:
             logger.error(f"More than one variable after applying filter: {repr(filter_kw)}")
             logger.error(f"Remaining variable: {str(iamdf_filtered.variable)}")
             parser.exit(1)
 
-        if len(iamdf_filtered) != len(iamdf_filtered.year):
+        if not o.iam_fit and len(iamdf_filtered) != len(iamdf_filtered.year):
             logger.error(f"More entries than years after applying filter: {repr(filter_kw)}")
             logger.error(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=iamdf_filtered.year[0]).as_pandas())}")
             parser.exit(1)
 
         df = iamdf_filtered.as_pandas()
-        gmt_ensemble = df.set_index('year')[['value']]
+
+        if o.iam_fit:
+            from rimeX.stats import fit_dist
+
+            logger.info(f"Fit GSAT temperature distribution ({o.iam_dist}) with {o.iam_samples} samples.")
+
+            if len(iamdf_filtered.variable) != 3:
+                logger.error(f"Expected three variables in GSAT fit mode after applying filter: {repr(filter_kw)}. Found {len(iamdf_filtered.variable)}")
+                logger.error(f"Remaining variable: {str(iamdf_filtered.variable)}")
+                parser.exit(1)
+
+            if len(iamdf_filtered) != len(iamdf_filtered.year)*3:
+                logger.error(f"Number of entries expected: 3 * years after applying filter: {repr(filter_kw)}. Got {len(iamdf_filtered)} entries and {len(iamdf_filtered.year)} years.")
+                logger.error(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=iamdf_filtered.year[0]).as_pandas())}")
+                parser.exit(1)                
+
+            # Sort out the quantiles
+            QUANTILES_MAP = [(5, [" 5th"]), (95, [" 95th"]), (50, ["median", "50th"])]
+
+            def _sort_out_quantiles(sat_variables):
+                """extract quantile map from table variables
+                """
+                sat_quantiles = {}
+                sat_variables = list(sat_variables)
+                for q, ss in QUANTILES_MAP:
+                    for v, s in itertools.product(list(sat_variables), ss):
+                        if s in v:
+                            row = df[df["variable"] == v].to_dict()
+                            sat_quantiles[q] = v
+                            sat_variables.remove(v)
+                            break
+                assert not sat_variables and len(sat_quantiles) == 3
+                return sat_quantiles
+
+            try:
+                sat_quantiles = _sort_out_quantiles(iamdf_filtered.variable)
+            except Exception as error:
+                logger.error(f"Failed to extract quantiles.")
+                logger.error(f"Expected variables contained the following strings: {dict(QUANTILES_MAP)}")
+                logger.error(f"Remaining variables: {str(iamdf_filtered.variable)}")
+                parser.exit(1)
+
+            gmt_q = pd.DataFrame({q: df[df["variable"] == sat_quantiles[q]].set_index('year')['value'] for q in [50, 5, 95]})
+
+            # Fit & resample
+            nt = gmt_q.shape[0]
+            ens = np.empty((nt, o.iam_samples))
+            for i in range(nt):
+                # fit
+                quants = [50, 5, 95]
+                dist = fit_dist(gmt_q.iloc[i][quants], quants, o.iam_dist)
+                logger.debug(f"{i}: {dist.dist.name}({','.join([str(r) for r in dist.args])})")
+                
+                # resample (equally spaced percentiles)
+                step = 1/o.iam_samples
+                ens[i] = dist.ppf(np.linspace(step/2, 1-step/2, o.iam_samples))
+
+            gmt_ensemble = pd.DataFrame(ens, index=gmt_q.index)
+
+        else:
+            gmt_ensemble = df.set_index('year')[['value']]
 
 
     # IIASA format like Wernings et al 2024

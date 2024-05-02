@@ -73,6 +73,12 @@ Below a simple example using [ixmp4](https://docs.ece.iiasa.ac.at/projects/ixmp4
 
 The example above requires the filtering of exactly one time-series and one impact type from the multidimensional input files. It will issue an error message if more than one temperatrure scenario is present. This preliminary version only accounts from the warming level in the impact dataset. The years and ssp family are considered an "uncertainty" and they show up as quantiles in the output file (in this example they are the only contributor). More functionality will be added soon.
 
+Experimental: it is now possible to fit a GSAT distribution from its stated 5th, 50th and 95th percentiles to obtain an extended error assessment. E.g. the above example can be modified by filtering for variable names `*GSAT*` (instead of `*GSAT*median*`) and adding `--iam-fit`:
+
+	 $ rime-run-timeseries --iam-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --iam-variable "*GSAT*" --iam-filter category_show_lhs=C6 --impact-file werning2024/table_output_climate_exposure/table_output_heatwave_COUNTRIES.csv --region ITA --variable "hw_95_10|Exposure|Population|%" -o output_resampled_gsat.csv --overwrite --iam-fit
+
+![](notebooks/images/fit_and_resample.png)
+
 
 ## Config files and default parameters
 
