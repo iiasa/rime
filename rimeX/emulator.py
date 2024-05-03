@@ -179,7 +179,7 @@ def recombine_gmt_ensemble(binned_isimip_data, gmt_ensemble, quantile_levels, ma
     # digitize MAGICC temperature
     # bins for digitization
     all_warming_levels = np.sort(np.fromiter(set(r['warming_level'] for r in binned_isimip_data), float))
-    binsize = CONFIG["emulator.warming_level_step"] # this could possibly be derived from the above
+    binsize = all_warming_levels[1] - all_warming_levels[0]
     # assign any outlier to the edges, to keep the median unbiased
     bins = all_warming_levels[1:] - binsize/2
     indices = np.digitize(gmt_ensemble, bins)
@@ -230,7 +230,7 @@ def recombine_gmt_ensemble(binned_isimip_data, gmt_ensemble, quantile_levels, ma
         logger.debug(f"{year}: compute quantiles on {len(values[valid])} values")
         quantiles[i] = weighted_quantiles(values[valid], weights[valid], quantile_levels)
 
-    return pd.DataFrame(quantiles, index=gmt_years.values.astype(int), columns=quantile_levels)
+    return pd.DataFrame(quantiles, index=pd.Index(gmt_years.values.astype(int), name='year'), columns=quantile_levels)
 
 
 def validate_iam_filter(keyval):
@@ -270,6 +270,8 @@ def main():
     group.add_argument("--experiment", nargs="+", help="if provided, only consider a set of specified experiment(s)")
     group.add_argument("--quantiles", nargs='+', default=CONFIG["emulator.quantiles"])
     group.add_argument("--match-year-population", action="store_true")
+    group.add_argument("--warming-level-step", default=CONFIG["emulator.warming_level_step"], type=float,
+        help="Impact indicators will be interpolated to match this warming level")
 
     group = parser.add_argument_group('Scenario')
     group.add_argument("--iam-file", default=get_datapath("test_data/emissions_temp_AR6_small.xlsx"), help='pyam-readable data')
@@ -295,6 +297,8 @@ def main():
     parser.add_argument("--overwrite-isimip-bins", action='store_true', help='overwrite the intermediate calculations (binned isimip)')
     parser.add_argument("--overwrite-all", action='store_true', help='overwrite intermediate and final')
     group.add_argument("-o", "--output-file", required=True)
+    group.add_argument("--save-gsat", help='filename to save the processed GSAT (e.g. for debugging)')
+    group.add_argument("--save-impact-table", help='file name to save the processed impacts table (e.g. for debugging)')
 
     o = parser.parse_args()
 
@@ -412,6 +416,11 @@ def main():
         else:
             gmt_ensemble = df.set_index('year')[['value']]
 
+    if o.save_gsat:
+        logger.info("Save GSAT...")        
+        gmt_ensemble.to_csv(o.save_gsat)
+        logger.info("Save GSAT...done")        
+
 
     if o.time_step:
         orig_time_step = gmt_ensemble.index[1] - gmt_ensemble.index[0]
@@ -484,7 +493,7 @@ def main():
         logger.info("Impact data: interpolate warming levels...")
         key = lambda r: (r['ssp_family'], r['year'])
         input_gwls = set(r['warming_level'] for r in impact_data_records)
-        gwls = np.arange(min(input_gwls), max(input_gwls)+CONFIG["emulator.warming_level_step"], CONFIG["emulator.warming_level_step"])
+        gwls = np.arange(min(input_gwls), max(input_gwls)+o.warming_level_step, o.warming_level_step)
         interpolated_records = []
         for (ssp_family, year), group in groupby(sorted(impact_data_records, key=key), key=key):
             igwls, ivalues = np.array([(r['warming_level'], r['value']) for r in group]).T
@@ -562,6 +571,11 @@ def main():
             binned_impact_data = [r for r in binned_impact_data if r['model'] in set(o.model)]
         if o.experiment is not None:
             binned_impact_data = [r for r in binned_impact_data if r['experiment'] in set(o.experiment)]
+
+    if o.save_impact_table:
+        logger.info("Save impact table...")
+        pd.DataFrame(binned_impact_data).to_csv(o.save_impact_table, index=None)
+        logger.info("Save impact table...done")
 
 
     # Only use future values to avoid getting in trouble with the warming levels.

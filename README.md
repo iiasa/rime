@@ -94,6 +94,25 @@ If 5th and 95th percentiles are provided for GSAT in addition to the median, an 
 ![](notebooks/images/fit_and_resample.png)
 
 
+## Warming level steps
+
+The default step for warming level interpolation is 0.1 degC. This is fine for a probabilistic setting, but sometimes it is preferrable to have finer warming level steps, especially when working with the median temperature time-series, to avoid visible aliasing. The option `--warming-level-step` is available (so far only available with the table format as input):
+
+	 $ rime-run-timeseries [...] --warming-level-step 0.01
+
+
+![](notebooks/images/warming_level_step.png)
+
+
+## Time step
+
+The time-step is normally set by the input GSAT data file, but it can be subsampled or interpolated using `--time-step` (in years).
+
+	 $ rime-run-timeseries [...] --time-step 5
+
+
+![](notebooks/images/time_step.png)
+
 
 ## Config files and default parameters
 
