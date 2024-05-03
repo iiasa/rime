@@ -415,9 +415,9 @@ def main():
 
     if o.time_step:
         orig_time_step = gmt_ensemble.index[1] - gmt_ensemble.index[0]
-        if o.time_step > orig_time_step and orig_time_step * (orig_time_step//o.time_step) == o.time_step:
+        if o.time_step > orig_time_step and orig_time_step * (o.time_step//orig_time_step) == o.time_step:
             logger.info(f"Subsample GSAT to {o.time_step}-year(s) time-step")
-            gmt_ensemble = gmt_ensemble.iloc[::orig_time_step//o.time_step]
+            gmt_ensemble = gmt_ensemble.iloc[::o.time_step//orig_time_step]
 
         else:
             import xarray as xa
