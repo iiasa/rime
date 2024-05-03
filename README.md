@@ -73,7 +73,7 @@ Below a simple example using [ixmp4](https://docs.ece.iiasa.ac.at/projects/ixmp4
 
 The example above requires the filtering of exactly one time-series and one impact type from the multidimensional input files. It will issue an error message if more than one temperatrure scenario is present. 
 
-See the associated notebook [notebooks/readme.ipynb] to find the code to produce some of the figures below.
+See the associated [notebook](notebooks/readme.ipynb) to find the code to produce some of the figures below.
 
 
 ## Matching years
@@ -92,6 +92,18 @@ If 5th and 95th percentiles are provided for GSAT in addition to the median, an 
 	 $ rime-run-timeseries [...] --iam-variable "*GSAT*" --iam-fit
 
 ![](notebooks/images/fit_and_resample.png)
+
+
+Similarly, if the impacts can be sampled with the flags `--impact-fit`. E.g.
+
+	 $ rime-run-timeseries [...] --impact-file test_data/table_output_wsi_R10_pop_scaled_including_uncertainty.csv --variable "wsi|Exposure|Population" "wsi|Exposure|Population|5th percentile" "wsi|Exposure|Population|95th percentile" --impact-fit
+
+Note how several impact variables can be specified so that three variables end up considered (corresponding to median, 5th and 95th percentiles). 
+They are then sorted out by parsing the variable name (e.g. " 5th" or "|5th" is expected, and the median is whatever is left).
+
+GSAT and impact distribution fitting can be combined (see figure below), however, when this occurs in parallel to other costly options such as `--match-year` and `--warming-level-step 0.01`, this starts to slow down the calculation (up to 12 seconds in our current tests). A Monte Carlo option is in the works to combine a larger number of uncertainty sources in a vectorized form. 
+
+![](notebooks/images/fit_and_resample_gsat_and_impacts.png)
 
 
 ## Warming level steps

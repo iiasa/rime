@@ -1,8 +1,9 @@
 import numpy as np
 import scipy.stats as stat
 
-def fit_dist(values, quants, dist_name=None):
-    assert quants == [50, 5, 95]
+def fit_dist(values, quants=None, dist_name=None):
+    if quants is not None:
+        assert quants == [50, 5, 95]
     mid, lo, hi = values
 
     if dist_name == "auto":

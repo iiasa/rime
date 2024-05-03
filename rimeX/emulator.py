@@ -238,6 +238,24 @@ def validate_iam_filter(keyval):
     return key, val
 
 
+# Sort out the quantiles
+QUANTILES_MAP = [(5, [" 5th", "|5th"]), (95, [" 95th","|95th"]), (50, ["median", "50th",""])]
+
+def _sort_out_quantiles(sat_variables):
+    """extract quantile map from table variables
+    """
+    sat_quantiles = {}
+    sat_variables = list(sat_variables)
+    for q, ss in QUANTILES_MAP:
+        for v, s in itertools.product(list(sat_variables), ss):
+            if s in v:
+                sat_quantiles[q] = v
+                sat_variables.remove(v)
+                break
+    assert not sat_variables and len(sat_quantiles) == 3
+    return sat_quantiles
+
+
 def main():
 
     from rimeX.datasets import get_datapath
@@ -250,11 +268,13 @@ def main():
     group.add_argument("--warming-level-file", default=None)
 
     group = parser.add_argument_group('Impact indicator')
-    group.add_argument("-v", "--variable", required=True)
+    group.add_argument("-v", "--variable", nargs="*", required=True)
     group.add_argument("--region", required=True)
     group.add_argument("--format", default="ixmp4", choices=["ixmp4", "custom"])
     group.add_argument("--impact-file", nargs='+', default=[], 
         help=f'Files such as produced by Werning et al 2014 (.csv with ixmp4 standard). Also accepted is a glob * pattern to match downloaded datasets (see also rime-download-ls).')
+    group.add_argument("--impact-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
+        help="other fields e.g. --impact-filter scenario='ssp2*'")
 
     group = parser.add_argument_group('Impact indicator (custom)')
     group.add_argument("--subregion", help="if not provided, will default to region average")
@@ -272,6 +292,13 @@ def main():
     group.add_argument("--match-year-population", action="store_true")
     group.add_argument("--warming-level-step", default=CONFIG["emulator.warming_level_step"], type=float,
         help="Impact indicators will be interpolated to match this warming level")
+    group.add_argument("--impact-fit", action="store_true", 
+        help="""Fit a distribution to the impact data from which to resample. 
+        Assumes the quantile variables are named "{NAME}|5th percentile" and "{NAME}|95th percentile".""")
+    group.add_argument("--impact-dist", default="auto", 
+        choices=["auto", "norm", "lognorm"], 
+        help="In auto mode, a normal or log-normal distribution will be fitted if percentiles are provided")
+    group.add_argument("--impact-samples", default=100, type=int, help="Number of samples to draw if --impact-fit is set")
 
     group = parser.add_argument_group('Scenario')
     group.add_argument("--iam-file", default=get_datapath("test_data/emissions_temp_AR6_small.xlsx"), help='pyam-readable data')
@@ -370,24 +397,6 @@ def main():
                 logger.error(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=iamdf_filtered.year[0]).as_pandas())}")
                 parser.exit(1)                
 
-            # Sort out the quantiles
-            QUANTILES_MAP = [(5, [" 5th"]), (95, [" 95th"]), (50, ["median", "50th"])]
-
-            def _sort_out_quantiles(sat_variables):
-                """extract quantile map from table variables
-                """
-                sat_quantiles = {}
-                sat_variables = list(sat_variables)
-                for q, ss in QUANTILES_MAP:
-                    for v, s in itertools.product(list(sat_variables), ss):
-                        if s in v:
-                            row = df[df["variable"] == v].to_dict()
-                            sat_quantiles[q] = v
-                            sat_variables.remove(v)
-                            break
-                assert not sat_variables and len(sat_quantiles) == 3
-                return sat_quantiles
-
             try:
                 sat_quantiles = _sort_out_quantiles(iamdf_filtered.variable)
             except Exception as error:
@@ -456,20 +465,23 @@ def main():
 
         sep = '\n'
         logger.info(f"Load {len(filtered_files)} impact files")
-        impact_data_table = pyam.concat([pyam.IamDataFrame(f).filter(variable=o.variable, region=o.region) for f in filtered_files])
+        filter_kw = dict(o.impact_filter)
+        filter_kw["variable"] = o.variable
+        filter_kw["region"] = o.region
+        impact_data_table = pyam.concat([pyam.IamDataFrame(f).filter(**filter_kw) for f in filtered_files])
 
         if len(impact_data_table.variable) == 0:
-            logger.error("Empty climate impact file")
+            logger.error(f"Empty climate impact file with variable: {o.variable} and region {o.region}")
             parser.exit(1)
 
 
         # Only handle one variable at a time
-        if len(impact_data_table.variable) > 1:
+        if not o.impact_fit and len(impact_data_table.variable) > 1:
             print(f"More than one variable found.\n {sep.join(impact_data_table.variable)}\nPlease restrict the --variable filter.")
             parser.exit(1)
 
 
-        # Only handle one regoin at a time
+        # Only handle one region at a time
         if len(impact_data_table.region) > 1:
             print(f"More than one region found.\n {sep.join(impact_data_table.region)}\nPlease restrict the --region filter.")
             parser.exit(1)
@@ -491,15 +503,15 @@ def main():
 
         # Interpolate records
         logger.info("Impact data: interpolate warming levels...")
-        key = lambda r: (r['ssp_family'], r['year'])
+        key = lambda r: (r['ssp_family'], r['year'], r['variable'])
         input_gwls = set(r['warming_level'] for r in impact_data_records)
         gwls = np.arange(min(input_gwls), max(input_gwls)+o.warming_level_step, o.warming_level_step)
         interpolated_records = []
-        for (ssp_family, year), group in groupby(sorted(impact_data_records, key=key), key=key):
+        for (ssp_family, year, variable), group in groupby(sorted(impact_data_records, key=key), key=key):
             igwls, ivalues = np.array([(r['warming_level'], r['value']) for r in group]).T
-            assert len(igwls) == 6, f"Expected 6 warming level for {ssp_family},{year}. Got {len(igwls)}: {repr(igwls)}"
+            # assert len(igwls) == 6, f"Expected 6 warming level for {ssp_family},{year}. Got {len(igwls)}: {repr(igwls)}"
             values = np.interp(gwls, igwls, ivalues)
-            interpolated_records.extend([{"warming_level":wl, "value": v, "year": year, "ssp_family": ssp_family} for wl, v in zip(gwls, values)])
+            interpolated_records.extend([{"warming_level":wl, "value": v, "year": year, "ssp_family": ssp_family, "variable": variable} for wl, v in zip(gwls, values)])
         # inplace operation
         impact_data_records = interpolated_records
         logger.info("Impact data: interpolate warming levels...done")
@@ -508,24 +520,63 @@ def main():
         if o.match_year_population:
             logger.info("Impact data: interpolate years...")
             interpolated_records = []
-            key = lambda r: (r['ssp_family'], r['warming_level'])
+            key = lambda r: (r['ssp_family'], r['warming_level'], r['variable'])
             input_years = set(r['year'] for r in impact_data_records)
             years = gmt_ensemble.index
-            for (ssp_family, wl), group in groupby(sorted(impact_data_records, key=key), key=key):
+            for (ssp_family, wl, variable), group in groupby(sorted(impact_data_records, key=key), key=key):
                 group = list(group)
                 input_years = np.sort([r["year"] for r in group])
                 iyears, ivalues = np.array([(r['year'], r['value']) for r in group]).T
                 # assert len(iyears) == 6, f"Expected 6 warming level for {ssp_family},{year}. Got {len(iyears)}: {repr(iyears)}"
                 values = np.interp(years, iyears, ivalues)
-                interpolated_records.extend([{"warming_level":wl, "value": v, "year": year, "ssp_family": ssp_family} for year, v in zip(years, values)])
+                interpolated_records.extend([{"warming_level":wl, "value": v, "year": year, "ssp_family": ssp_family, "variable": variable} for year, v in zip(years, values)])
             # inplace operation
             impact_data_records = interpolated_records
             logger.info("Impact data: interpolate years...done")
 
-        # iamdf_filtered.as_pandas().to_csv("gmt_filtered.csv", index=None)
-        # gmt_ensemble.to_csv("gmt.csv")
-        # impact_data_frame.to_csv("impacts_filtered.csv", index=None)
-        # pd.DataFrame(interpolated_records).to_csv("impacts_interpolated.csv", index=None)
+
+        # Fit and resample impact data if required
+        if o.impact_fit:
+            from rimeX.stats import fit_dist
+
+            logger.info(f"Fit Impact Percentiles ({o.impact_dist}) with {o.impact_samples} samples.")
+
+            impact_variables = set(r['variable'] for r in impact_data_records)
+            impact_years = sorted(set(r['year'] for r in impact_data_records))
+
+            if len(impact_variables) != 3:
+                logger.error(f"Expected three variables in impact fit mode after applying filter: {repr(filter_kw)}. Found {len(impact_variables)}")
+                logger.error(f"Remaining variable: {impact_variables}")
+                parser.exit(1)           
+
+            try:
+                sat_quantiles = _sort_out_quantiles(impact_variables)
+            except Exception as error:
+                logger.error(f"Failed to extract quantiles from impact table variables.")
+                logger.error(f"Expected variables contained the following strings: {dict(QUANTILES_MAP)}")
+                logger.error(f"Remaining variables: {str(impact_variables)}")
+                parser.exit(1)
+
+            fields = ["warming_level", "year", "ssp_family"]
+            key = lambda r: tuple(r[f] for f in fields)
+            resampled_records = []
+            for keys, group in groupby(sorted(impact_data_records, key=key), key=key):
+                group = list(group)
+                assert len(group) == 3, f'Expected group of 3 records (the percentiles). Got {len(group)}: {group}'
+                by_var = {r['variable']: r for r in group}
+                quants = [50, 5, 95]
+                dist = fit_dist([by_var[sat_quantiles[q]]['value'] for q in quants], quants, dist_name=o.impact_dist)
+                logger.debug(f"{keys}: {dist.dist.name}({','.join([str(r) for r in dist.args])})")
+
+                # resample (equally spaced percentiles)
+                step = 1/o.impact_samples
+                values = dist.ppf(np.linspace(step/2, 1-step/2, o.impact_samples))
+                r0 = by_var[sat_quantiles[50]]
+                for v in values:
+                    resampled_records.append({**r0, **{"value": v}})
+
+            impact_data_records = resampled_records
+
 
         binned_impact_data = impact_data_records
 
@@ -560,7 +611,8 @@ def main():
         logger.info(f"Load warming level file {o.warming_level_file}")
         warming_levels = pd.read_csv(o.warming_level_file)
 
-        binned_impact_data = get_binned_isimip_records(warming_levels, o.variable, o.region, o.subregion, o.weights, o.season, 
+        assert len(o.variable) == 1, "only one variable supported for CIE data"
+        binned_impact_data = get_binned_isimip_records(warming_levels, o.variable[0], o.region, o.subregion, o.weights, o.season, 
             matching_method=o.matching_method, running_mean_window=o.running_mean_window, 
             individual_years=o.individual_years, average_scenarios=o.average_scenarios, 
             equiprobable_models=o.equiprobable_models,
