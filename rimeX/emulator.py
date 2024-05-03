@@ -287,6 +287,7 @@ def main():
     group.add_argument("--magicc-files", nargs='+', help='if provided these files will be used instead if iam scenario')
     group.add_argument("--projection-baseline", type=int, nargs=2, default=CONFIG['emulator.projection_baseline'])
     group.add_argument("--projection-baseline-offset", type=float, default=CONFIG['emulator.projection_baseline_offset'])
+    group.add_argument("--time-step", type=int, help="GSAT time step. By default whatever time-step is present in the input file.")
 
     group = parser.add_argument_group('Result')
     group.add_argument("-O", "--overwrite", action='store_true', help='overwrite final results')
@@ -411,6 +412,19 @@ def main():
         else:
             gmt_ensemble = df.set_index('year')[['value']]
 
+
+    if o.time_step:
+        orig_time_step = gmt_ensemble.index[1] - gmt_ensemble.index[0]
+        if o.time_step > orig_time_step and orig_time_step * (orig_time_step//o.time_step) == o.time_step:
+            logger.info(f"Subsample GSAT to {o.time_step}-year(s) time-step")
+            gmt_ensemble = gmt_ensemble.iloc[::orig_time_step//o.time_step]
+
+        else:
+            import xarray as xa
+            logger.info(f"Interpolate GSAT to {o.time_step}-year(s) time-step...")
+            years = np.arange(gmt_ensemble.index[0], gmt_ensemble.index[-1]+o.time_step, o.time_step)
+            gmt_ensemble = xa.DataArray(gmt_ensemble.values, coords={"year": gmt_ensemble.index}, dims=['year', 'sample']).interp(year=years).to_pandas()
+            logger.info(f"Interpolate GSAT to {o.time_step}-year(s) time-step...done")
 
     # IIASA format like Wernings et al 2024
     if o.impact_file:
