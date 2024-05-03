@@ -13,7 +13,7 @@ from importlib import import_module
 
 import rimeX
 from rimeX.config import CACHE_FOLDER, CONFIG, config_parser, get_outputpath
-from rimeX.logs import logger, log_parser
+from rimeX.logs import logger, log_parser, setup_logger
 
 import rimeX_datasets
 _DEFAULTDATADIR = rimeX_datasets.__path__[0]
@@ -291,6 +291,7 @@ def main():
     parser.add_argument("--force", action='store_true', help='force new download')
 
     o = parser.parse_args()
+    setup_logger(o)
 
     if o.ls:
         print_available_datasets()

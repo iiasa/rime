@@ -11,7 +11,7 @@ from itertools import groupby
 import numpy as np
 import pandas as pd
 
-from rimeX.logs import logger, log_parser
+from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 
 from rimeX.warminglevels import get_warming_level_file
@@ -296,6 +296,8 @@ def main():
     group.add_argument("-o", "--output-file", required=True)
 
     o = parser.parse_args()
+
+    setup_logger(o)
 
     if o.overwrite_all:
         o.overwrite = True

@@ -7,7 +7,7 @@ import datetime
 import numpy as np
 import pandas as pd
 from rimeX.regional_average import get_files, isimip_parser
-from rimeX.logs import logger, log_parser
+from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 
 def global_mean_file(variable, model, experiment, root=None):
@@ -222,6 +222,7 @@ def main():
     # parser.add_argument("-o", "--output-file", default=CONFIG["emulator.warming_level_file"])
 
     o = parser.parse_args()
+    setup_logger(o)
 
     if o.output_file is None:
         o.output_file = get_warming_level_file(**{**config, **vars(o)})

@@ -7,7 +7,7 @@ import xarray as xa
 
 from rimeX.regional_average import get_files
 from rimeX.tools import cdo
-from rimeX.logs import logger, log_parser
+from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 
 
@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--model", nargs="+", default=CONFIG["isimip.models"], choices=CONFIG["isimip.models"])
     parser.add_argument("--experiment", nargs="+", default=CONFIG["isimip.experiments"], choices=CONFIG["isimip.experiments"])
     o = parser.parse_args()
+    setup_logger(o)
 
     variable = "tas"
 

@@ -5,7 +5,7 @@ from flatdict import FlatDict
 import toml
 
 import rimeX
-from rimeX.logs import logger
+from rimeX.logs import logger, setup_logger
 
 def load_config(file):
     with open(file) as f:

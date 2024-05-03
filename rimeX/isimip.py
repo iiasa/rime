@@ -6,7 +6,7 @@ import argparse
 
 from rimeX.tools import cdo
 from rimeX.config import CONFIG, config_parser
-from rimeX.logs import log_parser
+from rimeX.logs import log_parser, setup_logger
 
 
 client = None
@@ -121,6 +121,7 @@ def main():
     group.add_argument("--download-folder", default=CONFIG["isimip.download_folder"], help=argparse.SUPPRESS)
 
     o = parser.parse_args()
+    setup_logger(o)
 
     if not o.variable:
         print("At least one variable must be indicated. E.g. `--variable tas`")

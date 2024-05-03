@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 import xarray as xa
 
-from rimeX.logs import logger, log_parser
+from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 from rimeX.isimip import get_models, get_experiments, get_variables, isimip_parser
 
@@ -107,6 +107,7 @@ def main():
     group.add_argument("--weights", nargs='+', default=CONFIG["preprocessing.regional.weights"], choices=CONFIG["preprocessing.regional.weights"])
 
     o = parser.parse_args()
+    setup_logger(o)
 
     masks = preload_masks(o.region, o.weights)
 

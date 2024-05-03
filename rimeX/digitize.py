@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 # import xarray as xa
 
-from rimeX.logs import logger
+from rimeX.logs import logger, setup_logger
 from rimeX.config import CONFIG
 from rimeX.warminglevels import get_warming_level_file
 from rimeX.regional_average import get_regional_averages_file
@@ -432,6 +432,7 @@ def main():
     group.add_argument("--cpus", type=int)
 
     o = parser.parse_args()
+    setup_logger(o)
         
     if o.warming_level_file is None:
         o.warming_level_file = get_warming_level_file(**{**config, **vars(o)})
