@@ -16,6 +16,7 @@ from rimeX.config import CONFIG, config_parser
 
 from rimeX.warminglevels import get_warming_level_file
 from rimeX.digitize import get_binned_isimip_records, make_models_equiprobable
+from rimeX.compat import FastIamDataFrame, concat
 
 
 def load_magicc_ensemble(file, projection_baseline=None, projection_baseline_offset=None):
@@ -330,6 +331,8 @@ def main():
     group.add_argument("--save-gsat", help='filename to save the processed GSAT (e.g. for debugging)')
     group.add_argument("--save-impact-table", help='file name to save the processed impacts table (e.g. for debugging)')
 
+    parser.add_argument("--pyam", action="store_true", help='use pyam instead of own wrapper')
+
     o = parser.parse_args()
 
     setup_logger(o)
@@ -354,10 +357,13 @@ def main():
             parser.error("Need to indicate MAGICC or IAM data file --iam-file")
             parser.exit(1)
             
-        import pyam
         if not Path(o.iam_file).exists() and get_datapath(o.iam_file).exists():
             o.iam_file = str(get_datapath(o.iam_file))
-        iamdf = pyam.IamDataFrame(o.iam_file)
+        if o.pyam:
+            import pyam
+            iamdf = pyam.IamDataFrame(o.iam_file)
+        else:
+            iamdf = FastIamDataFrame.load(o.iam_file)
         filter_kw = dict(o.iam_filter)
         if o.iam_variable: filter_kw['variable'] = o.iam_variable
         if o.iam_scenario: filter_kw['scenario'] = o.iam_scenario
@@ -379,7 +385,7 @@ def main():
             parser.exit(1)
 
         if not o.iam_fit and len(iamdf_filtered) != len(iamdf_filtered.year):
-            logger.error(f"More entries than years after applying filter: {repr(filter_kw)}")
+            logger.error(f"More entries than years after applying filter: {repr(filter_kw)}. Years: {len(iamdf_filtered.year)}. Entries: {len(iamdf_filtered)}")
             logger.error(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=iamdf_filtered.year[0]).as_pandas())}")
             parser.exit(1)
 
@@ -450,7 +456,7 @@ def main():
     # IIASA format like Wernings et al 2024
     if o.impact_file:
 
-        import pyam
+        # import pyam
         filtered_files = []
         for file in o.impact_file:
             # file can be provided directly
@@ -471,7 +477,11 @@ def main():
         filter_kw = dict(o.impact_filter)
         filter_kw["variable"] = o.variable
         filter_kw["region"] = o.region
-        impact_data_table = pyam.concat([pyam.IamDataFrame(f).filter(**filter_kw) for f in filtered_files])
+        if o.pyam:
+            import pyam
+            impact_data_table = pyam.concat([pyam.IamDataFrame(f).filter(**filter_kw) for f in filtered_files])
+        else:
+            impact_data_table = concat([FastIamDataFrame.load(f).filter(**filter_kw) for f in filtered_files])
 
         if len(impact_data_table.variable) == 0:
             logger.error(f"Empty climate impact file with variable: {o.variable} and region {o.region}")
@@ -511,13 +521,19 @@ def main():
         gwls = np.arange(min(input_gwls), max(input_gwls)+o.warming_level_step, o.warming_level_step)
         interpolated_records = []
         for (ssp_family, year, variable), group in groupby(sorted(impact_data_records, key=key), key=key):
-            igwls, ivalues = np.array([(r['warming_level'], r['value']) for r in group]).T
+            igwls, ivalues = np.array([(r['warming_level'], r['value']) for r in sorted(group, key=lambda r: r['warming_level'])]).T
             # assert len(igwls) == 6, f"Expected 6 warming level for {ssp_family},{year}. Got {len(igwls)}: {repr(igwls)}"
             values = np.interp(gwls, igwls, ivalues)
+            # print(ssp_family, year, variable, igwls, ivalues, '=>', gwls, values)
             interpolated_records.extend([{"warming_level":wl, "value": v, "year": year, "ssp_family": ssp_family, "variable": variable} for wl, v in zip(gwls, values)])
         # inplace operation
         impact_data_records = interpolated_records
         logger.info("Impact data: interpolate warming levels...done")
+
+        # if o.save_impact_table:
+        #     logger.info("Save impact table...")
+        #     pd.DataFrame(impact_data_records).to_csv(o.save_impact_table+"afterinterp.csv", index=None)
+        #     logger.info("Save impact table...done")        
 
         # For population dataset the year can be matched to temperatrure time-series. It must be interpolated to yearly values first.
         if o.match_year_population:
