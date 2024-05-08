@@ -150,14 +150,14 @@ def recombine_gmt_vectorized(binned_isimip_data, gmt_ensemble, quantile_levels, 
     return pd.DataFrame(quantiles, index=gmt_years, columns=quantile_levels)
 
 
-def recombine_gmt_ensemble(binned_isimip_data, gmt_ensemble, quantile_levels, match_year=False):
+def recombine_gmt_ensemble(impact_data, gmt_ensemble, quantile_levels, match_year=False):
     """Take binned ISIMIP data and GMT time-series as input and  returns quantiles as output
 
     Determinisitc method. This is the original method for "temperature" and "time" matching methods. 
 
     Parameters
     ----------
-    binned_isimip_data : list of records with fields {"value": ..., "warming_level": ...}
+    impact_data : pandas DataFrame or list of records with fields {"value": ..., "warming_level": ...}
     gmt_ensemble : pandas DataFrame with years as index and ensemble members as columns (warming since P.I.)
     quantile_levels : quantiles to include in the output, default from config.toml files
     match_year : bool, False by default. 
@@ -173,12 +173,15 @@ def recombine_gmt_ensemble(binned_isimip_data, gmt_ensemble, quantile_levels, ma
     ----
     any weight normalization can be done prior to calling this function with define_weight_within_warming_levels
     """
+    if isinstance(impact_data, pd.DataFrame):
+        impact_data = impact_data.to_dict("records")
+
     gmt_years = gmt_ensemble.index
     gmt_ensemble = gmt_ensemble.values
 
     # digitize MAGICC temperature
     # bins for digitization
-    all_warming_levels = np.sort(np.fromiter(set(r['warming_level'] for r in binned_isimip_data), float))
+    all_warming_levels = np.sort(np.fromiter(set(r['warming_level'] for r in impact_data), float))
     binsize = all_warming_levels[1] - all_warming_levels[0]
     # assign any outlier to the edges, to keep the median unbiased
     bins = all_warming_levels[1:] - binsize/2
@@ -187,10 +190,10 @@ def recombine_gmt_ensemble(binned_isimip_data, gmt_ensemble, quantile_levels, ma
     # Group data records by warming level
     if match_year:
         key_wl_year = lambda r: (r['warming_level'], r['year'])
-        binned_isimip_data_by_wl_and_year = {(wl, year) : list(group) for (wl, year), group in groupby(sorted(binned_isimip_data, key=key_wl_year), key=key_wl_year)}
+        impact_data_by_wl_and_year = {(wl, year) : list(group) for (wl, year), group in groupby(sorted(impact_data, key=key_wl_year), key=key_wl_year)}
     else:
         key_wl = lambda r: r['warming_level']    
-        binned_isimip_data_by_wl = {wl : list(group) for wl, group in groupby(sorted(binned_isimip_data, key=key_wl), key=key_wl)}
+        impact_data_by_wl = {wl : list(group) for wl, group in groupby(sorted(impact_data, key=key_wl), key=key_wl)}
 
     # Now calculate quantiles for each year
     logger.info("Re-combine all data and calculate quantiles for each year")
@@ -211,9 +214,9 @@ def recombine_gmt_ensemble(binned_isimip_data, gmt_ensemble, quantile_levels, ma
             # probability p(GMT == wl)
             p_gmt = number_of_gmt_simulations / indices[i].size
             if match_year:
-                records = binned_isimip_data_by_wl_and_year[(wl, year)]
+                records = impact_data_by_wl_and_year[(wl, year)]
             else:
-                records = binned_isimip_data_by_wl[wl]
+                records = impact_data_by_wl[wl]
             
             values, weights = np.array([(r['value'], r.get('weight', 1)) for r in records]).T
             p_record = weights / weights.sum()
