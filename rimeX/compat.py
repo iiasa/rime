@@ -65,11 +65,11 @@ class FastIamDataFrame:
             if k_.lower() == "year": continue
             k = self._get_col_name(k_)
             values = df[k].unique()
-            if type(exprs) is str:
+            if type(exprs) is not list:
                 exprs = [exprs]
             keep = []
             for expr in exprs:
-                keep.extend(fnmatch.filter(values, expr))
+                keep.extend(fnmatch.filter(values, expr) if type(expr) is str else [v for v in values if v == expr])
             orcond = False
             for value in keep:
                 orcond = (df[k].values == value) | orcond

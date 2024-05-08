@@ -51,6 +51,7 @@ The following scripts are made available, for which inline help is available wit
 	- `rime-init-wl` : crunch the warming levels (required)
 	- `rime-init-digitize` : pre-compute digitized regional average based on warming levels (optional)
 	- `rime-run-timeseries` : run the main emulator (time-series)
+	- `rime-run-map` : run the map emulator
 
 - Also useful:
 
@@ -125,6 +126,15 @@ The time-step is normally set by the input GSAT data file, but it can be subsamp
 
 ![](notebooks/images/time_step.png)
 
+## Maps
+
+A map emulator is also available:
+
+	$ rime-run-map --iam-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --iam-filter category_show_lhs=C8 quantile=0.5 -i "werning2024/*/cse_cdd_ssp2_*_abs.nc4" -v cdd --gwl-dim threshold -o maps.nc --year 2020 2050 2070 -O --bbox -10 20 35 50
+
+Here the input file is obtained via `rime-download --name werning2024/precipitation` and the warming levels are spread across various files with the `threshold` dimension indicating the warming levels, and the variable is named `cdd`. It would also be possible to indicate a list of file via `-v file1 file2` and give the warming levels explicitly via `--gwl-values 1.2 1.5` etc.
+
+![](notebooks/images/maps.png)
 
 ## Config files and default parameters
 

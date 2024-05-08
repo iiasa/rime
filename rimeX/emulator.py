@@ -17,6 +17,7 @@ from rimeX.config import CONFIG, config_parser
 from rimeX.warminglevels import get_warming_level_file
 from rimeX.digitize import get_binned_isimip_records, make_models_equiprobable
 from rimeX.compat import FastIamDataFrame, concat
+from rimeX.datasets import get_datapath
 
 
 def load_magicc_ensemble(file, projection_baseline=None, projection_baseline_offset=None):
@@ -239,6 +240,13 @@ def recombine_gmt_ensemble(impact_data, gmt_ensemble, quantile_levels, match_yea
 
 def validate_iam_filter(keyval):
     key, val = keyval.split("=")
+    try:
+        val = int(val)
+    except:
+        try:
+            val = float(val)
+        except:
+            pass
     return key, val
 
 
@@ -260,50 +268,9 @@ def _sort_out_quantiles(sat_variables):
     return sat_quantiles
 
 
-def main():
+def _get_gmt_parser():
 
-    from rimeX.datasets import get_datapath
-
-    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser])
-    
-    group = parser.add_argument_group('Warming level matching')
-    group.add_argument("--matching-method", default=CONFIG["emulator.experimental.matching_method"])
-    group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"])
-    group.add_argument("--warming-level-file", default=None)
-
-    group = parser.add_argument_group('Impact indicator')
-    group.add_argument("-v", "--variable", nargs="*", required=True)
-    group.add_argument("--region", required=True)
-    group.add_argument("--format", default="ixmp4", choices=["ixmp4", "custom"])
-    group.add_argument("--impact-file", nargs='+', default=[], 
-        help=f'Files such as produced by Werning et al 2014 (.csv with ixmp4 standard). Also accepted is a glob * pattern to match downloaded datasets (see also rime-download-ls).')
-    group.add_argument("--impact-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
-        help="other fields e.g. --impact-filter scenario='ssp2*'")
-
-    group = parser.add_argument_group('Impact indicator (custom)')
-    group.add_argument("--subregion", help="if not provided, will default to region average")
-    group.add_argument("--list-subregions", action='store_true', help="print all subregions and exit")
-    group.add_argument("--weights", default='LonLatWeight', choices=CONFIG["preprocessing.regional.weights"])
-    group.add_argument("--season", default='annual', choices=list(CONFIG["preprocessing.seasons"]))
-
-    group = parser.add_argument_group('Aggregation')
-    group.add_argument("--individual-years", action="store_true")
-    group.add_argument("--average-scenarios", action="store_true")
-    group.add_argument("--equiprobable-models", action="store_true", help="if True, each model will have the same probability")
-    group.add_argument("--model", nargs="+", help="if provided, only consider a set of specified model(s)")
-    group.add_argument("--experiment", nargs="+", help="if provided, only consider a set of specified experiment(s)")
-    group.add_argument("--quantiles", nargs='+', default=CONFIG["emulator.quantiles"])
-    group.add_argument("--match-year-population", action="store_true")
-    group.add_argument("--warming-level-step", default=CONFIG["emulator.warming_level_step"], type=float,
-        help="Impact indicators will be interpolated to match this warming level")
-    group.add_argument("--impact-fit", action="store_true", 
-        help="""Fit a distribution to the impact data from which to resample. 
-        Assumes the quantile variables are named "{NAME}|5th percentile" and "{NAME}|95th percentile".""")
-    group.add_argument("--impact-dist", default="auto", 
-        choices=["auto", "norm", "lognorm"], 
-        help="In auto mode, a normal or log-normal distribution will be fitted if percentiles are provided")
-    group.add_argument("--impact-samples", default=100, type=int, help="Number of samples to draw if --impact-fit is set")
-
+    parser = argparse.ArgumentParser(add_help=False)
     group = parser.add_argument_group('Scenario')
     group.add_argument("--iam-file", default=get_datapath("test_data/emissions_temp_AR6_small.xlsx"), help='pyam-readable data')
     group.add_argument("--iam-variable", default="*GSAT*", help="Filter iam variable")
@@ -321,31 +288,14 @@ def main():
     group.add_argument("--projection-baseline", type=int, nargs=2, default=CONFIG['emulator.projection_baseline'])
     group.add_argument("--projection-baseline-offset", type=float, default=CONFIG['emulator.projection_baseline_offset'])
     group.add_argument("--time-step", type=int, help="GSAT time step. By default whatever time-step is present in the input file.")
-
-    group = parser.add_argument_group('Result')
-    group.add_argument("-O", "--overwrite", action='store_true', help='overwrite final results')
-    group.add_argument("--backend-isimip-bins", nargs="+", default=CONFIG["emulator.isimip_binned_backend"], choices=["csv", "feather"])
-    parser.add_argument("--overwrite-isimip-bins", action='store_true', help='overwrite the intermediate calculations (binned isimip)')
-    parser.add_argument("--overwrite-all", action='store_true', help='overwrite intermediate and final')
-    group.add_argument("-o", "--output-file", required=True)
+    group.add_argument("--year", type=int, nargs="*", help="specify a set of years (e.g. for maps)")
     group.add_argument("--save-gsat", help='filename to save the processed GSAT (e.g. for debugging)')
-    group.add_argument("--save-impact-table", help='file name to save the processed impacts table (e.g. for debugging)')
+    
+    return parser
 
-    parser.add_argument("--pyam", action="store_true", help='use pyam instead of own wrapper')
 
-    o = parser.parse_args()
+def _get_gmt_ensemble(o, parser):
 
-    setup_logger(o)
-
-    if o.overwrite_all:
-        o.overwrite = True
-        o.overwrite_isimip_bins = True
-
-    if not o.overwrite and Path(o.output_file).exists():
-        logger.info(f"{o.output_file} already exist. Use -O or --overwrite to reprocess.")
-        parser.exit(0)
-
-    # Load GMT data
     if o.magicc_files:
         gmt_ensemble = []
         for file in o.magicc_files:
@@ -434,11 +384,8 @@ def main():
         else:
             gmt_ensemble = df.set_index('year')[['value']]
 
-    if o.save_gsat:
-        logger.info("Save GSAT...")        
-        gmt_ensemble.to_csv(o.save_gsat)
-        logger.info("Save GSAT...done")        
-
+    if o.year is not None:
+        gmt_ensemble = gmt_ensemble.loc[o.year]
 
     if o.time_step:
         orig_time_step = gmt_ensemble.index[1] - gmt_ensemble.index[0]
@@ -452,6 +399,84 @@ def main():
             years = np.arange(gmt_ensemble.index[0], gmt_ensemble.index[-1]+o.time_step, o.time_step)
             gmt_ensemble = xa.DataArray(gmt_ensemble.values, coords={"year": gmt_ensemble.index}, dims=['year', 'sample']).interp(year=years).to_pandas()
             logger.info(f"Interpolate GSAT to {o.time_step}-year(s) time-step...done")
+
+    if o.save_gsat:
+        logger.info("Save GSAT...")        
+        gmt_ensemble.to_csv(o.save_gsat)
+        logger.info("Save GSAT...done")        
+
+
+    return gmt_ensemble
+
+
+def main():
+
+    gmt_parser = _get_gmt_parser()
+
+    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, gmt_parser])
+    
+    group = parser.add_argument_group('Warming level matching')
+    group.add_argument("--matching-method", default=CONFIG["emulator.experimental.matching_method"])
+    group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"])
+    group.add_argument("--warming-level-file", default=None)
+
+    group = parser.add_argument_group('Impact indicator')
+    group.add_argument("-v", "--variable", nargs="*", required=True)
+    group.add_argument("--region", required=True)
+    group.add_argument("--format", default="ixmp4", choices=["ixmp4", "custom"])
+    group.add_argument("--impact-file", nargs='+', default=[], 
+        help=f'Files such as produced by Werning et al 2014 (.csv with ixmp4 standard). Also accepted is a glob * pattern to match downloaded datasets (see also rime-download-ls).')
+    group.add_argument("--impact-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
+        help="other fields e.g. --impact-filter scenario='ssp2*'")
+
+    group = parser.add_argument_group('Impact indicator (custom)')
+    group.add_argument("--subregion", help="if not provided, will default to region average")
+    group.add_argument("--list-subregions", action='store_true', help="print all subregions and exit")
+    group.add_argument("--weights", default='LonLatWeight', choices=CONFIG["preprocessing.regional.weights"])
+    group.add_argument("--season", default='annual', choices=list(CONFIG["preprocessing.seasons"]))
+
+    group = parser.add_argument_group('Aggregation')
+    group.add_argument("--individual-years", action="store_true")
+    group.add_argument("--average-scenarios", action="store_true")
+    group.add_argument("--equiprobable-models", action="store_true", help="if True, each model will have the same probability")
+    group.add_argument("--model", nargs="+", help="if provided, only consider a set of specified model(s)")
+    group.add_argument("--experiment", nargs="+", help="if provided, only consider a set of specified experiment(s)")
+    group.add_argument("--quantiles", nargs='+', default=CONFIG["emulator.quantiles"])
+    group.add_argument("--match-year-population", action="store_true")
+    group.add_argument("--warming-level-step", default=CONFIG["emulator.warming_level_step"], type=float,
+        help="Impact indicators will be interpolated to match this warming level")
+    group.add_argument("--impact-fit", action="store_true", 
+        help="""Fit a distribution to the impact data from which to resample. 
+        Assumes the quantile variables are named "{NAME}|5th percentile" and "{NAME}|95th percentile".""")
+    group.add_argument("--impact-dist", default="auto", 
+        choices=["auto", "norm", "lognorm"], 
+        help="In auto mode, a normal or log-normal distribution will be fitted if percentiles are provided")
+    group.add_argument("--impact-samples", default=100, type=int, help="Number of samples to draw if --impact-fit is set")
+
+    group = parser.add_argument_group('Result')
+    group.add_argument("-O", "--overwrite", action='store_true', help='overwrite final results')
+    group.add_argument("--backend-isimip-bins", nargs="+", default=CONFIG["emulator.isimip_binned_backend"], choices=["csv", "feather"])
+    parser.add_argument("--overwrite-isimip-bins", action='store_true', help='overwrite the intermediate calculations (binned isimip)')
+    parser.add_argument("--overwrite-all", action='store_true', help='overwrite intermediate and final')
+    group.add_argument("-o", "--output-file", required=True)
+    group.add_argument("--save-impact-table", help='file name to save the processed impacts table (e.g. for debugging)')
+
+    parser.add_argument("--pyam", action="store_true", help='use pyam instead of own wrapper')
+
+    o = parser.parse_args()
+
+    setup_logger(o)
+
+    if o.overwrite_all:
+        o.overwrite = True
+        o.overwrite_isimip_bins = True
+
+    if not o.overwrite and Path(o.output_file).exists():
+        logger.info(f"{o.output_file} already exist. Use -O or --overwrite to reprocess.")
+        parser.exit(0)
+
+    # Load GMT data
+    gmt_ensemble = _get_gmt_parser(o, parser)
 
     # IIASA format like Wernings et al 2024
     if o.impact_file:
