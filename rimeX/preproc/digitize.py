@@ -406,7 +406,7 @@ def main():
         logger.info(f"Digitize ISIMIP: Submit {len(all_items)} jobs.")
         for variable, region, subregion, weights, season in all_items:
             jobs.append((executor.submit(get_binned_isimip_records, warming_levels, variable, region, subregion, weights, season, 
-                running_mean_window=o.running_mean_window, overwrite=o.overwrite, backend=o.backend), (variable, region, subreion, weights, season)))
+                running_mean_window=o.running_mean_window, overwrite=o.overwrite, backends=o.backend), (variable, region, subregion, weights, season)))
        
         # wait for the jobs to finish to exit this script
         for j, (job, ids) in enumerate(jobs):
