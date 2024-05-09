@@ -49,7 +49,7 @@ def load_annual_values(model, experiments, variable="tas", projection_baseline=N
     return df
 
 
-def get_matching_years_by_time_bucket(model, all_annual, warming_levels, running_mean_window, projection_baseline, all_years=True):
+def get_matching_years_by_time_bucket(model, all_annual, warming_levels, running_mean_window, projection_baseline):
 
     all_smoothed = all_annual.rolling(running_mean_window, center=True).mean()
     records = []
@@ -75,31 +75,19 @@ def get_matching_years_by_time_bucket(model, all_annual, warming_levels, running
                 logger.warning(f"{model} | {experiment} never reached {wl} degrees")
                 break
 
-            # Write down all individual years
-            if all_years:
-                central_year = smoothed.index[idx]
-                for y in range(central_year-running_mean_window//2, central_year+running_mean_window//2+1):
-                    value = all_annual[experiment].loc[y]
-                    acc = accumulated_warming.loc[y]
-                    rate = warming_rate.loc[y]
-                    records.append({"model": model, "experiment": experiment, "warming_level":  wl, 
-                        "year": y, "actual_warming": value, "accumulated_warming": acc, "warming_rate": rate})
-            else:
-                # also calculate mean warming during that period, for diagnostic purposes
-                value = all_annual[experiment].reindex(smoothed.index).values[idx-running_mean_window//2:idx+running_mean_window//2+1].mean()
-                acc = accumulated_warming.reindex(smoothed.index).values[idx-running_mean_window//2:idx+running_mean_window//2+1].mean()
-                rate = warming_rate.reindex(smoothed.index).values[idx-running_mean_window//2:idx+running_mean_window//2+1].mean()
-                records.append({"model": model, "experiment": experiment, "warming_level":  wl, 
-                    "year": smoothed.index[idx], "actual_warming": value, "accumulated_warming": acc, "warming_rate": rate})
+            # also calculate mean warming during that period, for diagnostic purposes
+            value = all_annual[experiment].reindex(smoothed.index).values[idx-running_mean_window//2:idx+running_mean_window//2+1].mean()
+            acc = accumulated_warming.reindex(smoothed.index).values[idx-running_mean_window//2:idx+running_mean_window//2+1].mean()
+            rate = warming_rate.reindex(smoothed.index).values[idx-running_mean_window//2:idx+running_mean_window//2+1].mean()
+            records.append({"model": model, "experiment": experiment, "warming_level":  wl, 
+                "year": smoothed.index[idx], "actual_warming": value, "accumulated_warming": acc, "warming_rate": rate})
 
     return records
 
 
-def get_warming_level_file(matching_method, running_mean_window, temperature_sigma_range, warming_level_name=None, **kw):
+def get_warming_level_file(running_mean_window, warming_level_name=None, **kw):
     if warming_level_name is None:
-        matching_method_label = f"{matching_method}-{temperature_sigma_range}s" if matching_method == "temperature" else matching_method
-        natvarlab = "" if matching_method == "pure" else f"-bucket_climate-{running_mean_window}-years"
-        warming_level_name = f"warming_level_year_by_{matching_method_label}{natvarlab}.csv"
+        warming_level_name = f"warming_level_running-{running_mean_window}-years.csv"
     # return Path(__file__).parent / warming_level_folder / warming_level_name
     return Path(CONFIG["isimip.climate_impact_explorer"]) / "warming_levels" / warming_level_name
 
@@ -116,11 +104,6 @@ def main():
     parser.add_argument("--running-mean-window", type=int, default=CONFIG["emulator.running_mean_window"])
     parser.add_argument("--projection-baseline", nargs=2, type=int, default=CONFIG["emulator.projection_baseline"])
     parser.add_argument("--projection-baseline-offset", type=float, default=CONFIG["emulator.projection_baseline_offset"])
-    parser.add_argument("--matching-method", default=CONFIG["emulator.experimental.matching_method"], choices=["time", "temperature", "pure"], help=argparse.SUPRESS)
-
-    group = parser.add_argument_group('argument specific to the temperature matching method')
-    parser.add_argument("--temperature-sigma-range", type=float, default=CONFIG["emulator.experimental.temperature_sigma_range"], help=argparse.SUPRESS)
-    parser.add_argument("--temperature-sigma-first-year", type=int, default=CONFIG["emulator.experimental.temperature_sigma_first_year"], help=argparse.SUPRESS)
 
     parser.add_argument("-o", "--output-file")
     parser.add_argument("-O", "--overwrite", action="store_true")
@@ -147,21 +130,7 @@ def main():
     for model in o.models:
 
         all_annual = load_annual_values(model, o.experiments, projection_baseline=o.projection_baseline, projection_baseline_offset=o.projection_baseline_offset)
-
-        if o.matching_method == "time":
-            records.extend(get_matching_years_by_time_bucket(model, all_annual, warming_levels, o.running_mean_window, o.projection_baseline))
-
-        elif o.matching_method == "temperature":
-            from rimeX.preproc.experimental import get_matching_years_by_temperature_bucket
-            records.extend(get_matching_years_by_temperature_bucket(model, all_annual, warming_levels, o.running_mean_window, 
-                o.temperature_sigma_range, o.temperature_sigma_first_year, o.step_warming_level, o.projection_baseline))
-
-        elif o.matching_method == "pure":
-            from rimeX.preproc.experimental import get_matching_years_by_pure_temperature
-            records.extend(get_matching_years_by_pure_temperature(model, all_annual, warming_levels, o.projection_baseline))
-
-        else:
-            raise NotImplementedError(o.matching_method)
+        records.extend(get_matching_years_by_time_bucket(model, all_annual, warming_levels, o.running_mean_window, o.projection_baseline))
 
     df = pd.DataFrame(records)
 

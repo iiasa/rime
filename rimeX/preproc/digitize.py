@@ -100,7 +100,6 @@ def average_per_group(records, by):
         mean_year = (years*weights).sum()/total_weight
         mean_weight = (weights*weights).sum()/total_weight  
 
-        # NOTE: the use case for the above is after resample_with_natural_variability, with individual_years = False
         average_records.append({"value": mean_value, "year": mean_year, "weight": mean_weight, **{k:v for k,v in zip(by, key)}})
 
     return average_records
@@ -136,7 +135,7 @@ def make_models_equiprobable(records):
 
 
 def _bin_isimip_records(indicator_data, warming_levels, 
-    matching_method, running_mean_window, warming_levels_reached=None):
+    unning_mean_window, warming_levels_reached=None, meta={}):
     """Load ISISMIP data for a {variable, region, subregion, weights, season}, binned according to warming levels. 
 
     Parameters
@@ -144,11 +143,11 @@ def _bin_isimip_records(indicator_data, warming_levels,
     warming_levels: pandas DataFrame (loaded from the warming level file)
         note it is expected to be consistent with the methods parameters
     variable, region, subregion, weights, season : ...
-    matching_method : "time" or "temperature", default from config.toml file
-        see documentation in calculate_warming_levels.py module
     running_mean_window : int, a number of year, default from config.toml file
     warming_levels_reached: set, optional
         by default all warming levels are used, but a subset can be provided to limit the calculations to fewer values actually used
+    meta: dict, optional
+        additional metadata to add in the records
 
     Returns
     -------
@@ -187,46 +186,27 @@ def _bin_isimip_records(indicator_data, warming_levels,
                 continue
 
             years = [r['year'] for r in group2]
-            assert len(years) > 0
 
-            # # determine the year range to load
-            # if matching_method == "time":
-            #     assert len(years) == 1, f"{wl}|{model}|{experiment} cannot have more than one year to load when matching GMT by {matching_method}. Check that warming_level input file is correct."
-            #     year = years[0]
-            #     start, end = year - running_mean_window//2, year + running_mean_window//2
+            # determine the year range to load
+            assert len(years) == 1, f"{wl}|{model}|{experiment} cannot have more than one year to load. Check that warming_level input file is correct."
+            year = years[0]
+            start, end = year - running_mean_window//2, year + running_mean_window//2
 
-            # elif matching_method == "temperature":
-            #     if len(years)  == 1:
-            #         logger.warning(f"{wl}|{model}|{experiment} only has 1 year, whereas > 1 would be expected with `{matching_method}` matching method. Check the warming level input file is correct.")
-            #     start, end = min(years), max(years)
-            # else:
-            #     raise NotImplementedError(matching_method)
-
-            # start, end = min(years), max(years)
-
-            # # Select all years
-            # if matching_method == "time":
-            #     datasel = data.loc[start:end]
-
-            # else:
-            #     datasel = data.loc[np.array(years)]
-
-            datasel = data.loc[np.array(years)]
+            datasel = data.loc[start:end]
 
             if np.isnan(datasel.values).any(): 
-                raise ValueError(f"{model} | {experiment} => some NaNs were found")
+                logger.warning(f"{model} | {experiment} | {start} to {end} => some NaNs were found")
+                if np.isnan(datasel.values).all(): 
+                    raise ValueErrror(f"{model} | {experiment} => all NaNs slide")
 
-            binned_isimip_data.extend(({"value":value, "model": model, "experiment": experiment, "year": year, "warming_level": wl} 
-                for year, value in zip(datasel.index.values, datasel.values)))
+            binned_isimip_data.append({"value":datasel.mean(axis=0), "model": model, "experiment": experiment, "year": year, "warming_level": wl, **(meta or {})})
 
     return binned_isimip_data
 
 
 def bin_isimip_records(indicator_data, warming_levels, 
-    matching_method=None, running_mean_window=None,
-    individual_years=False, average_scenarios=False, equiprobable_models=False,
-    gmt_interannual_variability_sd=None, 
-    warming_levels_reached=None):
+    running_mean_window=None, average_scenarios=False, equiprobable_models=False,
+    warming_levels_reached=None, meta=None):
     """Load ISISMIP data for a {variable, region, subregion, weights, season}, binned according to warming levels, and apply some additional filtering
 
     Parameters
@@ -235,11 +215,7 @@ def bin_isimip_records(indicator_data, warming_levels,
     warming_levels: pandas DataFrame (loaded from the warming level file)
         note it is expected to be consistent with the methods parameters
     variable, region, subregion, weights, season : ...
-    matching_method : "time" or "temperature", default from config.toml file
-        see documentation in calculate_warming_levels.py module
     running_mean_window : int, a number of year, default from config.toml file
-    individual_years : bool, False by default
-        if True, all years are included, thus including signal from natural variability. Otherwise only the climatological mean is included.
     average_scenarios : bool, False by default
         if True, average across scenarios (and years)
     equiprobable_models : bool, False by default
@@ -251,24 +227,11 @@ def bin_isimip_records(indicator_data, warming_levels,
     -------
     binned_isimip_data: list of records with fields {"value": ..., "warming_level": ...} and more
     """
-    if matching_method is None: matching_method = CONFIG["emulator.experimental.matching_method"]
     if running_mean_window is None: running_mean_window = CONFIG["emulator.running_mean_window"]
-    if gmt_interannual_variability_sd is None: gmt_interannual_variability_sd = CONFIG["emulator.experimental.gmt_interannual_variability_sd"]
 
     logger.info("bin ISIMIP data")
     binned_isimip_data = _bin_isimip_records(indicator_data, warming_levels, 
-        matching_method=matching_method, running_mean_window=running_mean_window, warming_levels_reached=warming_levels_reached)
-
-    if matching_method == "pure":
-        logger.info("resample with natural variability")
-        from rimeX.preproc.experimental import resample_with_natural_variability
-        binned_isimip_data = resample_with_natural_variability(binned_isimip_data, 
-            binsize=CONFIG["emulator.warming_level_step"], 
-            sigma=gmt_interannual_variability_sd)
-
-    if not individual_years:
-        logger.info("average across years")
-        binned_isimip_data = average_per_group(binned_isimip_data, by=('model', 'warming_level', 'experiment'))
+        running_mean_window=running_mean_window, warming_levels_reached=warming_levels_reached, meta=meta)
 
     if average_scenarios:
         logger.info("average across scenarios (and years)")
@@ -286,40 +249,36 @@ def bin_isimip_records(indicator_data, warming_levels,
 
 
 def get_binned_isimip_file(variable, region, subregion, weights, season, 
-    matching_method=None, 
     running_mean_window=None, 
-    individual_years=False, 
     average_scenarios=False, 
     equiprobable_models=False,
-    gmt_interannual_variability_sd=None,
-    root=None, ext='.csv'):
+    root=None, backend="csv"):
 
     if root is None: root = CONFIG["isimip.climate_impact_explorer"]
-    if matching_method is None: matching_method = CONFIG["emulator.experimental.matching_method"]
     if running_mean_window is None: running_mean_window = CONFIG["emulator.running_mean_window"]
-    if gmt_interannual_variability_sd is None: gmt_interannual_variability_sd = CONFIG["emulator.experimental.gmt_interannual_variability_sd"]
+
+    extensions = {
+        "feather": ".ftr",
+    }
+
+    ext = extensions.get(backend, f".{backend}")
 
     scenarioavg = "_scenarioavg" if average_scenarios else ""
-    natvartag = f"natvar-sd-{gmt_interannual_variability_sd}" if matching_method == "pure" else f"_{running_mean_window}yrs_natvar{individual_years}"
     othertags = ""
-    if individual_years:
-        othertags = othertags + "_allyears"
-    else:
-        othertags = othertags + "_clim"
     if equiprobable_models:
         othertags = othertags + "_models-equi"
-    return Path(root) / f"isimip_binned_data/{variable}/{region}/{subregion}/{weights}/{variable}_{region.lower()}_{subregion.lower()}_{season}_{weights.lower()}_by{matching_method}{natvartag}{scenarioavg}{othertags}{ext}"
+    return Path(root) / f"isimip_binned_data/{variable}/{region}/{subregion}/{weights}/{variable}_{region.lower()}_{subregion.lower()}_{season}_{weights.lower()}_{running_mean_window}-yrs_{scenarioavg}{othertags}{ext}"
 
 
 def get_binned_isimip_records(warming_levels, variable, region, subregion, weights, season, overwrite=False, backends=["csv"], **kw):
     """ Same as bin_isimip_records but with cached I/O
     """
-    supported_backend = ["csv", "feather"]
+    supported_backend = ["csv", "feather", "parquet", "excel"]
     for backend in backends:
         if backend not in supported_backend:
             raise NotImplementedError(backend)
 
-    binned_records_files = [get_binned_isimip_file(variable, region, subregion, weights, season, **kw, ext=f".{backend}") for backend in backends]
+    binned_records_files = [get_binned_isimip_file(variable, region, subregion, weights, season, **kw, backend=backend) for backend in backends]
 
     for file, backend in zip(binned_records_files, backends):
         if not overwrite and file.exists():
@@ -328,6 +287,10 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
                 df = pd.read_csv(file)
             elif backend == "feather":
                 df = pd.read_feather(file)
+            elif backend == "excel":
+                df = pd.read_excel(file)
+            elif backend == "parquet":
+                df = pd.read_parquet(file)
             else:
                 raise NotImplementedError(backend)
             return df.to_dict("records")
@@ -336,7 +299,7 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
     experiments = warming_levels['experiment'].unique().values.tolist()
 
     indicator_data = load_regional_indicator_data(variable, region, subregion, weights, season, models, experiments)
-    all_data = bin_isimip_records(indicator_data, warming_levels, **kw)
+    all_data = bin_isimip_records(indicator_data, warming_levels, meta={"region": region, "subregion": subregion, "weights": weights, "season": season}, **kw)
 
     for file, backend in zip(binned_records_files, backends):
         logger.info(f"Write binned data to {file}")
@@ -346,6 +309,10 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
             df.to_csv(file, index=None)
         elif backend == "feather":
             df.to_feather(file)
+        elif backend == "excel":
+            df.to_excel(file)
+        elif backend == "parquet":
+            df.to_parquet(file)
         else:
             raise NotImplementedError(backend)
 
@@ -366,10 +333,8 @@ def main():
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter)
     
     group = parser.add_argument_group('Warming level matching')
-    group.add_argument("--matching-method", default=CONFIG["emulator.experimental.matching_method"], help=argparse.SUPRESS)
     group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"])
     group.add_argument("--warming-level-file", default=None)
-    group.add_argument("--individual-years", action="store_true")
     group.add_argument("--average-scenarios", action="store_true")
 
     group = parser.add_argument_group('Indicator variable')
@@ -407,7 +372,7 @@ def main():
 
         for variable, region, subregion, weights, season in tqdm.tqdm(all_items):
             get_binned_isimip_records(warming_levels, variable, region, subregion, weights, season, 
-                o.matching_method, o.running_mean_window, o.individual_years, o.overwrite, o.backend)
+                o.running_mean_window, o.overwrite, o.backend)
 
         parse.exit(0)
 
@@ -424,7 +389,7 @@ def main():
         logger.info(f"Digitize ISIMIP: Submit {len(all_items)} jobs.")
         for variable, region, subregion, weights, season in all_items:
             jobs.append((executor.submit(get_binned_isimip_records, warming_levels, variable, region, subregion, weights, season, 
-                o.matching_method, o.running_mean_window, o.individual_years, o.overwrite, o.backend), (variable, region, subreion, weights, season)))
+                o.running_mean_window, o.overwrite, o.backend), (variable, region, subreion, weights, season)))
        
         # wait for the jobs to finish to exit this script
         for j, (job, ids) in enumerate(jobs):

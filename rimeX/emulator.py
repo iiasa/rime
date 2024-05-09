@@ -155,7 +155,7 @@ def recombine_gmt_vectorized(binned_isimip_data, gmt_ensemble, quantile_levels, 
 def recombine_gmt_ensemble(impact_data, gmt_ensemble, quantile_levels, match_year=False):
     """Take binned ISIMIP data and GMT time-series as input and  returns quantiles as output
 
-    Determinisitc method. This is the original method for "temperature" and "time" matching methods. 
+    Determinisitc method. This is the original method. 
 
     Parameters
     ----------
@@ -416,27 +416,25 @@ def main():
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, gmt_parser])
     
     group = parser.add_argument_group('Warming level matching')
-    group.add_argument("--matching-method", default=CONFIG["emulator.experimental.matching_method"])
     group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"])
     group.add_argument("--warming-level-file", default=None)
 
     group = parser.add_argument_group('Impact indicator')
     group.add_argument("-v", "--variable", nargs="*", required=True)
     group.add_argument("--region", required=True)
-    group.add_argument("--format", default="ixmp4", choices=["ixmp4", "custom"])
+    # group.add_argument("--format", default="ixmp4", choices=["ixmp4", "cie"])
     group.add_argument("--impact-file", nargs='+', default=[], 
         help=f'Files such as produced by Werning et al 2014 (.csv with ixmp4 standard). Also accepted is a glob * pattern to match downloaded datasets (see also rime-download-ls).')
     group.add_argument("--impact-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
         help="other fields e.g. --impact-filter scenario='ssp2*'")
 
-    group = parser.add_argument_group('Impact indicator (custom)')
+    group = parser.add_argument_group('Impact indicator (CIE)')
     group.add_argument("--subregion", help="if not provided, will default to region average")
     group.add_argument("--list-subregions", action='store_true', help="print all subregions and exit")
     group.add_argument("--weights", default='LonLatWeight', choices=CONFIG["preprocessing.regional.weights"])
     group.add_argument("--season", default='annual', choices=list(CONFIG["preprocessing.seasons"]))
 
     group = parser.add_argument_group('Aggregation')
-    group.add_argument("--individual-years", action="store_true")
     group.add_argument("--average-scenarios", action="store_true")
     group.add_argument("--equiprobable-models", action="store_true", help="if True, each model will have the same probability")
     group.add_argument("--model", nargs="+", help="if provided, only consider a set of specified model(s)")
@@ -657,8 +655,8 @@ def main():
 
         assert len(o.variable) == 1, "only one variable supported for CIE data"
         binned_impact_data = get_binned_isimip_records(warming_levels, o.variable[0], o.region, o.subregion, o.weights, o.season, 
-            matching_method=o.matching_method, running_mean_window=o.running_mean_window, 
-            individual_years=o.individual_years, average_scenarios=o.average_scenarios, 
+            running_mean_window=o.running_mean_window, 
+            average_scenarios=o.average_scenarios, 
             equiprobable_models=o.equiprobable_models,
             overwrite=o.overwrite_isimip_bins, backends=o.backend_isimip_bins)
 
