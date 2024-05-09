@@ -50,7 +50,15 @@ class FastIamDataFrame:
     @classmethod
     def load(cls, file, **kwargs):
         logger.info(f"Read {file}")
-        return cls(pd.read_csv(file, **kwargs))
+        if str(file).endswith((".ftr", ".feather")):
+            df = pd.read_feather(file, **kwargs)
+        elif str(file).endswith((".xls")):
+            df = pd.read_excel(file, **kwargs)
+        elif str(file).endswith((".parquet")):
+            df = pd.read_parquet(file, **kwargs)
+        else:
+            df = pd.read_csv(file, **kwargs)
+        return cls(df)
 
     def __len__(self):
         return len(self.df) * len(self.year)
