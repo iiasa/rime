@@ -108,11 +108,12 @@ class FastIamDataFrame:
 
     def as_pandas(self):
         columns = self.df.columns
-        numerical_types = np.array([_isnumerical(c) for c in columns])
-        i_last_meta = np.where(~numerical_types)[0][-1]
-        i_first_year = i_last_meta + 1
-        meta = columns[:i_first_year]
+        i_first_year = self._first_year_index()
         years = columns[i_first_year:]
+        if len(years) == 0:
+            # no year present
+            return self.df
+        meta = columns[:i_first_year]
         df_meta = self.df[meta].rename({name:name.lower() for name in self.df.columns}, axis=1)
         return pd.concat(df_meta.join(pd.DataFrame({"year": _to_numerical(year), "value": self.df[year]})) for year in years).set_index([c.lower() for c in self._index]).reset_index()
 

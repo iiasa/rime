@@ -92,15 +92,15 @@ def average_per_group(records, by):
     average_records: (weighted) list of records
     """
     average_records = []
-    key_avg_year = lambda r: tuple(r[k] for k in by)
+    key_avg_year = lambda r: tuple(r.get(k) for k in by)
     for key, group in groupby(sorted(records, key=key_avg_year), key=key_avg_year):
-        years, values, weights = np.array([[r["year"], r["value"], r.get("weight", 1)] for r in group]).T
+        years, values, weights = np.array([[r["midyear"], r["value"], r.get("weight", 1)] for r in group]).T
         total_weight = weights.sum()
         mean_value = (values*weights).sum()/total_weight
         mean_year = (years*weights).sum()/total_weight
         mean_weight = (weights*weights).sum()/total_weight  
 
-        average_records.append({"value": mean_value, "year": mean_year, "weight": mean_weight, **{k:v for k,v in zip(by, key)}})
+        average_records.append({"value": mean_value, "midyear": mean_year, "weight": mean_weight, **{k:v for k,v in zip(by, key)}})
 
     return average_records
 
@@ -293,7 +293,7 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
                 df = pd.read_parquet(file)
             else:
                 raise NotImplementedError(backend)
-            return df.rename({"scenario":"experiment"}).to_dict("records")
+            return df.rename({"scenario":"experiment", "midyear": "year"}).to_dict("records")
 
     models = warming_levels['model'].unique().tolist()
     experiments = warming_levels['experiment'].unique().tolist()
@@ -311,7 +311,7 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
     for file, backend in zip(binned_records_files, backends):
         logger.info(f"Write binned data to {file}")
         file.parent.mkdir(parents=True, exist_ok=True)
-        df = pd.DataFrame(all_data).rename({"experiment":"scenario"}, axis=1)  # conform with pyam format
+        df = pd.DataFrame(all_data).rename({"experiment":"scenario", "year":"midyear"}, axis=1)  # conform with pyam format
         if backend == "csv":
             df.to_csv(file, index=None)
         elif backend == "feather":
