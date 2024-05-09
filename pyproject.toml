@@ -46,7 +46,7 @@ all = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["rimeX", "rimeX.legacy", "rimeX_datasets"]
+include = ["rimeX", "rimeX.legacy", "rimeX.preproc", "rimeX.datasets", "rimeX_datasets"]
 
 [project.scripts]
 rime-config = "rimeX.config:main"
@@ -54,8 +54,8 @@ rime-download-isimip = "rimeX.datasets.download_isimip:main"
 rime-download = "rimeX.datasets.__main__:main"
 rime-pre-gmt = "rimeX.preproc.global_average_tas:main"
 rime-pre-region = "rimeX.preproc.regional_average:main"
-rime-init-wl = "rimeX.preproc.warminglevels:main"
-rime-init-digitize = "rimeX.preproc.digitize:main"
+rime-pre-wl = "rimeX.preproc.warminglevels:main"
+rime-pre-digitize = "rimeX.preproc.digitize:main"
 rime-run-timeseries = "rimeX.emulator:main"
 rime-run-map = "rimeX.map:main"
 

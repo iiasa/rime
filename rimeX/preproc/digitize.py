@@ -14,8 +14,8 @@ import numpy as np
 import pandas as pd
 # import xarray as xa
 
-from rimeX.logs import logger, setup_logger
-from rimeX.config import CONFIG
+from rimeX.logs import logger, setup_logger, log_parser
+from rimeX.config import CONFIG, config_parser
 from rimeX.preproc.warminglevels import get_warming_level_file
 from rimeX.preproc.regional_average import get_regional_averages_file
 
@@ -330,12 +330,11 @@ def main():
 
     all_regions = sorted([f.name for f in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
 
-    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[config_parser, log_parser])
     
     group = parser.add_argument_group('Warming level matching')
-    group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"])
+    group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"], help="default: %(default)s years")
     group.add_argument("--warming-level-file", default=None)
-    group.add_argument("--average-scenarios", action="store_true")
 
     group = parser.add_argument_group('Indicator variable')
     group.add_argument("-v", "--variable", nargs="+", choices=CONFIG["isimip.variables"], default=CONFIG["isimip.variables"])
@@ -354,7 +353,7 @@ def main():
     setup_logger(o)
         
     if o.warming_level_file is None:
-        o.warming_level_file = get_warming_level_file(**{**config, **vars(o)})
+        o.warming_level_file = get_warming_level_file(**{**CONFIG, **vars(o)})
 
     if not Path(o.warming_level_file).exists():
         print(f"{o.warming_level_file} does not exist. Run warminglevels.py first.")
