@@ -79,55 +79,6 @@ def load_regional_indicator_data(variable, region, subregion, weights, season, m
     return all_data
 
 
-def resample_with_natural_variability(records,
-    sigma=0.14,
-    binsize=None,
-    ):
-    """Enlarge the warming_level: value mapping to account for natural variability
-
-    Parameters
-    ----------
-    records: list of dict with at least the "warming_level" field
-    sigma: standard deviation of interannual variability in GMT (default to 0.14)
-
-    Returns
-    -------
-    extended_records: extended list of dict with "warming_level", "weight" and other fields 
-
-    Note this function resets the `weight` attribute.
-    """
-    import math
-    from scipy.stats import norm
-
-    if binsize is None: binsize = CONFIG["emulator.warming_level_step"]
-
-    natvar_dist = norm(0, sigma)
-    n = math.ceil(3 * sigma / binsize) # that's about 0.001 probability we cut-off on each side
-    deltas_plus = np.arange(1, n+1)*binsize
-    deltas_prob = natvar_dist.pdf(deltas_plus)/natvar_dist.pdf(0)
-
-    extended_records = []
-    key_wl = lambda r: r['warming_level']
-
-    records_by_wl = {wl : list(group) for wl, group in groupby(sorted(records, key=key_wl), key=key_wl)}
-
-    for wl in records_by_wl:
-
-        # collect an enlarged collection, and weight according to the decreasing probability further away from MAGICC
-        extended_records.extend(records_by_wl[wl])
-
-        for delta, prob in zip(deltas_plus, deltas_prob):
-            # keep the symmetry during sampling, to avoid biases
-            if wl+delta not in records_by_wl or wl-delta not in records_by_wl:
-                continue
-
-            natvar_records = records_by_wl[wl+delta] + records_by_wl[wl-delta]
-
-            extended_records.extend({**r, **{"warming_level": wl, "weight": prob/len(natvar_records)}} for r in natvar_records)
-
-    return extended_records
-
-
 def average_per_group(records, by):
     """(weighted) mean grouped by 
 
@@ -310,7 +261,10 @@ def bin_isimip_records(indicator_data, warming_levels,
 
     if matching_method == "pure":
         logger.info("resample with natural variability")
-        binned_isimip_data = resample_with_natural_variability(binned_isimip_data, sigma=gmt_interannual_variability_sd)
+        from rimeX.preproc.experimental import resample_with_natural_variability
+        binned_isimip_data = resample_with_natural_variability(binned_isimip_data, 
+            binsize=CONFIG["emulator.warming_level_step"], 
+            sigma=gmt_interannual_variability_sd)
 
     if not individual_years:
         logger.info("average across years")
@@ -412,7 +366,7 @@ def main():
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter)
     
     group = parser.add_argument_group('Warming level matching')
-    group.add_argument("--matching-method", default=CONFIG["emulator.experimental.matching_method"])
+    group.add_argument("--matching-method", default=CONFIG["emulator.experimental.matching_method"], help=argparse.SUPRESS)
     group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"])
     group.add_argument("--warming-level-file", default=None)
     group.add_argument("--individual-years", action="store_true")

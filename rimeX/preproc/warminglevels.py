@@ -49,7 +49,7 @@ def load_annual_values(model, experiments, variable="tas", projection_baseline=N
     return df
 
 
-def get_matching_years_by_time_bucket(model, all_annual, warming_levels, running_mean_window, all_years=True):
+def get_matching_years_by_time_bucket(model, all_annual, warming_levels, running_mean_window, projection_baseline, all_years=True):
 
     all_smoothed = all_annual.rolling(running_mean_window, center=True).mean()
     records = []
@@ -59,7 +59,7 @@ def get_matching_years_by_time_bucket(model, all_annual, warming_levels, running
         smoothed = all_smoothed[experiment].dropna()
         warming_rate = all_smoothed[experiment].diff()
         accumulated_warming = all_annual[experiment].cumsum()
-        y1, y2 = CONFIG["emulator.projection_baseline"]
+        y1, y2 = projection_baseline
         accumulated_warming -= accumulated_warming.loc[y1:y2].mean()
 
         sort = np.argsort(smoothed.values)
@@ -95,100 +95,6 @@ def get_matching_years_by_time_bucket(model, all_annual, warming_levels, running
     return records
 
 
-def calculate_interannual_variability_standard_deviation(all_annual, running_mean_window, start_year=None):
-    """
-    Parameters
-    ----------
-    all_annual: DataFrame with all experiments but historical runs
-    running_mean_window: 21 or 31 years typically (to define "climate")
-    start_year: set in config.toml as "temperature_sigma_first_year", i.e. 2015 for CMIP6
-        => used to exclude historical values from the calculation
-
-    Returns
-    -------
-    sigma: float, standard deviation
-
-    Notes
-    -----
-    by default exclude historical values from the calculation of the standard deviation.
-    That's because 1) historical runs have slightly different forcings (volcanic activity) 
-    and 2) we'll use that threshold on projections mainly
-    """
-    if start_year is not None:
-        all_annual = all_annual.loc[start_year:]
-
-    residuals = []
-    for experiment in all_annual:
-        annual = all_annual[experiment].dropna()
-        smoothed = annual.rolling(running_mean_window, center=True).mean()
-        residuals.append((annual - smoothed).dropna().values)
-    return np.concatenate(residuals).std()
-
-
-def get_matching_years_by_temperature_bucket(model, all_annual, warming_levels, running_mean_window, 
-    temperature_sigma_range, temperature_sigma_first_year, temperature_bin_size):
-    """
-    """
-    # Calculate model-specific interannual variability's standard deviation over all experiments including projections
-    sigma = calculate_interannual_variability_standard_deviation(all_annual, running_mean_window, start_year=temperature_sigma_first_year)
-
-    logger.info(f"{model}'s interannual variability S.D is {sigma:.2f} degrees C (to be multiplied by {temperature_sigma_range} on each side)")
-    
-    records = []
-
-    all_smoothed = all_annual.rolling(running_mean_window, center=True).mean()    
-
-    for experiment in all_annual:
-        data = all_annual[experiment].dropna()
-        y1, y2 = CONFIG["emulator.projection_baseline"]
-        accumulated_warming = data.cumsum()
-        warming_rate = all_smoothed[experiment].diff()
-        accumulated_warming -= accumulated_warming.loc[y1:y2].mean()
-
-        for wl in warming_levels:
-            lo = wl - temperature_sigma_range * sigma - temperature_bin_size/2
-            hi = wl + temperature_sigma_range * sigma + temperature_bin_size/2
-            bucket = (data.values >= lo) & (data.values <= hi)
-            if bucket.sum() > 0:
-                logger.info(f"{model} | {experiment} | {wl} degrees : {bucket.sum()} years selected")
-            for year, value, acc, rate in zip(data.index.values[bucket], data.values[bucket], accumulated_warming.values[bucket], warming_rate.values[bucket]):
-                records.append({"model": model, "experiment": experiment, "warming_level": wl, "year": year, 
-                    "actual_warming": value, "accumulated_warming": acc, "warming_rate": rate})
-
-    return records
-
-
-def get_matching_years_by_pure_temperature(model, all_annual, warming_levels):
-    """ 
-    """    
-    records = []
-
-    all_smoothed = all_annual.rolling(21, center=True).mean()    
-
-    for experiment in all_annual:
-        data = all_annual[experiment].dropna()
-        y1, y2 = CONFIG["emulator.projection_baseline"]
-        accumulated_warming = data.cumsum()
-        accumulated_warming -= accumulated_warming.loc[y1:y2].mean()
-        # warming_rate = data.diff()
-        warming_rate = all_smoothed[experiment].diff()        
-
-
-        half_widths = np.diff(warming_levels)/2
-        half_width = half_widths[0]
-        bins = np.concatenate([warming_levels - half_width, [warming_levels[-1] + half_width]])
-        indices = np.digitize(data.values, bins=bins)
-        bad = (indices == 0) | (indices == bins.size)
-        # indices = indices.clip(1, bins.size-1)
-        for idx, year, value, acc, rate in zip(indices[~bad], data.index.values[~bad], 
-            data.values[~bad], accumulated_warming.values[~bad], warming_rate.values[~bad]):
-            wl = warming_levels[idx-1]
-            records.append({"model": model, "experiment": experiment, "warming_level": wl, "year": year, 
-                "actual_warming": value, "accumulated_warming": acc, "warming_rate": rate})
-
-    return records
-
-
 def get_warming_level_file(matching_method, running_mean_window, temperature_sigma_range, warming_level_name=None, **kw):
     if warming_level_name is None:
         matching_method_label = f"{matching_method}-{temperature_sigma_range}s" if matching_method == "temperature" else matching_method
@@ -210,11 +116,11 @@ def main():
     parser.add_argument("--running-mean-window", type=int, default=CONFIG["emulator.running_mean_window"])
     parser.add_argument("--projection-baseline", nargs=2, type=int, default=CONFIG["emulator.projection_baseline"])
     parser.add_argument("--projection-baseline-offset", type=float, default=CONFIG["emulator.projection_baseline_offset"])
-    parser.add_argument("--matching-method", default=CONFIG["emulator.experimental.matching_method"], choices=["time", "temperature", "pure"])
+    parser.add_argument("--matching-method", default=CONFIG["emulator.experimental.matching_method"], choices=["time", "temperature", "pure"], help=argparse.SUPRESS)
 
     group = parser.add_argument_group('argument specific to the temperature matching method')
-    parser.add_argument("--temperature-sigma-range", type=float, default=CONFIG["emulator.experimental.temperature_sigma_range"])
-    parser.add_argument("--temperature-sigma-first-year", type=int, default=CONFIG["emulator.experimental.temperature_sigma_first_year"])
+    parser.add_argument("--temperature-sigma-range", type=float, default=CONFIG["emulator.experimental.temperature_sigma_range"], help=argparse.SUPRESS)
+    parser.add_argument("--temperature-sigma-first-year", type=int, default=CONFIG["emulator.experimental.temperature_sigma_first_year"], help=argparse.SUPRESS)
 
     parser.add_argument("-o", "--output-file")
     parser.add_argument("-O", "--overwrite", action="store_true")
@@ -243,14 +149,16 @@ def main():
         all_annual = load_annual_values(model, o.experiments, projection_baseline=o.projection_baseline, projection_baseline_offset=o.projection_baseline_offset)
 
         if o.matching_method == "time":
-            records.extend(get_matching_years_by_time_bucket(model, all_annual, warming_levels, o.running_mean_window))
+            records.extend(get_matching_years_by_time_bucket(model, all_annual, warming_levels, o.running_mean_window, o.projection_baseline))
 
         elif o.matching_method == "temperature":
+            from rimeX.preproc.experimental import get_matching_years_by_temperature_bucket
             records.extend(get_matching_years_by_temperature_bucket(model, all_annual, warming_levels, o.running_mean_window, 
-                o.temperature_sigma_range, o.temperature_sigma_first_year, o.step_warming_level))
+                o.temperature_sigma_range, o.temperature_sigma_first_year, o.step_warming_level, o.projection_baseline))
 
         elif o.matching_method == "pure":
-            records.extend(get_matching_years_by_pure_temperature(model, all_annual, warming_levels))
+            from rimeX.preproc.experimental import get_matching_years_by_pure_temperature
+            records.extend(get_matching_years_by_pure_temperature(model, all_annual, warming_levels, o.projection_baseline))
 
         else:
             raise NotImplementedError(o.matching_method)
