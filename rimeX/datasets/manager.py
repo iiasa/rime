@@ -294,7 +294,7 @@ def main():
     setup_logger(o)
 
     if o.ls:
-        print_available_datasets()
+        print_all_datasets()
         return
 
     if o.ls_local:
@@ -315,7 +315,7 @@ def main():
 
     # download select only one out of several
     if not o.name:
-        print_available_datasets()
+        print_all_datasets()
         print(f"Use the --name NAME or --all flag to specify datasets to download.")
         parser.exit(1)
 

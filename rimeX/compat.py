@@ -52,7 +52,7 @@ class FastIamDataFrame:
         logger.info(f"Read {file}")
         if str(file).endswith((".ftr", ".feather")):
             df = pd.read_feather(file, **kwargs)
-        elif str(file).endswith((".xls")):
+        elif str(file).endswith((".xls", ".xlsx")):
             df = pd.read_excel(file, **kwargs)
         elif str(file).endswith((".parquet")):
             df = pd.read_parquet(file, **kwargs)

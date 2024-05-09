@@ -474,7 +474,7 @@ def main():
         parser.exit(0)
 
     # Load GMT data
-    gmt_ensemble = _get_gmt_parser(o, parser)
+    gmt_ensemble = _get_gmt_ensemble(o, parser)
 
     # IIASA format like Wernings et al 2024
     if o.impact_file:
