@@ -22,7 +22,7 @@ from rimeX.preproc.regional_average import get_regional_averages_file
 def load_seasonal_means_per_region(variable, model, experiment, region, subregion, weights, seasons=['annual', 'winter', 'spring', 'summer', 'autumn']):
 
     file = get_regional_averages_file(variable, model, experiment, region, weights)
-    monthly = pd.read_csv(file, index_col=0)[subregion]
+    monthly = pd.read_csv(file, index_col=0)[subregion or region]
     ny = monthly.size // 12
     assert monthly.size == ny*12, "not all years have 12 months"
     matrix = monthly.values.reshape(ny, 12)
@@ -135,7 +135,7 @@ def make_models_equiprobable(records):
 
 
 def _bin_isimip_records(indicator_data, warming_levels, 
-    unning_mean_window, warming_levels_reached=None, meta={}):
+    running_mean_window, warming_levels_reached=None, meta={}):
     """Load ISISMIP data for a {variable, region, subregion, weights, season}, binned according to warming levels. 
 
     Parameters
@@ -267,7 +267,7 @@ def get_binned_isimip_file(variable, region, subregion, weights, season,
     othertags = ""
     if equiprobable_models:
         othertags = othertags + "_models-equi"
-    return Path(root) / f"isimip_binned_data/{variable}/{region}/{subregion}/{weights}/{variable}_{region.lower()}_{subregion.lower()}_{season}_{weights.lower()}_{running_mean_window}-yrs_{scenarioavg}{othertags}{ext}"
+    return Path(root) / f"isimip_binned_data/{variable}/{region}/{subregion}/{weights}/{variable}_{region.lower()}_{subregion.lower()}_{season}_{weights.lower()}_{running_mean_window}-yrs{scenarioavg}{othertags}{ext}"
 
 
 def get_binned_isimip_records(warming_levels, variable, region, subregion, weights, season, overwrite=False, backends=["csv"], **kw):
@@ -293,18 +293,25 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
                 df = pd.read_parquet(file)
             else:
                 raise NotImplementedError(backend)
-            return df.to_dict("records")
+            return df.rename({"scenario":"experiment"}).to_dict("records")
 
-    models = warming_levels['model'].unique().values.tolist()
-    experiments = warming_levels['experiment'].unique().values.tolist()
+    models = warming_levels['model'].unique().tolist()
+    experiments = warming_levels['experiment'].unique().tolist()
 
     indicator_data = load_regional_indicator_data(variable, region, subregion, weights, season, models, experiments)
-    all_data = bin_isimip_records(indicator_data, warming_levels, meta={"region": region, "subregion": subregion, "weights": weights, "season": season}, **kw)
+    all_data = bin_isimip_records(indicator_data, warming_levels, meta={
+        "region": region, 
+        "subregion": subregion, 
+        "weights": weights, 
+        "season": season, 
+        "variable": variable, 
+        "unit":"",
+        }, **kw)
 
     for file, backend in zip(binned_records_files, backends):
         logger.info(f"Write binned data to {file}")
         file.parent.mkdir(parents=True, exist_ok=True)
-        df = pd.DataFrame(all_data)
+        df = pd.DataFrame(all_data).rename({"experiment":"scenario"}, axis=1)  # conform with pyam format
         if backend == "csv":
             df.to_csv(file, index=None)
         elif backend == "feather":
@@ -321,14 +328,18 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
 
 def get_subregions(region):
     import pickle
-    pkl = pickle.load(open(f'{CONFIG["preprocessing.regional.masks_folder"]}/{o.region}/region_names.pkl', "rb"))
-    return pkl["all_subregions"]
-        # all_subregions = get_regional_averages_file(o.variable, o.model, o.experiment, o.region, o.weights).columns
+    file = Path(f'{CONFIG["preprocessing.regional.masks_folder"]}/{region}/region_names.pkl')
+    if file.exists():
+        pkl = pickle.load(open(file, "rb"))
+        return list(pkl)
+    else:
+        return []
+            # all_subregions = get_regional_averages_file(o.variable, o.model, o.experiment, o.region, o.weights).columns
 
 
 def main():
 
-    all_regions = sorted([f.name for f in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
+    all_regions = sorted([f.name for f in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*") if (f/"masks").exists() and any((f/"masks").glob("*nc4"))])
 
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[config_parser, log_parser])
     
@@ -339,6 +350,7 @@ def main():
     group = parser.add_argument_group('Indicator variable')
     group.add_argument("-v", "--variable", nargs="+", choices=CONFIG["isimip.variables"], default=CONFIG["isimip.variables"])
     group.add_argument("--region", nargs="+", default=all_regions, choices=all_regions)
+    group.add_argument("--all-subregions", action='store_true', help='include subregions as defined in CIE mask files')
     # group.add_argument("--subregion", nargs="+", help="if not provided, will default to region average")
     # group.add_argument("--list-subregions", action='store_true', help="print all subregions and exit")
     group.add_argument("--weights", nargs="+", default=CONFIG["preprocessing.regional.weights"], choices=CONFIG["preprocessing.regional.weights"])
@@ -364,16 +376,16 @@ def main():
     logger.info(f"Load warming level file {o.warming_level_file}")
     warming_levels = pd.read_csv(o.warming_level_file)
 
-    all_items = [(variable, region, subregion, weights, season) for variable, region, weights, season in product(o.variable, o.region, o.weights, o.season) for subregion in get_subregions(region)]
+    all_items = [(variable, region, subregion, weights, season) for variable, region, weights, season in product(o.variable, o.region, o.weights, o.season) for subregion in [region]+(get_subregions(region) if o.all_subregions else [])]
     logger.info(f"Number of jobs (variables x region x subregion x weights x season): {len(all_items)}")
 
     if o.cpus is None or o.cpus < 2:
 
         for variable, region, subregion, weights, season in tqdm.tqdm(all_items):
             get_binned_isimip_records(warming_levels, variable, region, subregion, weights, season, 
-                o.running_mean_window, o.overwrite, o.backend)
+                running_mean_window=o.running_mean_window, overwrite=o.overwrite, backends=o.backend)
 
-        parse.exit(0)
+        parser.exit(0)
 
 
     ## parallel processing
@@ -388,7 +400,7 @@ def main():
         logger.info(f"Digitize ISIMIP: Submit {len(all_items)} jobs.")
         for variable, region, subregion, weights, season in all_items:
             jobs.append((executor.submit(get_binned_isimip_records, warming_levels, variable, region, subregion, weights, season, 
-                o.running_mean_window, o.overwrite, o.backend), (variable, region, subreion, weights, season)))
+                running_mean_window=o.running_mean_window, overwrite=o.overwrite, backend=o.backend), (variable, region, subreion, weights, season)))
        
         # wait for the jobs to finish to exit this script
         for j, (job, ids) in enumerate(jobs):

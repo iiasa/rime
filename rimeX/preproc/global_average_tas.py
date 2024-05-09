@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import xarray as xa
 
+from rimeX.datasets.download_isimip import get_models, get_experiments
 from rimeX.preproc.regional_average import get_files
 from rimeX.tools import cdo
 from rimeX.logs import logger, log_parser, setup_logger
@@ -19,8 +20,8 @@ def global_mean_file(variable, model, experiment, root=None):
 def main():
     parser = argparse.ArgumentParser(parents=[log_parser, config_parser])
     # parser.add_argument("--variable", nargs="+", default=["tas"], choices=["tas"])
-    parser.add_argument("--model", nargs="+", default=CONFIG["isimip.models"], choices=CONFIG["isimip.models"])
-    parser.add_argument("--experiment", nargs="+", default=CONFIG["isimip.experiments"], choices=CONFIG["isimip.experiments"])
+    parser.add_argument("--model", nargs="+", default=get_models(), choices=get_models())
+    parser.add_argument("--experiment", nargs="+", default=get_experiments(), choices=get_experiments())
     o = parser.parse_args()
     setup_logger(o)
 

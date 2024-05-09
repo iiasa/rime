@@ -114,7 +114,7 @@ def main():
     setup_logger(o)
 
     if o.output_file is None:
-        o.output_file = get_warming_level_file(**{**config, **vars(o)})
+        o.output_file = get_warming_level_file(**{**CONFIG, **vars(o)})
 
     if not o.overwrite and Path(o.output_file).exists():
         logger.info(f"{o.output_file} already exists. Use -O or --overwrite to reprocess.")
@@ -127,9 +127,9 @@ def main():
 
     records = []
 
-    for model in o.models:
+    for model in o.model:
 
-        all_annual = load_annual_values(model, o.experiments, projection_baseline=o.projection_baseline, projection_baseline_offset=o.projection_baseline_offset)
+        all_annual = load_annual_values(model, o.experiment, projection_baseline=o.projection_baseline, projection_baseline_offset=o.projection_baseline_offset)
         records.extend(get_matching_years_by_time_bucket(model, all_annual, warming_levels, o.running_mean_window, o.projection_baseline))
 
     df = pd.DataFrame(records)
