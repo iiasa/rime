@@ -534,6 +534,18 @@ def main():
                 logger.error(f"Missing 'warming_level' field. Expected scenario such as ssp1_2p0 to derive warming_level. Got: {record.get('scenario')}")
                 raise
 
+    if o.average_scenarios:
+        from rimeX.preproc.digitize import average_per_group
+        logger.info("average across scenarios (and years)")
+        impact_data_records = average_per_group(impact_data_records, by=('model', 'warming_level', 'year'))
+
+
+    # Harmonize weights
+    if o.equiprobable_models:
+        from rimeX.preproc.digitize import make_models_equiprobable
+        logger.info("Normalization to give equal weight for each model per temperature bin.")        
+        make_models_equiprobable(impact_data_records)
+
     # Interpolate records
     logger.info("Impact data: interpolate warming levels...")
     key = lambda r: (r.get('ssp_family'), r.get('year'), r['variable'])
@@ -545,21 +557,12 @@ def main():
         # assert len(igwls) == 6, f"Expected 6 warming level for {ssp_family},{year}. Got {len(igwls)}: {repr(igwls)}"
         values = np.interp(gwls, igwls, ivalues)
         # print(ssp_family, year, variable, igwls, ivalues, '=>', gwls, values)
-        interpolated_records.extend([{"warming_level":wl, "value": v, "year": year, "ssp_family": ssp_family, "variable": variable} for wl, v in zip(gwls, values)])
+        interpolated_records.extend([{
+            "warming_level":wl, "value": v, "year": year, "ssp_family": ssp_family, "variable": variable
+            } for wl, v in zip(gwls, values)])
     # inplace operation
     impact_data_records = interpolated_records
     logger.info("Impact data: interpolate warming levels...done")
-
-    if o.average_scenarios:
-        from rimeX.preproc.digitize import average_per_group
-        logger.info("average across scenarios (and years)")
-        binned_isimip_data = average_per_group(impact_data_records, by=('model', 'warming_level', 'year'))
-
-    # Harmonize weights
-    if o.equiprobable_models:
-        from rimeX.preproc.digitize import make_models_equiprobable
-        logger.info("Normalization to give equal weight for each model per temperature bin.")        
-        make_models_equiprobable(impact_data_records)
 
     # For population dataset the year can be matched to temperatrure time-series. It must be interpolated to yearly values first.
     if o.match_year_population:

@@ -79,7 +79,7 @@ def load_regional_indicator_data(variable, region, subregion, weights, season, m
     return all_data
 
 
-def average_per_group(records, by):
+def average_per_group(records, by, keep_meta=True):
     """(weighted) mean grouped by 
 
     Parameters
@@ -94,13 +94,19 @@ def average_per_group(records, by):
     average_records = []
     key_avg_year = lambda r: tuple(r.get(k) for k in by)
     for key, group in groupby(sorted(records, key=key_avg_year), key=key_avg_year):
+        if keep_meta: 
+            group = list(group)
+            first_record = group[0]
+            meta = {k:v for k, v in first_record.items() if k not in ["value", "midyear", "weights"]}
+        else:
+            meta = {k:v for k,v in zip(by, key)}
         years, values, weights = np.array([[r["midyear"], r["value"], r.get("weight", 1)] for r in group]).T
         total_weight = weights.sum()
         mean_value = (values*weights).sum()/total_weight
         mean_year = (years*weights).sum()/total_weight
         mean_weight = (weights*weights).sum()/total_weight  
 
-        average_records.append({"value": mean_value, "midyear": mean_year, "weight": mean_weight, **{k:v for k,v in zip(by, key)}})
+        average_records.append({"value": mean_value, "midyear": mean_year, "weight": mean_weight, **meta})
 
     return average_records
 
