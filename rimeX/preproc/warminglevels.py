@@ -6,7 +6,7 @@ from pathlib import Path
 import datetime
 import numpy as np
 import pandas as pd
-from rimeX.regional_average import get_files, isimip_parser
+from rimeX.preproc.regional_average import get_files, isimip_parser
 from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 

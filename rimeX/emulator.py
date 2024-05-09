@@ -14,8 +14,8 @@ import pandas as pd
 from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 
-from rimeX.warminglevels import get_warming_level_file
-from rimeX.digitize import get_binned_isimip_records, make_models_equiprobable
+from rimeX.preproc.warminglevels import get_warming_level_file
+from rimeX.preproc.digitize import get_binned_isimip_records, make_models_equiprobable
 from rimeX.compat import FastIamDataFrame, concat
 from rimeX.datasets import get_datapath
 

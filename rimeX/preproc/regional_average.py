@@ -22,7 +22,7 @@ import xarray as xa
 
 from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
-from rimeX.isimip import get_models, get_experiments, get_variables, isimip_parser
+from rimeX.datasets.download_isimip import get_models, get_experiments, get_variables, isimip_parser
 
 
 def get_files(variable, model, experiment, realm="*", domain="global", frequency="monthly", member="*", obs="*", year_start="*", year_end="*", root=None, simulation_round=None):

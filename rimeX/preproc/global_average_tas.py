@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import xarray as xa
 
-from rimeX.regional_average import get_files
+from rimeX.preproc.regional_average import get_files
 from rimeX.tools import cdo
 from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser

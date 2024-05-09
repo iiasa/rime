@@ -16,8 +16,8 @@ import pandas as pd
 
 from rimeX.logs import logger, setup_logger
 from rimeX.config import CONFIG
-from rimeX.warminglevels import get_warming_level_file
-from rimeX.regional_average import get_regional_averages_file
+from rimeX.preproc.warminglevels import get_warming_level_file
+from rimeX.preproc.regional_average import get_regional_averages_file
 
 def load_seasonal_means_per_region(variable, model, experiment, region, subregion, weights, seasons=['annual', 'winter', 'spring', 'summer', 'autumn']):
 
