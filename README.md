@@ -39,21 +39,21 @@ To install all optional dependencies, append `[all]`, e.g. from the local clone:
 
 The following scripts are made available, for which inline help is available with `-h` or `--help`:
 
-- Data download and pre-processing scripts (presently ISIMIP only, variables tas and pr)
+- Data download and pre-processing scripts (presently ISIMIP only, variables tas and pr, written for the CIE dataset and masks)
 
 	- `rime-download-isimip` : download ISIMIP data
 	- `rime-download` : download other datasets (Werning et al 2024) etc. (platform-independent)
   	- `rime-pre-gmt` : pre-processing: crunch global-mean-temperature
 	- `rime-pre-region` : pre-precessing: crunch regional averages (=> this currently requires Climate Impact Explorer masks)
+	- `rime-pre-wl` : crunch the warming levels
+	- `rime-pre-digitize` : pre-compute digitized regional average based on warming levels (optional)
 
-- Actually use the emulator
+- Actually use the emulator (works anywhere as long as the data is available)
 	
-	- `rime-init-wl` : crunch the warming levels (required)
-	- `rime-init-digitize` : pre-compute digitized regional average based on warming levels (optional)
 	- `rime-run-timeseries` : run the main emulator (time-series)
 	- `rime-run-map` : run the map emulator
 
-- Also useful:
+- Also useful to specify the data paths:
 
 	- `rime-config` : print the config to screen (toml format)
 
