@@ -70,7 +70,7 @@ Below a simple example using [ixmp4](https://docs.ece.iiasa.ac.at/projects/ixmp4
 
 	$ rime-download --name AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv werning2024/table_output_climate_exposure
 
-	$ rime-run-timeseries --iam-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --iam-variable "*GSAT*median*" --iam-filter category_show_lhs=C6 --impact-file werning2024/table_output_climate_exposure/table_output_heatwave_COUNTRIES.csv --region ITA --variable "hw_95_10|Exposure|Population|%" -o output.csv --overwrite
+	$ rime-run-timeseries --gsat-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-file werning2024/table_output_climate_exposure/table_output_heatwave_COUNTRIES.csv --region ITA --variable "hw_95_10|Exposure|Population|%" -o output.csv --overwrite
 
 The example above requires the filtering of exactly one time-series and one impact type from the multidimensional input files. It will issue an error message if more than one temperatrure scenario is present. 
 
@@ -88,16 +88,16 @@ The previous examples only accounts from the warming level in the impact dataset
 
 ## Factoring in GSAT uncertainties (experimental)
 
-If 5th and 95th percentiles are provided for GSAT in addition to the median, an underlying distribution can be inferred and the temperature resampled to obtain an extended error assessment. E.g. the above example can be modified by filtering for variable names `*GSAT*` (instead of `*GSAT*median*`) and adding `--iam-fit`:
+If 5th and 95th percentiles are provided for GSAT in addition to the median, an underlying distribution can be inferred and the temperature resampled to obtain an extended error assessment. E.g. the above example can be modified by filtering for variable names `*GSAT*` (instead of `*GSAT*median*`) and adding `--gsat-resample`:
 
-	 $ rime-run-timeseries [...] --iam-variable "*GSAT*" --iam-fit
+	 $ rime-run-timeseries [...] --gsat-variable "*GSAT*" --gsat-resample
 
 ![](notebooks/images/fit_and_resample.png)
 
 
-Similarly, if the impacts can be sampled with the flags `--impact-fit`. E.g.
+Similarly, if the impacts can be sampled with the flags `--impact-resample`. E.g.
 
-	 $ rime-run-timeseries [...] --impact-file test_data/table_output_wsi_R10_pop_scaled_including_uncertainty.csv --variable "wsi|Exposure|Population" "wsi|Exposure|Population|5th percentile" "wsi|Exposure|Population|95th percentile" --impact-fit
+	 $ rime-run-timeseries [...] --impact-file test_data/table_output_wsi_R10_pop_scaled_including_uncertainty.csv --variable "wsi|Exposure|Population" "wsi|Exposure|Population|5th percentile" "wsi|Exposure|Population|95th percentile" --impact-resample
 
 Note how several impact variables can be specified so that three variables end up considered (corresponding to median, 5th and 95th percentiles). 
 They are then sorted out by parsing the variable name (e.g. " 5th" or "|5th" is expected, and the median is whatever is left).
@@ -130,7 +130,7 @@ The time-step is normally set by the input GSAT data file, but it can be subsamp
 
 A map emulator is also available:
 
-	$ rime-run-map --iam-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --iam-filter category_show_lhs=C8 quantile=0.5 -i "werning2024/*/cse_cdd_ssp2_*_abs.nc4" -v cdd --gwl-dim threshold -o maps.nc --year 2020 2050 2070 -O --bbox -10 20 35 50
+	$ rime-run-map --gsat-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --gsat-filter category_show_lhs=C8 quantile=0.5 -i "werning2024/*/cse_cdd_ssp2_*_abs.nc4" -v cdd --gwl-dim threshold -o maps.nc --year 2020 2050 2070 -O --bbox -10 20 35 50
 
 Here the input file is obtained via `rime-download --name werning2024/precipitation` and the warming levels are spread across various files with the `threshold` dimension indicating the warming levels, and the variable is named `cdd`. It would also be possible to indicate a list of file via `-v file1 file2` and give the warming levels explicitly via `--gwl-values 1.2 1.5` etc.
 

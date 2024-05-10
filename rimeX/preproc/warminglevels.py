@@ -96,12 +96,12 @@ def main():
     
     egroup = parser.add_mutually_exclusive_group()
     group = egroup.add_argument_group('warming levels')
-    group.add_argument("--min-warming-level", type=float, default=CONFIG["emulator.warming_level_min"])
-    group.add_argument("--step-warming-level", type=float, default=CONFIG["emulator.warming_level_step"])
-    group.add_argument("--max-warming-level", type=float, default=CONFIG.get("emulator.warming_level_max", 10))
+    group.add_argument("--min-warming-level", type=float, default=CONFIG["preprocessing.warming_level_min"])
+    group.add_argument("--step-warming-level", type=float, default=CONFIG["preprocessing.warming_level_step"])
+    group.add_argument("--max-warming-level", type=float, default=CONFIG.get("preprocessing.warming_level_max", 10))
     egroup.add_argument("--warming-levels", nargs='*', type=float)
 
-    parser.add_argument("--running-mean-window", type=int, default=CONFIG["emulator.running_mean_window"])
+    parser.add_argument("--running-mean-window", type=int, default=CONFIG["preprocessing.running_mean_window"])
     parser.add_argument("--projection-baseline", nargs=2, type=int, default=CONFIG["emulator.projection_baseline"])
     parser.add_argument("--projection-baseline-offset", type=float, default=CONFIG["emulator.projection_baseline_offset"])
 

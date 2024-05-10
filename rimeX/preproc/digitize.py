@@ -9,6 +9,7 @@ import argparse
 import glob
 import tqdm
 import concurrent.futures
+import itertools
 from itertools import groupby, product
 import numpy as np
 import pandas as pd
@@ -79,6 +80,116 @@ def load_regional_indicator_data(variable, region, subregion, weights, season, m
     return all_data
 
 
+def interpolate_warming_levels(impact_data_records, warming_level_step, by):
+    # key = lambda r: (r.get('ssp_family'), r.get('year'), r['variable'], r.get('model'), r.get('scenario'))
+    key_fn = lambda r: tuple(r.get(k) for k in by)
+    input_gwls = set(r['warming_level'] for r in impact_data_records)
+    gwls = np.arange(min(input_gwls), max(input_gwls)+warming_level_step, warming_level_step)
+    interpolated_records = []
+    for key, group in groupby(sorted(impact_data_records, key=key_fn), key=key_fn):
+        igwls, ivalues = np.array([(r['warming_level'], r['value']) for r in sorted(group, key=lambda r: r['warming_level'])]).T
+        # assert len(igwls) == 6, f"Expected 6 warming level for {ssp_family},{year}. Got {len(igwls)}: {repr(igwls)}"
+        values = np.interp(gwls, igwls, ivalues)
+        # print(ssp_family, year, variable, igwls, ivalues, '=>', gwls, values)
+        interpolated_records.extend([{"warming_level":wl, "value": v, **dict(zip(by, key)) } for wl, v in zip(gwls, values)])
+    return interpolated_records
+
+
+def interpolate_years(impact_data_records, years, by):
+    interpolated_records = []
+    key_fn = lambda r: tuple(r.get(k) for k in by)
+    input_years = set(r['year'] for r in impact_data_records)
+    for key, group in groupby(sorted(impact_data_records, key=key_fn), key=key_fn):
+        group = list(group)
+        input_years = np.sort([r["year"] for r in group])
+        iyears, ivalues = np.array([(r['year'], r['value']) for r in group]).T
+        # assert len(iyears) == 6, f"Expected 6 warming level for {scenario},{year}. Got {len(iyears)}: {repr(iyears)}"
+        values = np.interp(years, iyears, ivalues)
+        interpolated_records.extend([{"year": year, "value": value, **dict(zip(by, key))} for year, value in zip(years, values)])
+    return interpolated_records
+
+
+# Sort out the quantiles
+QUANTILES_MAP = [(5, [" 5th", "|5th"]), (95, [" 95th","|95th"]), (50, ["median", "50th",""])]
+
+def _sort_out_quantiles(sat_variables):
+    """extract quantile map from table variables (used in `fit_records`)
+    """
+    sat_quantiles = {}
+    sat_variables = list(sat_variables)
+    for q, ss in QUANTILES_MAP:
+        for v, s in itertools.product(list(sat_variables), ss):
+            if s in v:
+                sat_quantiles[q] = v
+                sat_variables.remove(v)
+                break
+    assert not sat_variables and len(sat_quantiles) == 3
+    return sat_quantiles
+
+
+def fit_records(impact_data_records, samples, by, dist=None):
+    """Expand a set of percentile records with proper samples (experimental)
+
+    [
+        {"variable": "...", "value": vmed, ...}, 
+        {"variable": "...| 5th ...", "value": v5th, ...},
+        {"variable": "...| 95th ...", "value": v95th, ...},
+        ...
+    ]
+
+    with n samples
+
+    [
+        {"variable": "...", "value": v1}, 
+        {"variable": "...", "value": v2},
+        ...
+        {"variable": "...", "value": vn},
+        ...
+    ]
+
+    by fitting a distribution `dist` to each group (grouped using `by` parameter).
+
+    This funciton is experimental because it works on somewhat subjective naming. 
+    TODO: use the "quantile" field instead.
+    """
+    from rimeX.stats import fit_dist
+
+    impact_variables = set(r['variable'] for r in impact_data_records)
+    impact_years = sorted(set(r['year'] for r in impact_data_records))
+
+    if len(impact_variables) != 3:
+        logger.error(f"Expected three variables in impact fit mode. Found {len(impact_variables)}")
+        logger.error(f"Remaining variable: {impact_variables}")
+        raise ValueError
+
+    try:
+        sat_quantiles = _sort_out_quantiles(impact_variables)
+    except Exception as error:
+        logger.error(f"Failed to extract quantiles from impact table variables.")
+        logger.error(f"Expected variables contained the following strings: {dict(QUANTILES_MAP)}")
+        logger.error(f"Remaining variables: {str(impact_variables)}")
+        raise
+
+    key_fn = lambda r: tuple(r[f] for f in by)
+    resampled_records = []
+    for keys, group in groupby(sorted(impact_data_records, key=key_fn), key=key_fn):
+        group = list(group)
+        assert len(group) == 3, f'Expected group of 3 records (the percentiles). Got {len(group)}: {group}'
+        by_var = {r['variable']: r for r in group}
+        quants = [50, 5, 95]
+        dist = fit_dist([by_var[sat_quantiles[q]]['value'] for q in quants], quants, dist_name=dist)
+        logger.debug(f"{keys}: {dist.dist.name}({','.join([str(r) for r in dist.args])})")
+
+        # resample (equally spaced percentiles)
+        step = 1/samples
+        values = dist.ppf(np.linspace(step/2, 1-step/2, samples))
+        r0 = by_var[sat_quantiles[50]]
+        for v in values:
+            resampled_records.append({**r0, **{"value": v}, **keys})
+
+    return resampled_records
+
+
 def average_per_group(records, by, keep_meta=True):
     """(weighted) mean grouped by 
 
@@ -110,13 +221,15 @@ def average_per_group(records, by, keep_meta=True):
 
     return average_records
 
-def make_models_equiprobable(records):
+
+def make_equiprobable_groups(records, by):
     """Define a 'weight' field for each record to give equal weight for each model, if so required
 
     Parameters
     ----------
     records: a list of records with dict fields ["warming_level", "model"]
-    equiprobable_models: if True, give equal weight for each model. Default is False.
+    by : group by keys
+        e.g. ['warming_level', 'model']
 
     This function modifies the report in-place by defining a 'weight' field and does not return anything.
 
@@ -126,11 +239,12 @@ def make_models_equiprobable(records):
     Note the normalization per warming level group is redundant with `recombine_magicc`, but we 
     do it anyway in case the functions are used independently, given the low computational cost of such an operation.
     """
-    key = lambda r: (r['warming_level'], r['model'])
+    # key = lambda r: (r['warming_level'], r['model'])
+    key_fn = lambda r: tuple(r.get(k) for k in by)
     for r in records:
         r.setdefault("weight", 1)
 
-    for wl, group in groupby(sorted(records, key=key), key=key):
+    for key, group in groupby(sorted(records, key=key_fn), key=key_fn):
         group = list(group)
 
         # Make sure the weights are normalized within each temperature bin (because the number of models may vary)

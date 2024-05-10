@@ -16,9 +16,16 @@ experiments = [ "historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460", 
 models = ["IPSL-CM5A-LR", "GFDL-ESM2M", "MIROC5", "HadGEM2-ES"]
 experiments = [ "historical", "rcp26", "rcp60", "rcp85",]
 
+[preprocessing]
+warming_level_step = 0.1  # used for pre-processing (input files for emulator)
+warming_level_min = 1
+running_mean_window = 21
+isimip_binned_backend = [ "csv", ]
+
 [preprocessing.regional]
 weights = [ "latWeight", "gdp2005", "pop2005",]
 masks_folder = "/mnt/PROVIDE/climate_impact_explorer/data/masks"
+# isimip_binned_backend = [ "csv", "feather", "parquet"]
 
 [preprocessing.seasons]
 annual = [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,]
@@ -30,8 +37,5 @@ autumn = [ 9, 10, 11,]
 [emulator]
 projection_baseline = [ 1995, 2014,]
 projection_baseline_offset = 0.85
-warming_level_min = 1
-warming_level_step = 0.1
-running_mean_window = 21
-isimip_binned_backend = [ "csv", "feather", "parquet"]
+# warming_level_step = 0.1 # used for interpolation
 quantiles = [ 0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99,]

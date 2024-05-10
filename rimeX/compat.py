@@ -3,6 +3,18 @@ import numpy as np
 import pandas as pd
 from rimeX.logs import logger
 
+def read_table(file, backend=None, **kwargs):
+    logger.info(f"Read {file}")
+    if backend == "feather" or str(file).endswith((".ftr", ".feather")):
+        df = pd.read_feather(file, **kwargs)
+    elif backend == "excel" or str(file).endswith((".xls", ".xlsx")):
+        df = pd.read_excel(file, **kwargs)
+    elif backend == "parquet" or str(file).endswith((".parquet")):
+        df = pd.read_parquet(file, **kwargs)
+    else:
+        df = pd.read_csv(file, **kwargs)
+    return df
+
 
 class FastIamDataFrame:
     def __init__(self, df, index=["model", "scenario"]):
@@ -49,21 +61,24 @@ class FastIamDataFrame:
 
     @classmethod
     def load(cls, file, **kwargs):
-        logger.info(f"Read {file}")
-        if str(file).endswith((".ftr", ".feather")):
-            df = pd.read_feather(file, **kwargs)
-        elif str(file).endswith((".xls", ".xlsx")):
-            df = pd.read_excel(file, **kwargs)
-        elif str(file).endswith((".parquet")):
-            df = pd.read_parquet(file, **kwargs)
-        else:
-            df = pd.read_csv(file, **kwargs)
+        df = read_table(file)
         return cls(df)
 
     def __len__(self):
         return len(self.df) * len(self.year)
 
+    def rename(self, inplace=False, **kwargs):
+        if inplace:
+            self.df.rename(inplace=True, **kwargs)
+        else:
+            return FastIamDataFrame(self.df.rename(**kwargs), index=self._index)
+
+
+
     def filter(self, **kwargs):
+
+        if not kwargs:
+            return self
 
         df = self.df
         columns = self.df.columns
@@ -87,7 +102,7 @@ class FastIamDataFrame:
         if andcond is not True:
             df = df[andcond] # actually indexing
 
-        res = FastIamDataFrame(df)
+        res = FastIamDataFrame(df, index=self._index)
 
         if "year" in kwargs:
             return res._filter_year(kwargs['year'])
@@ -104,7 +119,7 @@ class FastIamDataFrame:
         cols = [c for c in year_cols if str(c) in year or _to_numerical(c) in year]
         all_cols = list(self.df.columns[:iyear]) + cols
         df = self.df[all_cols]
-        return FastIamDataFrame(df)
+        return FastIamDataFrame(df, index=self._index)
 
     def as_pandas(self):
         columns = self.df.columns
@@ -133,4 +148,4 @@ def _isnumerical(x):
 
 
 def concat(fastiamdfs, **kwargs):
-    return FastIamDataFrame(pd.concat([elem.df for elem in fastiamdfs], **kwargs))
+    return FastIamDataFrame(pd.concat([elem.df for elem in fastiamdfs], **kwargs), index=fastiamdfs[0]._index)
