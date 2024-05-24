@@ -58,6 +58,7 @@ rime-pre-wl = "rimeX.preproc.warminglevels:main"
 rime-pre-digitize = "rimeX.preproc.digitize:main"
 rime-run-timeseries = "rimeX.emulator:main"
 rime-run-map = "rimeX.map:main"
+rime-run-table = "rimeX.table:main"
 
 [project.urls]
 homepage = "https://github.com/iiasa/rime/tree/rimeX"

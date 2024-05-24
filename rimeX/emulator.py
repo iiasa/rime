@@ -10,6 +10,7 @@ import tqdm
 from itertools import groupby
 import numpy as np
 import pandas as pd
+import xarray as xa
 
 from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
@@ -19,7 +20,7 @@ from rimeX.preproc.digitize import (
     get_binned_isimip_records, 
     make_equiprobable_groups, interpolate_years, interpolate_warming_levels, 
     fit_records)
-from rimeX.compat import FastIamDataFrame, concat, read_table
+from rimeX.compat import FastIamDataFrame, concat, read_table, _isnumerical
 from rimeX.datasets import get_datapath
 
 
@@ -240,6 +241,255 @@ def recombine_gmt_ensemble(impact_data, gmt_ensemble, quantile_levels, match_yea
     return pd.DataFrame(quantiles, index=pd.Index(gmt_years.values.astype(int), name='year'), columns=quantile_levels)
 
 
+
+class ImpactDataInterpolator:
+    """Interpolator class inspired from RegularGridInterpolator
+    """
+    def __init__(self, dataarray, method=None):
+
+        if isinstance(dataarray, xa.Dataset):
+            logger.debug("convert Dataset to DataArray")
+            dataarray = dataarray.to_array("variable")
+            logger.debug("convert Dataset to DataArray...done")
+
+        assert "warming_level" in dataarray.dims
+        logger.debug("rename dataarray")
+        dataarray = dataarray.rename(get_rename_mapping(dataarray.dims))
+
+        logger.debug("rename dataarray...done")
+        if "ssp_family" not in dataarray.dims and "scenario" in dataarray.dims:
+            logger.debug("check ssp_family")
+            dataarray = dataarray.rename({"scenario": "ssp_family"}).assign_coords({"ssp_family": _get_ssp_mapping(dataarray.scenario.values)})
+            logger.debug("check ssp_family...done")
+
+        logger.debug("transpose dataarray")
+        dataarray = dataarray.transpose(*[c for c in ["warming_level", "year", "ssp_family"] if c in dataarray.dims], ...)
+        logger.debug("transpose dataarray...done")
+
+        self.dataarray = dataarray
+        self.method = method
+
+
+    @classmethod
+    def from_dataframe(cls, table, mapping=None, meta_levels=None, index_levels=None, **kwargs):
+
+        if mapping:
+            logger.debug("index rename")
+            table = table.rename(mapping or {}, axis=1)
+            logger.debug("index rename...done")
+
+        # use ssp_family as grouping, if provided
+        if "ssp_family" not in table.columns:
+            logger.debug("check ssp_family")        
+            if "scenario" in table.columns:
+                # raise ValueError("Expected either ssp_family or scenario in the impact table")
+                table["ssp_family"] = _get_ssp_mapping(table["scenario"].values)
+            logger.debug("check ssp_family...done")        
+
+        if index_levels is None:
+            index_levels = [c for c in ['warming_level', 'year', 'ssp_family'] if c in table.columns]
+
+        if meta_levels is None:
+            meta_levels = [c for c in ['region', 'model', 'variable'] if c in table.columns]
+
+        if "warming_level" not in table.columns:
+            raise ValueError("impact table must contain `warming_level`")
+
+        # Create a 2-D data frame indexed by year and warming level
+        # (this is usually very fast)        
+        logger.debug("reshape impact table with multi indices")
+        series = table.set_index(index_levels + meta_levels)['value'];
+
+        logger.debug("transform to xarray.DataArray")
+        dataarray = xa.DataArray.from_series(series)
+
+        return cls(dataarray, **kwargs)
+
+        # pivoted = table.pivot(
+        #     index=['year', 'warming_level', 'scenario'],  # indexed by temperature (within each group)
+        #     values='value', 
+        #     columns=['region', 'model', 'variable']);  # for grouping
+
+
+    def hasyear(self):
+        return "year" in self.dataarray.dims
+
+    def hasssp(self):
+        return "ssp_family" in self.dataarray.dims
+
+    # def hasmultiplessp(self):
+    #     return self.hasssp() and table["ssp_family"].unique().size > 1
+
+
+    def __call__(self, values, method=None):
+        method = method or self.method
+        if method == 'linear':
+            return self.interpolate_linear(values)
+        elif method == 'nearest':
+            return self.interpolate_nearest(values)
+        elif method == 'index':
+            return self.interpolate_nearest(values, exact=True)
+        else:
+            raise NotImplementedError(method)
+
+
+    def interpolate_linear(self, values):
+        raise NotImplementedError()
+
+
+    def interpolate_nearest(self, gmt_table, exact=False, mapping=None, ignore_year=False, ignore_ssp=False, return_dataarray=False):
+        """This method assumes the GMT is matched exactly
+        """
+        logger.debug("rename gmt_table columns")
+        gmt_table = gmt_table.rename({"value":"warming_level", **(mapping or {})}, axis=1)
+
+        # try to derive the SSP family if present
+        logger.debug("find out ssp_family")
+        if "ssp_family" not in gmt_table.columns and "scenario" in gmt_table.columns:
+            gmt_scenario = gmt_table['scenario'].values
+            try:
+                gmt_table["ssp_family"] = _get_ssp_mapping(gmt_scenario)
+            except:
+                logger.debug("could not get the ssp_family from GMT scenario")
+
+        gmt = gmt_table['warming_level'].values
+
+        index_levels = ["warming_level"]
+        meta_levels = [c for c in self.dataarray.dims if c not in ["warminglevel", "year", "ssp_family"]]
+
+        logger.debug("check years")
+        if self.hasyear():
+            if ignore_year:
+                meta_levels += ["year"]
+
+            else:
+                if "year" not in gmt_table.columns and gmt_table.index.name == "year":
+                    gmt_table = gmt_table.reset_index()
+
+                if "year" not in gmt_table.columns:
+                    raise ValueError("Expected 'year' column in GMT input (because `year` is present in the impact table), but None was found. Set `ignore_year=True` to ignore the years (this will result in an outer product).")
+
+                index_levels += ['year']
+
+        logger.debug("check ssp_family")
+        if self.hasssp():
+            if ignore_ssp:
+                meta_levels += ["ssp_family"]
+
+            else:
+                if "ssp_family" not in gmt_table.columns:
+                    raise ValueError("Expected 'ssp_family' column in GMT input (because `ssp_family` is present in the impact table), but None was found. Set `ignore_ssp=True` to ignore the ssp_family (this will result in an outer product).")
+                index_levels += ['ssp_family']
+
+
+        logger.debug("build indices")
+        index = []
+
+        logger.debug("build warming_level index")
+        i_warming_level = np.searchsorted(self.dataarray.warming_level.values, gmt)
+        if exact:
+            assert (self.dataarray.warming_level.values[i_warming_level] == gmt).all(), "GWL do not match."
+        bad = (i_warming_level == self.dataarray.warming_level.values.size)
+        i_warming_level = i_warming_level.clip(0, self.dataarray.warming_level.values.size - 1)
+        index.append(i_warming_level)
+
+        if "year" in index_levels:
+            logger.debug("build year index")
+            gmt_year = gmt_table['year'].values
+            i_year = np.searchsorted(self.dataarray.year.values, gmt_year)
+            if exact:
+                assert (self.dataarray.year.values[i_year] == gmt_year).all(), "Years do not match"
+            bad |= (i_year == self.dataarray.year.values.size) | ((i_year == 0) & (self.dataarray.year.values[0] > gmt_year))
+            i_year = i_year.clip(0, self.dataarray.year.values.size - 1)
+            index.append(i_year)
+
+        if "ssp_family" in index_levels:
+            logger.debug("build ssp_family index")
+            gmt_ssp_family = gmt_table["ssp_family"].values
+            i_ssp_family = np.searchsorted(self.dataarray.ssp_family.values, gmt_ssp_family)
+            assert (self.dataarray.ssp_family.values[i_ssp_family] == gmt_ssp_family).all(), "check ssp_family indexing"
+            # i_ssp_family = i_ssp_family.clip(0, self.dataarray.ssp_family.values.size - 1)
+            index.append(i_ssp_family)
+
+        if bad.any():
+            logger.warning(f"{bad.sum()} values are outside the range => will be set to NaN")
+
+        # numpy indexing collapses multiple same-length indices to a single 1-D index
+        logger.debug("index the impact table")
+        values = self.dataarray.values[tuple(index)]
+        values[bad] = np.nan
+
+        # Here we have a n-D array GMT-length x meta-1 x meta-2 x ...
+        # We'd like to have a pandas DataFrame as a result, so flattening the meta dimensions
+
+        # first step build a self.dataarray
+        logger.debug("rebuild a DataArray")
+        other_dims = list(self.dataarray.dims[len(index):])
+        data = xa.DataArray(values, dims=['index']+other_dims, coords={k:v for k, v in self.dataarray.coords.items() if k in other_dims})
+
+        # ...also provide the detail of the multi-index
+        midx = xa.Coordinates.from_pandas_multiindex(
+            gmt_table.set_index([c for c in ["year", "scenario", "ssp_family", "warming_level"] if c in gmt_table.columns]).index, 'index')
+        data = data.assign_coords(midx)
+
+        if return_dataarray:
+            return data
+
+        # ... now flatten to a Dataframe
+        logger.debug("transform to DataFrame")
+        return data.to_series().reset_index(name='value')
+
+
+def recombine_gmt_table(impact_data, gmt, **kwargs):
+    """this function aims to mimic Edward Byers' early table_impacts_gwl, which indexes the impact table 
+    to provide a multi-indicator, multi-scenario emulated dataset, without accounting for uncertainties
+
+    Parameters
+    ----------
+    impact_data: pandas DataFrame (or convertible to, e.g. list of dict) or xarray.DataArray
+        Standard fields are:
+            - "warming_level" (or "gwl" or "gmt") or similar (not case-sensitive)
+            - "scenario" or "ssp_family"
+            - "year": note this refers to the SSP year for population-aggregated data, not the original scenario time-series
+            - "variable"
+            - "model"
+            - "region"
+        To be compatible with Werning et al, a special case where "warming_level" is parsed from the scenario column is also supported.
+        Scenario is of the form "ssp1_1p5".
+
+    gmt: pandas DataFrame with columns ["year", "value", "scenario", "model"] 
+
+    **kwargs: passed to ImpactDataInterpolator __call__ (`method`, `return_dataarray`, ...)
+
+
+    Returns
+    -------
+    pandas DataFrame
+
+
+    Notes
+    -----
+    The impact data's warming levels must be interpolated to the desired fine resolution before entering this function
+    """
+    # IAMDataFrame => DataFrame
+    if hasattr(impact_data, "as_pandas"):
+        impact_data = impact_data.as_pandas()
+
+    if type(impact_data) is list:
+        impact_data = pd.DataFrame(impact_data)
+
+    if type(impact_data) is pd.DataFrame:
+        interpolator = ImpactDataInterpolator.from_dataframe(impact_data)
+
+    elif isinstance(impact_data, (xa.Dataset, xa.DataArray)):
+        interpolator = ImpactDataInterpolator(impact_data)
+
+    else:
+        raise TypeError(f"Expeced list of dict, pandas.DataFrame, xarray.DataArray or xarray.Dataset, got: {type(impact_data)}")
+
+    return interpolator(gmt, **kwargs)
+
+
 def validate_iam_filter(keyval):
     key, val = keyval.split("=")
     try:
@@ -252,7 +502,7 @@ def validate_iam_filter(keyval):
     return key, val
 
 
-def _get_gmt_parser():
+def _get_gmt_parser(check_single_index=False, magicc_ok=False):
 
     parser = argparse.ArgumentParser(add_help=False)
     group = parser.add_argument_group('Scenario')
@@ -268,50 +518,55 @@ def _get_gmt_parser():
     group.add_argument("--gsat-samples", default=100, type=int, help="GSAT samples to draw if --gsat-fit is set")
     group.add_argument("--gsat-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
         help="other fields e.g. --gsat model='IMAGE 3.0.1' scenario=SSP1.26")
-    group.add_argument("--magicc-files", nargs='+', help='if provided these files will be used instead if iam scenario')
+    if magicc_ok:
+        group.add_argument("--magicc-files", nargs='+', help='if provided these files will be used instead if iam scenario')
+    else:
+        group.add_argument("--magicc-files", nargs='+', help=argparse.SUPPRESS)
     group.add_argument("--projection-baseline", type=int, nargs=2, default=CONFIG['emulator.projection_baseline'])
     group.add_argument("--projection-baseline-offset", type=float, default=CONFIG['emulator.projection_baseline_offset'])
     group.add_argument("--time-step", type=int, help="GSAT time step. By default whatever time-step is present in the input file.")
     group.add_argument("--year", type=int, nargs="*", help="specify a set of years (e.g. for maps)")
     group.add_argument("--save-gsat", help='filename to save the processed GSAT (e.g. for debugging)')
-    
+
+    if check_single_index:
+        group.add_argument("--no-check-single-index", action='store_false', dest='check_single_index', help=argparse.SUPPRESS)
+    else:
+        group.add_argument("--check-single-index", action='store_true', help=argparse.SUPPRESS)
+        
     return parser
 
 
-def _get_gmt_ensemble(o, parser):
 
-    if o.magicc_files:
-        gmt_ensemble = []
-        for file in o.magicc_files:
-            gmt_ensemble.append(load_magicc_ensemble(file, o.projection_baseline, o.projection_baseline_offset))
-        gmt_ensemble = pd.concat(gmt_ensemble, axis=1)
+def _get_gmt_dataframe(o, parser):
 
+    assert not o.magicc_files
+
+    if not o.gsat_file:
+        parser.error("Need to indicate MAGICC or IAM data file --gsat-file")
+        parser.exit(1)
+        
+    if not Path(o.gsat_file).exists() and get_datapath(o.gsat_file).exists():
+        o.gsat_file = str(get_datapath(o.gsat_file))
+
+    df_wide = read_table(o.gsat_file)
+
+    if o.pyam:
+        import pyam
+        iamdf = pyam.IamDataFrame(df_wide)
     else:
-        if not o.gsat_file:
-            parser.error("Need to indicate MAGICC or IAM data file --gsat-file")
-            parser.exit(1)
-            
-        if not Path(o.gsat_file).exists() and get_datapath(o.gsat_file).exists():
-            o.gsat_file = str(get_datapath(o.gsat_file))
+        iamdf = FastIamDataFrame(df_wide)
 
-        df_wide = read_table(o.gsat_file)
+    filter_kw = dict(o.gsat_filter)
+    if o.gsat_variable: filter_kw['variable'] = o.gsat_variable
+    if o.gsat_scenario: filter_kw['scenario'] = o.gsat_scenario
+    if o.gsat_model: filter_kw['model'] = o.gsat_model
+    iamdf_filtered = iamdf.filter(**filter_kw)
 
-        if o.pyam:
-            import pyam
-            iamdf = pyam.IamDataFrame(df_wide)
-        else:
-            iamdf = FastIamDataFrame(df_wide)
+    if len(iamdf_filtered) == 0:
+        logger.error(f"0-length dataframe after applying filter: {repr(filter_kw)}")
+        parser.exit(1)
 
-        filter_kw = dict(o.gsat_filter)
-        if o.gsat_variable: filter_kw['variable'] = o.gsat_variable
-        if o.gsat_scenario: filter_kw['scenario'] = o.gsat_scenario
-        if o.gsat_model: filter_kw['model'] = o.gsat_model
-        iamdf_filtered = iamdf.filter(**filter_kw)
-
-        if len(iamdf_filtered) == 0:
-            logger.error(f"0-length dataframe after applying filter: {repr(filter_kw)}")
-            parser.exit(1)
-
+    if o.check_single_index:
         if len(iamdf_filtered.index) > 1:
             logger.error(f"More than one index after applying filter: {repr(filter_kw)}")
             logger.error(f"Remaining index: {str(iamdf_filtered.index)}")
@@ -327,7 +582,19 @@ def _get_gmt_ensemble(o, parser):
             logger.error(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=iamdf_filtered.year[0]).as_pandas())}")
             parser.exit(1)
 
-        df = iamdf_filtered.as_pandas()
+    return iamdf_filtered.as_pandas()
+
+
+def _get_gmt_ensemble(o, parser):
+
+    if o.magicc_files:
+        gmt_ensemble = []
+        for file in o.magicc_files:
+            gmt_ensemble.append(load_magicc_ensemble(file, o.projection_baseline, o.projection_baseline_offset))
+        gmt_ensemble = pd.concat(gmt_ensemble, axis=1)
+
+    else:
+        df = _get_gmt_dataframe(o, parser)
 
         if o.gsat_resample:
             from rimeX.preproc.digitize import QUANTILES_MAP, _sort_out_quantiles
@@ -373,6 +640,7 @@ def _get_gmt_ensemble(o, parser):
         else:
             gmt_ensemble = df.set_index('year')[['value']]
 
+
     if o.year is not None:
         gmt_ensemble = gmt_ensemble.loc[o.year]
 
@@ -389,26 +657,71 @@ def _get_gmt_ensemble(o, parser):
             gmt_ensemble = xa.DataArray(gmt_ensemble.values, coords={"year": gmt_ensemble.index}, dims=['year', 'sample']).interp(year=years).to_pandas()
             logger.info(f"Interpolate GSAT to {o.time_step}-year(s) time-step...done")
 
-    if o.save_gsat:
-        logger.info("Save GSAT...")        
-        gmt_ensemble.to_csv(o.save_gsat)
-        logger.info("Save GSAT...done")        
 
+    if o.save_gsat:
+        logger.info("Save GSAT...")
+        gmt_ensemble.to_csv(o.save_gsat)
+        logger.info("Save GSAT...done")
 
     return gmt_ensemble
 
 
 def _simplify(name):
     name = name.replace("_","").replace("-","").lower()
-    if name == "warminglevel":
+    if name in ("warminglevel", "gwl", "gmt"):
         name = "warming_level"
-    if name == "experiment":
+    elif name in ("experiment", "ssp"):
         name = "scenario"
     return name
 
 
+def get_rename_mapping(names):
+    simplified = [_simplify(nm) for nm in names]
+    if len(set(simplified)) != len(names):
+        logger.error(f"input names: {names}")
+        logger.error(f"would be renamed to: {simplified}")
+        raise ValueError("some column names are duplicate or ambiguous")
+
+    return dict(zip(names, simplified))
+
+
+def _get_ssp_mapping(scenarios):
+    """Returns a common mapping for SSP family, in the form of ["ssp1", etc..]
+    """
+    if _isnumerical(scenarios[0]):
+        return [f"ssp{int(s)}" for s in scenarios]
+    else:
+        return [s[:4].lower() for s in scenarios]
+
+
+def _parse_warming_level_and_ssp(scenarios):
+    """ Parse warming levels and SSP family from the Werninge et al scenarios
+
+    Parameters
+    ----------
+    scenarios: array-like of type "ssp1_2p5"
+
+    Returns
+    -------
+    warming_levels: float, array-like (global warming levels)
+    scenarios: list of strings ["ssp1", ...]
+    """
+    warming_levels = np.empty(len(scenarios))
+    ssp_family = []
+    try:
+        for i, value in enumerate(scenarios):
+            ssp, gwl = value.split("_")
+            warming_levels[i] = float(gwl.replace('p', '.'))
+            ssp_family.append(ssp)
+    except:
+        logger.error(f"Expected scenario such as ssp1_2p0 to derive warming_level. Got: {value}")
+        raise
+
+    return warming_levels, ssp_family
+
+
 def homogenize_table_names(df):
-    """Make sure loosely named input table names are understood by the script, e.g. WarmingLevel => warming_level,
+    """Make sure loosely named input table names are understood by the script, e.g. WarmingLevel or gwl or gmt => warming_level,
     and retrieve the warming level from the scenario name if need be.
 
     Parameters
@@ -420,13 +733,8 @@ def homogenize_table_names(df):
     DataFrame
     """
     names = df.columns
-    simplified = [_simplify(nm) for nm in names]
-    if len(set(simplified)) != len(names):
-        logger.error(f"input names: {names}")
-        logger.error(f"would be renamed to: {simplified}")
-        raise ValueError("some column names are duplicate or ambiguous")
 
-    mapping = dict(zip(names, simplified))
+    mapping = get_rename_mapping(names)
 
     df = df.rename(mapping, axis=1)
 
@@ -435,38 +743,20 @@ def homogenize_table_names(df):
     # ADD 'warming_level' threshold if absent. For now assume scenarios like ssp1_2p0 ==> warming level = 2.0 
     # ...also replace scenario with the ssp scenario only
     if "warming_level" not in names:
-        warming_levels = np.empty(len(df))
-        ssp_family = []
-        assert 'scenario' in names, "Input table must contain `warming_level` or a `scenario` column of the form `ssp1_2p0`"
-        for i, value in enumerate(df['scenario'].values):
-            try:
-                ssp, gwl = value.split("_")
-                warming_levels[i] = float(gwl.replace('p', '.'))
-                ssp_family.append(ssp)
-            except:
-                logger.error(f"Missing 'warming_level' field. Expected scenario such as ssp1_2p0 to derive warming_level. Got: {value}")
-                raise
-        df['scenario'] = ssp_family
-        df['warming_level'] = warming_levels
+        assert 'scenario' in names, "Input table must contain `warming_level` or a `scenario` column of the form `ssp1_2p0`"        
+        df['warming_level'], df['scenario'] = _parse_warming_level_and_ssp(df["scenario"].values)
 
-    # Also add missing fields that are not actually mandatory but expected in various subfunctions
-    for field in ["variable", "region", "scenario", "model"]:
-        if field not in df:
-            df[field] = ""
+    # # Also add missing fields that are not actually mandatory but expected in various subfunctions
+    # for field in ["variable", "region", "scenario", "model"]:
+    #     if field not in df:
+    #         df[field] = ""
 
     return df
 
 
-def main():
+def _get_impact_parser():
 
-    gmt_parser = _get_gmt_parser()
-
-    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, gmt_parser])
-    
-    group = parser.add_argument_group('Warming level matching')
-    group.add_argument("--running-mean-window", default=CONFIG["preprocessing.running_mean_window"])
-    group.add_argument("--warming-level-file", default=None)
-
+    parser = argparse.ArgumentParser(add_help=False)
     group = parser.add_argument_group('Impact indicator')
     group.add_argument("-v", "--variable", nargs="*")
     group.add_argument("--region")
@@ -475,6 +765,8 @@ def main():
         help=f'Files such as produced by Werning et al 2014 (.csv with ixmp4 standard). Also accepted is a glob * pattern to match downloaded datasets (see also rime-download-ls).', required=True)
     group.add_argument("--impact-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
         help="other fields e.g. --impact-filter scenario='ssp2*'")
+    group.add_argument("--model", nargs="+", help="if provided, only consider a set of specified model(s)")
+    group.add_argument("--experiment", nargs="+", help="if provided, only consider a set of specified experiment(s)")
 
     group = parser.add_argument_group('Impact indicator (CIE)')
     group.add_argument("--subregion", help="if not provided, will default to region average")
@@ -482,44 +774,8 @@ def main():
     group.add_argument("--weights", default='LonLatWeight', choices=CONFIG["preprocessing.regional.weights"])
     group.add_argument("--season", default='annual', choices=list(CONFIG["preprocessing.seasons"]))
 
-    group = parser.add_argument_group('Aggregation')
-    group.add_argument("--average-scenarios", action="store_true")
-    group.add_argument("--equiprobable-models", action="store_true", help="if True, each model will have the same probability")
-    group.add_argument("--model", nargs="+", help="if provided, only consider a set of specified model(s)")
-    group.add_argument("--experiment", nargs="+", help="if provided, only consider a set of specified experiment(s)")
-    group.add_argument("--quantiles", nargs='+', default=CONFIG["emulator.quantiles"], help="(default: %(default)s)")
-    group.add_argument("--match-year-population", action="store_true")
-    group.add_argument("--warming-level-step", default=CONFIG.get("preprocessing.warming_level_step"), type=float,
-        help="Impact indicators will be interpolated to match this warming level (default: %(default)s)")
-    group.add_argument("--impact-resample", action="store_true", 
-        help="""Fit a distribution to the impact data from which to resample. 
-        Assumes the quantile variables are named "{NAME}|5th percentile" and "{NAME}|95th percentile".""")
-    group.add_argument("--impact-dist", default="auto", 
-        choices=["auto", "norm", "lognorm"], 
-        help="In auto mode, a normal or log-normal distribution will be fitted if percentiles are provided")
-    group.add_argument("--impact-samples", default=100, type=int, help="Number of samples to draw if --impact-fit is set")
 
-    group = parser.add_argument_group('Result')
-    group.add_argument("-O", "--overwrite", action='store_true', help='overwrite final results')
-    # group.add_argument("--backend-isimip-bins", nargs="+", default=CONFIG["preprocessing.isimip_binned_backend"], choices=["csv", "feather"])
-    # parser.add_argument("--overwrite-isimip-bins", action='store_true', help='overwrite the intermediate calculations (binned isimip)')
-    # parser.add_argument("--overwrite-all", action='store_true', help='overwrite intermediate and final')
-    group.add_argument("-o", "--output-file", required=True)
-    group.add_argument("--save-impact-table", help='file name to save the processed impacts table (e.g. for debugging)')
-
-    parser.add_argument("--pyam", action="store_true", help='use pyam instead of own wrapper')
-
-    o = parser.parse_args()
-
-    setup_logger(o)
-
-    if not o.overwrite and Path(o.output_file).exists():
-        logger.info(f"{o.output_file} already exist. Use -O or --overwrite to reprocess.")
-        parser.exit(0)
-
-    # Load GMT data
-    gmt_ensemble = _get_gmt_ensemble(o, parser)
-
+def _get_impact_data(o, parser):
     # Load impact data
     filtered_files = []
     for file in o.impact_file:
@@ -569,6 +825,57 @@ def main():
     # Convert to DataFrame
     impact_data_frame = impact_data_table.as_pandas()
     impact_data_frame = homogenize_table_names(impact_data_frame)
+
+    return impact_data_frame    
+
+
+def main():
+
+    gmt_parser = _get_gmt_parser(magicc_ok=True, check_single_index=True)
+    impact_parser = _get_impact_parser()
+
+    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, gmt_parser, impact_parser])
+    
+    group = parser.add_argument_group('Warming level matching')
+    group.add_argument("--running-mean-window", default=CONFIG["preprocessing.running_mean_window"])
+    # group.add_argument("--warming-level-file", default=None)
+
+    group = parser.add_argument_group('Aggregation')
+    group.add_argument("--average-scenarios", action="store_true")
+    group.add_argument("--equiprobable-models", action="store_true", help="if True, each model will have the same probability")
+    group.add_argument("--quantiles", nargs='+', default=CONFIG["emulator.quantiles"], help="(default: %(default)s)")
+    group.add_argument("--match-year-population", action="store_true")
+    group.add_argument("--warming-level-step", default=CONFIG.get("preprocessing.warming_level_step"), type=float,
+        help="Impact indicators will be interpolated to match this warming level (default: %(default)s)")
+    group.add_argument("--impact-resample", action="store_true", 
+        help="""Fit a distribution to the impact data from which to resample. 
+        Assumes the quantile variables are named "{NAME}|5th percentile" and "{NAME}|95th percentile".""")
+    group.add_argument("--impact-dist", default="auto", 
+        choices=["auto", "norm", "lognorm"], 
+        help="In auto mode, a normal or log-normal distribution will be fitted if percentiles are provided")
+    group.add_argument("--impact-samples", default=100, type=int, help="Number of samples to draw if --impact-fit is set")
+
+    group = parser.add_argument_group('Result')
+    group.add_argument("-O", "--overwrite", action='store_true', help='overwrite final results')
+    # group.add_argument("--backend-isimip-bins", nargs="+", default=CONFIG["preprocessing.isimip_binned_backend"], choices=["csv", "feather"])
+    # parser.add_argument("--overwrite-isimip-bins", action='store_true', help='overwrite the intermediate calculations (binned isimip)')
+    # parser.add_argument("--overwrite-all", action='store_true', help='overwrite intermediate and final')
+    group.add_argument("-o", "--output-file", required=True)
+    group.add_argument("--save-impact-table", help='file name to save the processed impacts table (e.g. for debugging)')
+
+    parser.add_argument("--pyam", action="store_true", help='use pyam instead of own wrapper')
+
+    o = parser.parse_args()
+
+    setup_logger(o)
+
+    if not o.overwrite and Path(o.output_file).exists():
+        logger.info(f"{o.output_file} already exist. Use -O or --overwrite to reprocess.")
+        parser.exit(0)
+
+    # Load GMT data
+    gmt_ensemble = _get_gmt_ensemble(o, parser)
+    impact_data_frame = _get_impact_data(o, parser)
 
     # Now convert into a list of records
     impact_data_records = impact_data_frame.to_dict('records')
