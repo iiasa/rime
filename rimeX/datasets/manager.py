@@ -269,8 +269,7 @@ def get_all_datasets():
     return [r['name'] for r in DATASET_REGISTER['records']]
 
 def get_local_datasets():
-    return [r['name'] for r in get_all_datasets() if get_datapath(r['name']).exists()]
-
+    return [name for name in get_all_datasets() if get_datapath(name).exists()]
 
 
 # Needs to be packed in 
