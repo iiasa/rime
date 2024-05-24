@@ -3,12 +3,22 @@ import numpy as np
 import pandas as pd
 from rimeX.logs import logger
 
-def read_table(file, backend=None, **kwargs):
+def read_table(file, backend=None, index=["model", "scenario"], **kwargs):
     logger.info(f"Read {file}")
     if backend == "feather" or str(file).endswith((".ftr", ".feather")):
         df = pd.read_feather(file, **kwargs)
     elif backend == "excel" or str(file).endswith((".xls", ".xlsx")):
-        df = pd.read_excel(file, **kwargs)
+        with pd.ExcelFile(file) as xls:
+            df = pd.read_excel(xls, **kwargs)
+
+            # Also consider the "meta" columns, similarly to pyam
+            if "meta" in xls.sheet_names:
+                idx_cols = FastIamDataFrame(df, index=index)._index
+                meta = pd.read_excel(xls, "meta", **kwargs).set_index(idx_cols)
+                df2 = df.set_index(idx_cols)
+                # put meta names first to keep the years at the end
+                df = df2.join(meta.loc[df2.index])[list(meta.columns) + list(df2.columns)].reset_index()
+
     elif backend == "parquet" or str(file).endswith((".parquet")):
         df = pd.read_parquet(file, **kwargs)
     else:
