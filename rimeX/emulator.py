@@ -252,15 +252,17 @@ class ImpactDataInterpolator:
             dataarray = dataarray.to_array("variable")
             logger.debug("convert Dataset to DataArray...done")
 
-        assert "warming_level" in dataarray.dims
         logger.debug("rename dataarray")
         dataarray = dataarray.rename(get_rename_mapping(dataarray.dims))
-
         logger.debug("rename dataarray...done")
-        if "ssp_family" not in dataarray.dims and "scenario" in dataarray.dims:
-            logger.debug("check ssp_family")
+        assert "warming_level" in dataarray.dims
+
+        logger.debug("check ssp_family")
+        if "ssp_family" in dataarray.dims: 
+            dataarray = dataarray.assign_coords({"ssp_family": _get_ssp_mapping(dataarray.ssp_family.values)})
+        elif "scenario" in dataarray.dims:
             dataarray = dataarray.rename({"scenario": "ssp_family"}).assign_coords({"ssp_family": _get_ssp_mapping(dataarray.scenario.values)})
-            logger.debug("check ssp_family...done")
+        logger.debug("check ssp_family...done")
 
         logger.debug("transpose dataarray")
         dataarray = dataarray.transpose(*[c for c in ["warming_level", "year", "ssp_family"] if c in dataarray.dims], ...)
@@ -298,7 +300,12 @@ class ImpactDataInterpolator:
         # Create a 2-D data frame indexed by year and warming level
         # (this is usually very fast)        
         logger.debug("reshape impact table with multi indices")
-        series = table.set_index(index_levels + meta_levels)['value'];
+        levels = index_levels + meta_levels
+        series = table.set_index(levels)['value'];
+
+        if not series.index.is_unique:
+            logger.warning("index is not unique: drop duplicates")
+            series = table.drop_duplicates(levels).set_index(levels)['value']
 
         logger.debug("transform to xarray.DataArray")
         dataarray = xa.DataArray.from_series(series)
@@ -321,14 +328,14 @@ class ImpactDataInterpolator:
     #     return self.hasssp() and table["ssp_family"].unique().size > 1
 
 
-    def __call__(self, values, method=None):
+    def __call__(self, values, method=None, **kwargs):
         method = method or self.method
         if method == 'linear':
-            return self.interpolate_linear(values)
+            return self.interpolate_linear(values, **kwargs)
         elif method == 'nearest':
-            return self.interpolate_nearest(values)
+            return self.interpolate_nearest(values, **kwargs)
         elif method == 'index':
-            return self.interpolate_nearest(values, exact=True)
+            return self.interpolate_nearest(values, exact=True, **kwargs)
         else:
             raise NotImplementedError(method)
 
@@ -345,12 +352,16 @@ class ImpactDataInterpolator:
 
         # try to derive the SSP family if present
         logger.debug("find out ssp_family")
-        if "ssp_family" not in gmt_table.columns and "scenario" in gmt_table.columns:
+        if "ssp_family" in gmt_table.columns:
+            gmt_table["ssp_family"] = _get_ssp_mapping(gmt_table["ssp_family"].values)
+
+        elif "scenario" in gmt_table.columns:
             gmt_scenario = gmt_table['scenario'].values
             try:
                 gmt_table["ssp_family"] = _get_ssp_mapping(gmt_scenario)
             except:
                 logger.debug("could not get the ssp_family from GMT scenario")
+        logger.debug("find out ssp_family...done")
 
         gmt = gmt_table['warming_level'].values
 
@@ -414,8 +425,14 @@ class ImpactDataInterpolator:
         if bad.any():
             logger.warning(f"{bad.sum()} values are outside the range => will be set to NaN")
 
+        logger.debug(f"check for duplicates")
+        indices = np.array(index).T
+        indices_u = np.unique(indices, axis=0)
+        if indices_u.shape[0] < index[0].size:
+            logger.debug(f"The GMT index contains duplicates (could be due to nearest-neighbor search): {index[0].size} > {indices_u.shape[0]}")
+
         # numpy indexing collapses multiple same-length indices to a single 1-D index
-        logger.debug("index the impact table")
+        logger.debug(f"index the impact table (n={len(index)})")
         values = self.dataarray.values[tuple(index)]
         values[bad] = np.nan
 
@@ -502,7 +519,7 @@ def validate_iam_filter(keyval):
     return key, val
 
 
-def _get_gmt_parser(check_single_index=False, magicc_ok=False):
+def _get_gmt_parser(ensemble=False):
 
     parser = argparse.ArgumentParser(add_help=False)
     group = parser.add_argument_group('Scenario')
@@ -510,25 +527,30 @@ def _get_gmt_parser(check_single_index=False, magicc_ok=False):
     group.add_argument("--gsat-variable", default="*GSAT*", help="Filter iam variable")
     group.add_argument("--gsat-scenario", help="Filter iam scenario e.g. --gsat-scenario SSP1.26")
     group.add_argument("--gsat-model", help="Filter iam model")
-    group.add_argument("--gsat-resample", action="store_true", help="Fit a distribution to GSAT from which to resample")
-    group.add_argument("--gsat-dist", default="auto", 
-        choices=["auto", "norm", "lognorm"], 
-        # choices=["auto", "norm", "lognorm"], 
-        help="In auto mode, a normal or log-normal distribution will be fitted if percentiles are provided")
-    group.add_argument("--gsat-samples", default=100, type=int, help="GSAT samples to draw if --gsat-fit is set")
     group.add_argument("--gsat-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
         help="other fields e.g. --gsat model='IMAGE 3.0.1' scenario=SSP1.26")
-    if magicc_ok:
+    group.add_argument("--year", type=int, nargs="*", help="specify a set of years (e.g. for maps)")
+
+    group.add_argument("--projection-baseline", type=int, nargs=2, default=CONFIG['emulator.projection_baseline'])
+    group.add_argument("--projection-baseline-offset", type=float, default=CONFIG['emulator.projection_baseline_offset'])
+
+    if ensemble:
+        group.add_argument("--gsat-resample", action="store_true", help="Fit a distribution to GSAT from which to resample")
+        group.add_argument("--gsat-dist", default="auto", 
+            choices=["auto", "norm", "lognorm"], 
+            # choices=["auto", "norm", "lognorm"], 
+            help="In auto mode, a normal or log-normal distribution will be fitted if percentiles are provided")
+        group.add_argument("--gsat-samples", default=100, type=int, help="GSAT samples to draw if --gsat-fit is set")
+
+        group.add_argument("--time-step", type=int, help="GSAT time step. By default whatever time-step is present in the input file.")
+        group.add_argument("--save-gsat", help='filename to save the processed GSAT (e.g. for debugging)')
+
+    if ensemble:
         group.add_argument("--magicc-files", nargs='+', help='if provided these files will be used instead if iam scenario')
     else:
         group.add_argument("--magicc-files", nargs='+', help=argparse.SUPPRESS)
-    group.add_argument("--projection-baseline", type=int, nargs=2, default=CONFIG['emulator.projection_baseline'])
-    group.add_argument("--projection-baseline-offset", type=float, default=CONFIG['emulator.projection_baseline_offset'])
-    group.add_argument("--time-step", type=int, help="GSAT time step. By default whatever time-step is present in the input file.")
-    group.add_argument("--year", type=int, nargs="*", help="specify a set of years (e.g. for maps)")
-    group.add_argument("--save-gsat", help='filename to save the processed GSAT (e.g. for debugging)')
 
-    if check_single_index:
+    if ensemble:
         group.add_argument("--no-check-single-index", action='store_false', dest='check_single_index', help=argparse.SUPPRESS)
     else:
         group.add_argument("--check-single-index", action='store_true', help=argparse.SUPPRESS)
@@ -556,7 +578,11 @@ def _get_gmt_dataframe(o, parser):
     else:
         iamdf = FastIamDataFrame(df_wide)
 
-    filter_kw = dict(o.gsat_filter)
+    filter_kw = {}
+    for k, v in o.gsat_filter:
+        filter_kw.setdefault(k, [])
+        filter_kw[k].append(v)
+
     if o.gsat_variable: filter_kw['variable'] = o.gsat_variable
     if o.gsat_scenario: filter_kw['scenario'] = o.gsat_scenario
     if o.gsat_model: filter_kw['model'] = o.gsat_model
@@ -582,7 +608,12 @@ def _get_gmt_dataframe(o, parser):
             logger.error(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=iamdf_filtered.year[0]).as_pandas())}")
             parser.exit(1)
 
-    return iamdf_filtered.as_pandas()
+    df = iamdf_filtered.as_pandas()
+    df2 = df.drop_duplicates()
+    if len(df2) < len(df):
+        logger.warning(f"Drop duplicates: GMT size {len(df)} => {len(df2)}")
+        df = df2
+    return df
 
 
 def _get_gmt_ensemble(o, parser):
@@ -670,7 +701,9 @@ def _simplify(name):
     name = name.replace("_","").replace("-","").lower()
     if name in ("warminglevel", "gwl", "gmt"):
         name = "warming_level"
-    elif name in ("experiment", "ssp"):
+    elif name in ("sspfamily", "ssp"):
+        name = "ssp_family"
+    elif name in ("experiment"):
         name = "scenario"
     return name
 
@@ -762,7 +795,7 @@ def _get_impact_parser():
     group.add_argument("--region")
     # group.add_argument("--format", default="ixmp4", choices=["ixmp4", "cie"])
     group.add_argument("--impact-file", nargs='+', default=[], 
-        help=f'Files such as produced by Werning et al 2014 (.csv with ixmp4 standard). Also accepted is a glob * pattern to match downloaded datasets (see also rime-download-ls).', required=True)
+        help=f'Files such as produced by Werning et al 2014 (.csv with ixmp4 standard). Also accepted is a glob * pattern to match downloaded datasets (see also rime-download-ls).')
     group.add_argument("--impact-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
         help="other fields e.g. --impact-filter scenario='ssp2*'")
     group.add_argument("--model", nargs="+", help="if provided, only consider a set of specified model(s)")
@@ -774,8 +807,15 @@ def _get_impact_parser():
     group.add_argument("--weights", default='LonLatWeight', choices=CONFIG["preprocessing.regional.weights"])
     group.add_argument("--season", default='annual', choices=list(CONFIG["preprocessing.seasons"]))
 
+    return parser
+
 
 def _get_impact_data(o, parser):
+
+    if not o.impact_file:
+        parser.error("the following argument is required: --impact-file")
+        parser.exit(1)
+
     # Load impact data
     filtered_files = []
     for file in o.impact_file:
@@ -794,7 +834,11 @@ def _get_impact_data(o, parser):
 
     sep = '\n'
     logger.info(f"Load {len(filtered_files)} impact files")
-    filter_kw = dict(o.impact_filter)
+    filter_kw = {} 
+    for k, v in o.impact_filter:
+        filter_kw.setdefault(k, [])
+        filter_kw[k].append(v)
+
     if o.variable:
         filter_kw["variable"] = o.variable
     if o.region:
@@ -831,7 +875,7 @@ def _get_impact_data(o, parser):
 
 def main():
 
-    gmt_parser = _get_gmt_parser(magicc_ok=True, check_single_index=True)
+    gmt_parser = _get_gmt_parser(gmt_ensemble=True)
     impact_parser = _get_impact_parser()
 
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, gmt_parser, impact_parser])
