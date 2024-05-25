@@ -11,7 +11,8 @@ def main():
     gmt_parser = _get_gmt_parser()
     impact_parser = _get_impact_parser()
     parser = argparse.ArgumentParser(parents=[log_parser, config_parser, gmt_parser, impact_parser])
-    parser.add_argument("--method", choices=["nearest", "interp"], default="nearest")
+    parser.add_argument("--method", choices=["nearest", "linear"], default="linear")
+    parser.add_argument("--bounds-check", action="store_true")
     parser.add_argument("--backend", nargs='+', default=['csv'], choices=['csv', 'netcdf'])
     parser.add_argument("--nc-impacts", nargs='+')
     parser.add_argument("--pyam", action="store_true", help=argparse.SUPPRESS)
@@ -29,7 +30,7 @@ def main():
     else:        
         impact_data = _get_impact_data(o, parser)
 
-    data = recombine_gmt_table(impact_data, gmt_table, method=o.method, return_dataarray=True)
+    data = recombine_gmt_table(impact_data, gmt_table, method=o.method, return_dataarray=True, bounds_error=o.bounds_check)
 
     Path(o.output_file).parent.mkdir(exist_ok=True, parents=True)
 

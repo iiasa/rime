@@ -245,7 +245,7 @@ def recombine_gmt_ensemble(impact_data, gmt_ensemble, quantile_levels, match_yea
 class ImpactDataInterpolator:
     """Interpolator class inspired from RegularGridInterpolator
     """
-    def __init__(self, dataarray, method=None):
+    def __init__(self, dataarray, **kwargs):
 
         if isinstance(dataarray, xa.Dataset):
             logger.debug("convert Dataset to DataArray")
@@ -265,11 +265,12 @@ class ImpactDataInterpolator:
         logger.debug("check ssp_family...done")
 
         logger.debug("transpose dataarray")
-        dataarray = dataarray.transpose(*[c for c in ["warming_level", "year", "ssp_family"] if c in dataarray.dims], ...)
+        indices = [c for c in ["warming_level", "year", "ssp_family"] if c in dataarray.dims]
+        dataarray = dataarray.transpose(*indices, ...)
         logger.debug("transpose dataarray...done")
 
         self.dataarray = dataarray
-        self.method = method
+        self.kwargs = kwargs
 
 
     @classmethod
@@ -312,11 +313,6 @@ class ImpactDataInterpolator:
 
         return cls(dataarray, **kwargs)
 
-        # pivoted = table.pivot(
-        #     index=['year', 'warming_level', 'scenario'],  # indexed by temperature (within each group)
-        #     values='value', 
-        #     columns=['region', 'model', 'variable']);  # for grouping
-
 
     def hasyear(self):
         return "year" in self.dataarray.dims
@@ -328,25 +324,14 @@ class ImpactDataInterpolator:
     #     return self.hasssp() and table["ssp_family"].unique().size > 1
 
 
-    def __call__(self, values, method=None, **kwargs):
-        method = method or self.method
-        if method == 'linear':
-            return self.interpolate_linear(values, **kwargs)
-        elif method == 'nearest':
-            return self.interpolate_nearest(values, **kwargs)
-        elif method == 'index':
-            return self.interpolate_nearest(values, exact=True, **kwargs)
-        else:
-            raise NotImplementedError(method)
+    def __call__(self, values, **kwargs):
+        return self.interpolate_scipy(values, **{**self.kwargs, **kwargs})
 
 
-    def interpolate_linear(self, values):
-        raise NotImplementedError()
+    def interpolate_scipy(self, gmt_table, method="linear", mapping=None, return_dataarray=False, ignore_year=False, ignore_ssp=False, bounds_error=False):
 
+        from scipy.interpolate import RegularGridInterpolator
 
-    def interpolate_nearest(self, gmt_table, exact=False, mapping=None, ignore_year=False, ignore_ssp=False, return_dataarray=False):
-        """This method assumes the GMT is matched exactly
-        """
         logger.debug("rename gmt_table columns")
         gmt_table = gmt_table.rename({"value":"warming_level", **(mapping or {})}, axis=1)
 
@@ -361,6 +346,7 @@ class ImpactDataInterpolator:
                 gmt_table["ssp_family"] = _get_ssp_mapping(gmt_scenario)
             except:
                 logger.debug("could not get the ssp_family from GMT scenario")
+
         logger.debug("find out ssp_family...done")
 
         gmt = gmt_table['warming_level'].values
@@ -369,6 +355,7 @@ class ImpactDataInterpolator:
         meta_levels = [c for c in self.dataarray.dims if c not in ["warminglevel", "year", "ssp_family"]]
 
         logger.debug("check years")
+
         if self.hasyear():
             if ignore_year:
                 meta_levels += ["year"]
@@ -383,6 +370,7 @@ class ImpactDataInterpolator:
                 index_levels += ['year']
 
         logger.debug("check ssp_family")
+        
         if self.hasssp():
             if ignore_ssp:
                 meta_levels += ["ssp_family"]
@@ -392,61 +380,35 @@ class ImpactDataInterpolator:
                     raise ValueError("Expected 'ssp_family' column in GMT input (because `ssp_family` is present in the impact table), but None was found. Set `ignore_ssp=True` to ignore the ssp_family (this will result in an outer product).")
                 index_levels += ['ssp_family']
 
-
         logger.debug("build indices")
+
         index = []
 
         logger.debug("build warming_level index")
-        i_warming_level = np.searchsorted(self.dataarray.warming_level.values, gmt)
-        if exact:
-            assert (self.dataarray.warming_level.values[i_warming_level] == gmt).all(), "GWL do not match."
-        bad = (i_warming_level == self.dataarray.warming_level.values.size)
-        i_warming_level = i_warming_level.clip(0, self.dataarray.warming_level.values.size - 1)
-        index.append(i_warming_level)
+        index.append(gmt)
 
         if "year" in index_levels:
-            logger.debug("build year index")
             gmt_year = gmt_table['year'].values
-            i_year = np.searchsorted(self.dataarray.year.values, gmt_year)
-            if exact:
-                assert (self.dataarray.year.values[i_year] == gmt_year).all(), "Years do not match"
-            bad |= (i_year == self.dataarray.year.values.size) | ((i_year == 0) & (self.dataarray.year.values[0] > gmt_year))
-            i_year = i_year.clip(0, self.dataarray.year.values.size - 1)
-            index.append(i_year)
+            index.append(gmt_year)
 
         if "ssp_family" in index_levels:
             logger.debug("build ssp_family index")
             gmt_ssp_family = gmt_table["ssp_family"].values
-            i_ssp_family = np.searchsorted(self.dataarray.ssp_family.values, gmt_ssp_family)
-            assert (self.dataarray.ssp_family.values[i_ssp_family] == gmt_ssp_family).all(), "check ssp_family indexing"
-            # i_ssp_family = i_ssp_family.clip(0, self.dataarray.ssp_family.values.size - 1)
-            index.append(i_ssp_family)
+            index.append(gmt_ssp_family)
 
-        if bad.any():
-            logger.warning(f"{bad.sum()} values are outside the range => will be set to NaN")
-
-        logger.debug(f"check for duplicates")
         indices = np.array(index).T
-        indices_u = np.unique(indices, axis=0)
-        if indices_u.shape[0] < index[0].size:
-            logger.debug(f"The GMT index contains duplicates (could be due to nearest-neighbor search): {index[0].size} > {indices_u.shape[0]}")
 
-        # numpy indexing collapses multiple same-length indices to a single 1-D index
-        logger.debug(f"index the impact table (n={len(index)})")
-        values = self.dataarray.values[tuple(index)]
-        values[bad] = np.nan
-
-        # Here we have a n-D array GMT-length x meta-1 x meta-2 x ...
-        # We'd like to have a pandas DataFrame as a result, so flattening the meta dimensions
+        interp = RegularGridInterpolator([self.dataarray.coords[k].values for k in index_levels], self.dataarray.transpose(*index_levels, ...).values, bounds_error=bounds_error, method=method)
+        values = interp(indices, method=method)
 
         # first step build a self.dataarray
         logger.debug("rebuild a DataArray")
-        other_dims = list(self.dataarray.dims[len(index):])
+        other_dims = [d for d in self.dataarray.dims if d not in index_levels]
         data = xa.DataArray(values, dims=['index']+other_dims, coords={k:v for k, v in self.dataarray.coords.items() if k in other_dims})
 
         # ...also provide the detail of the multi-index
         midx = xa.Coordinates.from_pandas_multiindex(
-            gmt_table.set_index([c for c in ["year", "scenario", "ssp_family", "warming_level"] if c in gmt_table.columns]).index, 'index')
+            gmt_table.set_index([c for c in ["year", "scenario", "ssp_family", "warming_level"] if c in gmt_table.columns and c not in meta_levels]).index, 'index')
         data = data.assign_coords(midx)
 
         if return_dataarray:
@@ -722,9 +684,10 @@ def _get_ssp_mapping(scenarios):
     """Returns a common mapping for SSP family, in the form of ["ssp1", etc..]
     """
     if _isnumerical(scenarios[0]):
-        return [f"ssp{int(s)}" for s in scenarios]
+        # return [f"ssp{int(s)}" for s in scenarios]
+        return scenarios
     else:
-        return [s[:4].lower() for s in scenarios]
+        return [int(s[3]) for s in scenarios]
 
 
 def _parse_warming_level_and_ssp(scenarios):
