@@ -37,7 +37,7 @@ def main():
     if "csv" in o.backend:
         file = o.output_file if len(o.backend) == 1 else os.path.splitext(o.output_file)[0] + ".csv"
         logger.info(f"Write to {file}")
-        data.to_series().reset_index(name='value').to_csv(file)
+        data.to_series().reset_index(name='value').to_csv(file, index=None)
 
     if "netcdf" in o.backend:
         file = o.output_file if len(o.backend) == 1 else os.path.splitext(o.output_file)[0] + ".nc"

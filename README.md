@@ -59,43 +59,115 @@ The following scripts are made available, for which inline help is available wit
 
 Of course, any of the functions can be called directly. Inline documentation is available. 
 
+See the associated [notebook](notebooks/readme.ipynb) to find the code to produce some of the figures below.
 
-## Example Usage:
 
-Below a simple example using [ixmp4](https://docs.ece.iiasa.ac.at/projects/ixmp4/en/latest/data-model.html) input files from AR6 WG3 scenarios with [Werning et al 2024](https://zenodo.org/records/6496232) datasets:
+## Fast table emulator
+
+We provide a faster emulator `rime-run-table` that is a straightforward interpolation of the input impact data.
+
+	rime-run-table --nc-impact test_data/cdd_R10.nc test_data/pr_r10_R10.nc --gsat-file test_data/emissions_temp_AR6_small.xlsx --gsat-variable "AR6 climate diagnostics|Surface Temperature (GSAT)|MAGICCv7.5.3|50.0th Percentile" --gsat-filter model=IMAGE* scenario=SSP1-26 scenario=SSP1-45 --gsat-filter IMP_marker=ModAct IMP_marker=SP IMP_marker=GS IMP_marker=Neg -o table.csv
+
+And the output is in CSV format by default:
+
+	year,ssp_family,warming_level,gsat_model,gsat_scenario,variable,region,value
+	2015,1.0,1.115556885487447,IMAGE 3.0.1,SSP1-26,cdd|Exposure|Land area,Countries of Latin America and the Caribbean,
+	2015,1.0,1.115556885487447,IMAGE 3.0.1,SSP1-26,cdd|Exposure|Land area,Countries of South Asia; primarily India,	
+	...
+
+In the example above, we make use of advanced filtering, where each occurrence of `--gsat-filter` acts as a join between groups of data. The figure below show the results for the `pr_r10|Exposure|Population|%` variable and `Countries of South Asia; primarily India` area.
+
+![](notebooks/images/table-interp-linear-join.png)
+
+Internally, the impact data is transformed into a multi-dimensional `xarray.DataArray` with main dimensions `(warming_level, [year,] [ssp_family])`, and broadcast dimensions `(variable, region, model)` and interpolated along the temperature pathway with `scipy.interpolate.RegularGridInterpolator`. By default, if the `year` and `ssp_family` (or `scenario`) are present in the impact data, these will be matched with the temperature forcing as well. 
+
+For more advanced usage, the underlying `rimeX.emulator.ImpactDataInterpolator` class is made available. The above would be achieved as follow:
+
+	import xarray as xa
+	import pyam
+	from rimeX.emulator import ImpactDataInterpolator
+	from rimeX.datasets import get_datapath
+
+	gsat = pyam.IamDataFrame(get_datapath("test_data/emissions_temp_AR6_small.xlsx").filter(variable="AR6 climate diagnostics|Surface Temperature (GSAT)|MAGICCv7.5.3|50.0th Percentile")
+
+	gsat = pyam.concat([
+		gsat.filter(scenarios=["SSP1-26", "SSP1-45"], model="IMAGE*"),
+		gsat.filter(IMP_markers=["ModAct", "SP", "GS", "Neg"]) 
+		])
+
+	impacts = xa.open_mfdataset([ 
+		get_datapath("test_data/cdd_R10.nc"), 
+		get_datapath("test_data/pr_r10_R10.nc") ])
+
+	idi = ImpactDataInterpolator(impacts)
+
+	results = idi(gsat.rename({"Ssp_family": "ssp_family"}, axis=1))
+
+And for plotting the results, e.g.:
+
+	variable = "pr_r10|Exposure|Population|%"
+	region = "Countries of South Asia; primarily India"
+
+	results[(results.variable == variable) & (results.region == region)].pivot(index='year', values='value', columns=['gsat_scenario', 'gsat_model']).sort_index(axis=1).plot(ax=ax)
+
+
+## Maps
+
+A map emulator is also available (see data download section below to get the obtain the data):
+
+	$ rime-run-map --gsat-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --gsat-filter category_show_lhs=C8 quantile=0.5 -i "werning2024/*/cse_cdd_ssp2_*_abs.nc4" -v cdd --gwl-dim threshold -o maps.nc --year 2020 2050 2070 -O --bbox -10 20 35 50
+
+Here the input file is obtained via `rime-download --name werning2024/precipitation` and the warming levels are spread across various files with the `threshold` dimension indicating the warming levels, and the variable is named `cdd`. It would also be possible to indicate a list of file via `-v file1 file2` and give the warming levels explicitly via `--gwl-values 1.2 1.5` etc.
+
+![](notebooks/images/maps.png)
+
+
+Note only the warming levels are considered for interpolation. It is up to the user to match the correct SSP scenario and year, if necessary, and possibly compute one year at a time if each year and impact map is mapped on a specific SSP scenario and population trajectory. No class is made available here as this can be realized with the xarray package, with the `DataArray.interp` method.
+
+
+## Data download
+
+A selection of datasets is made available for easy download:
 
 	$ rime-download --ls
 	Available datasets are:
 	  werning2024/table_output_avoided_impacts werning2024/table_output_climate_exposure werning2024/precipitation werning2024/temperature werning2024/air_pollution werning2024/energy werning2024/hydrology werning2024/land AR6-WG3-plots/spm-box1-fig1-warming-data.csv AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv
 
+Below a simple example using [ixmp4](https://docs.ece.iiasa.ac.at/projects/ixmp4/en/latest/data-model.html) input files from AR6 WG3 scenarios with [Werning et al 2024](https://zenodo.org/records/6496232) datasets:
+
 	$ rime-download --name AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv werning2024/table_output_climate_exposure
 
-	$ rime-run-timeseries --gsat-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-file werning2024/table_output_climate_exposure/table_output_heatwave_COUNTRIES.csv --region ITA --variable "hw_95_10|Exposure|Population|%" -o output.csv --overwrite
 
-The example above requires the filtering of exactly one time-series and one impact type from the multidimensional input files. It will issue an error message if more than one temperatrure scenario is present. 
+## Taking uncertainties into account
 
-See the associated [notebook](notebooks/readme.ipynb) to find the code to produce some of the figures below.
+The `rime-run-timeseries` script is similar to `rime-run-table` but it is designed to account for the full uncertainty. 
+At the moment it accepts a single impact indicator and temperature pathway. Any remaining dimension will contribute to the uncertainty 
+estimate. More in-depth description of the underlying assumption will be provided in Schwind et al (2024, in prep).
 
+First a simple example that could be computed with `rime-run-table`:
 
-## Matching years
+	$ rime-run-timeseries --gsat-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-file werning2024/table_output_climate_exposure/table_output_heatwave_COUNTRIES.csv --region MEX --variable "hw_95_10|Exposure|Population" --match-year-population  -o output.csv --overwrite
 
-The previous examples only accounts from the warming level in the impact dataset. The years and ssp family are considered an "uncertainty" and they show up as quantiles in the output file (in this example they are the only contributor). To match the year according to the GSAT time-series year, add the `--match-year-population` option
-
-	 $ rime-run-timeseries [...] --match-year-population --variable "hw_95_10|Exposure|Population"  --region MEX
+Note that by default, the years and ssp family are considered an "uncertainty" and they show up as quantiles in the output file (in this example they are the only contributor). To match the year according to the GSAT time-series year, we add the `--match-year-population` option
 
 ![](notebooks/images/population_exposed_match_year.png)
 
 
-## Factoring in GSAT uncertainties (experimental)
+### Ensemble data
+
+Complete this section which should be the default usage of RIME 2.0
+
+
+### Fitting a distribution to quantiles (experimental)
 
 If 5th and 95th percentiles are provided for GSAT in addition to the median, an underlying distribution can be inferred and the temperature resampled to obtain an extended error assessment. E.g. the above example can be modified by filtering for variable names `*GSAT*` (instead of `*GSAT*median*`) and adding `--gsat-resample`:
 
-	 $ rime-run-timeseries [...] --gsat-variable "*GSAT*" --gsat-resample
+	 $ rime-run-timeseries [...] --region ITA --variable "hw_95_10|Exposure|Population|%" --gsat-variable "*GSAT*" --gsat-resample
 
 ![](notebooks/images/fit_and_resample.png)
 
 
-Similarly, if the impacts can be sampled with the flags `--impact-resample`. E.g.
+Similarly, if quantiles are present, the impacts can be sampled with the flags `--impact-resample`. E.g.
 
 	 $ rime-run-timeseries [...] --impact-file test_data/table_output_wsi_R10_pop_scaled_including_uncertainty.csv --variable "wsi|Exposure|Population" "wsi|Exposure|Population|5th percentile" "wsi|Exposure|Population|95th percentile" --impact-resample
 
@@ -107,7 +179,7 @@ GSAT and impact distribution fitting can be combined (see figure below), however
 ![](notebooks/images/fit_and_resample_gsat_and_impacts.png)
 
 
-## Warming level steps
+### Warming level steps
 
 The default step for warming level interpolation is 0.1 degC. This is fine for a probabilistic setting, but sometimes it is preferrable to have finer warming level steps, especially when working with the median temperature time-series, to avoid visible aliasing. The option `--warming-level-step` is available (so far only available with the table format as input):
 
@@ -117,7 +189,7 @@ The default step for warming level interpolation is 0.1 degC. This is fine for a
 ![](notebooks/images/warming_level_step.png)
 
 
-## Time step
+### Time step
 
 The time-step is normally set by the input GSAT data file, but it can be subsampled or interpolated using `--time-step` (in years).
 
@@ -126,15 +198,7 @@ The time-step is normally set by the input GSAT data file, but it can be subsamp
 
 ![](notebooks/images/time_step.png)
 
-## Maps
 
-A map emulator is also available:
-
-	$ rime-run-map --gsat-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --gsat-filter category_show_lhs=C8 quantile=0.5 -i "werning2024/*/cse_cdd_ssp2_*_abs.nc4" -v cdd --gwl-dim threshold -o maps.nc --year 2020 2050 2070 -O --bbox -10 20 35 50
-
-Here the input file is obtained via `rime-download --name werning2024/precipitation` and the warming levels are spread across various files with the `threshold` dimension indicating the warming levels, and the variable is named `cdd`. It would also be possible to indicate a list of file via `-v file1 file2` and give the warming levels explicitly via `--gwl-values 1.2 1.5` etc.
-
-![](notebooks/images/maps.png)
 
 ## Config files and default parameters
 

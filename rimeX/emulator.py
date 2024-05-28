@@ -338,14 +338,19 @@ class ImpactDataInterpolator:
         # try to derive the SSP family if present
         logger.debug("find out ssp_family")
         if "ssp_family" in gmt_table.columns:
+            logger.debug("ssp_family found in columns")
             gmt_table["ssp_family"] = _get_ssp_mapping(gmt_table["ssp_family"].values)
 
         elif "scenario" in gmt_table.columns:
+            logger.debug("derive ssp_family from scenario")
             gmt_scenario = gmt_table['scenario'].values
             try:
                 gmt_table["ssp_family"] = _get_ssp_mapping(gmt_scenario)
             except:
                 logger.debug("could not get the ssp_family from GMT scenario")
+
+        else:
+            logger.debug("no ssp_family_found")
 
         logger.debug("find out ssp_family...done")
 
@@ -578,7 +583,9 @@ def _get_gmt_dataframe(o, parser):
     iamdf_filtered = iamdf.filter(**filter_kw)
 
     # additionally, use --gsat-filter to combine groups of arguments in an additive manner
-    iamdf_filtered = concat([iamdf_filtered.filter(**kw) for kw in _get_custom_filters(o.gsat_filter)])
+    custom_filters = _get_custom_filters(o.gsat_filter)
+    if custom_filters:
+        iamdf_filtered = concat([iamdf_filtered.filter(**kw) for kw in custom_filters])
 
 
     if len(iamdf_filtered) == 0:
@@ -842,6 +849,8 @@ def _get_impact_data(o, parser):
 
     def _filter_iamdf(df, concat=concat):
         df = df.filter(**filter_kw)
+        if not custom_filters:
+            return df
         return concat([df.filter(**kw) for kw in custom_filters])
 
     if o.pyam:
@@ -875,7 +884,7 @@ def _get_impact_data(o, parser):
 
 def main():
 
-    gmt_parser = _get_gmt_parser(gmt_ensemble=True)
+    gmt_parser = _get_gmt_parser(ensemble=True)
     impact_parser = _get_impact_parser()
 
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, gmt_parser, impact_parser])
