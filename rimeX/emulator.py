@@ -370,7 +370,7 @@ class ImpactDataInterpolator:
                 index_levels += ['year']
 
         logger.debug("check ssp_family")
-        
+
         if self.hasssp():
             if ignore_ssp:
                 meta_levels += ["ssp_family"]
@@ -406,9 +406,15 @@ class ImpactDataInterpolator:
         other_dims = [d for d in self.dataarray.dims if d not in index_levels]
         data = xa.DataArray(values, dims=['index']+other_dims, coords={k:v for k, v in self.dataarray.coords.items() if k in other_dims})
 
-        # ...also provide the detail of the multi-index
+        # Provide the detail of the multi-index
+        gmt_index_names = [c for c in ["year", "ssp_family", "warming_level", "model", "scenario"] if c in gmt_table.columns]
+
+        # ...also add other info like model and scenario, but rename them to avoid any conflict with the impact table
+        gmt_index_rename = {"model": "gsat_model", "scenario": "gsat_scenario"}
+        gmt_index_names = [gmt_index_rename.get(c, c) for c in gmt_index_names]
+
         midx = xa.Coordinates.from_pandas_multiindex(
-            gmt_table.set_index([c for c in ["year", "scenario", "ssp_family", "warming_level"] if c in gmt_table.columns and c not in meta_levels]).index, 'index')
+            gmt_table.rename(gmt_index_rename, axis=1).set_index(gmt_index_names).index, 'index')
         data = data.assign_coords(midx)
 
         if return_dataarray:
@@ -486,11 +492,11 @@ def _get_gmt_parser(ensemble=False):
     parser = argparse.ArgumentParser(add_help=False)
     group = parser.add_argument_group('Scenario')
     group.add_argument("--gsat-file", default=get_datapath("test_data/emissions_temp_AR6_small.xlsx"), help='pyam-readable data')
-    group.add_argument("--gsat-variable", default="*GSAT*", help="Filter iam variable")
-    group.add_argument("--gsat-scenario", help="Filter iam scenario e.g. --gsat-scenario SSP1.26")
-    group.add_argument("--gsat-model", help="Filter iam model")
+    group.add_argument("--gsat-variable", nargs="+", default="*GSAT*", help="Filter iam variable")
+    group.add_argument("--gsat-scenario", nargs="+", help="Filter iam scenario e.g. --gsat-scenario SSP1.26")
+    group.add_argument("--gsat-model", nargs="+", help="Filter iam model")
     group.add_argument("--gsat-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
-        help="other fields e.g. --gsat model='IMAGE 3.0.1' scenario=SSP1.26")
+        help="other fields e.g. --gsat model='IMAGE 3.0.1' scenario=SSP1.26", action='append')
     group.add_argument("--year", type=int, nargs="*", help="specify a set of years (e.g. for maps)")
 
     group.add_argument("--projection-baseline", type=int, nargs=2, default=CONFIG['emulator.projection_baseline'])
@@ -521,6 +527,17 @@ def _get_gmt_parser(ensemble=False):
 
 
 
+def _get_custom_filters(groups):
+    all_filters = []
+    for group in groups:
+        kw = {}
+        for k, v in group:
+            kw.setdefault(k, [])
+            kw[k].append(v)
+        all_filters.append(kw)
+    return all_filters
+
+
 def _get_gmt_dataframe(o, parser):
 
     assert not o.magicc_files
@@ -540,33 +557,47 @@ def _get_gmt_dataframe(o, parser):
     else:
         iamdf = FastIamDataFrame(df_wide)
 
+    ## The variables below are applies as an outer product (e.g. 3 variables x 2 models x 1 scenario = 6 items)
     filter_kw = {}
-    for k, v in o.gsat_filter:
-        filter_kw.setdefault(k, [])
-        filter_kw[k].append(v)
 
-    if o.gsat_variable: filter_kw['variable'] = o.gsat_variable
-    if o.gsat_scenario: filter_kw['scenario'] = o.gsat_scenario
-    if o.gsat_model: filter_kw['model'] = o.gsat_model
+    if o.gsat_variable: 
+        for v in o.gsat_variable:
+            filter_kw.setdefault('variable', [])
+            filter_kw['variable'].append(v)
+
+    if o.gsat_model: 
+        for v in o.gsat_model:
+            filter_kw.setdefault('model', [])
+            filter_kw['model'].append(v)
+
+    if o.gsat_scenario: 
+        for v in o.gsat_scenario:
+            filter_kw.setdefault('scenario', [])
+            filter_kw['scenario'].append(v)
+
     iamdf_filtered = iamdf.filter(**filter_kw)
 
+    # additionally, use --gsat-filter to combine groups of arguments in an additive manner
+    iamdf_filtered = concat([iamdf_filtered.filter(**kw) for kw in _get_custom_filters(o.gsat_filter)])
+
+
     if len(iamdf_filtered) == 0:
-        logger.error(f"0-length dataframe after applying filter: {repr(filter_kw)}")
+        logger.error(f"0-length dataframe")
         parser.exit(1)
 
     if o.check_single_index:
         if len(iamdf_filtered.index) > 1:
-            logger.error(f"More than one index after applying filter: {repr(filter_kw)}")
+            logger.error(f"More than one index")
             logger.error(f"Remaining index: {str(iamdf_filtered.index)}")
             parser.exit(1)
 
         if not o.gsat_resample and len(iamdf_filtered.variable) > 1:
-            logger.error(f"More than one variable after applying filter: {repr(filter_kw)}")
+            logger.error(f"More than one variable")
             logger.error(f"Remaining variable: {str(iamdf_filtered.variable)}")
             parser.exit(1)
 
         if not o.gsat_resample and len(iamdf_filtered) != len(iamdf_filtered.year):
-            logger.error(f"More entries than years after applying filter: {repr(filter_kw)}. Years: {len(iamdf_filtered.year)}. Entries: {len(iamdf_filtered)}")
+            logger.error(f"More entries than years. Years: {len(iamdf_filtered.year)}. Entries: {len(iamdf_filtered)}")
             logger.error(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=iamdf_filtered.year[0]).as_pandas())}")
             parser.exit(1)
 
@@ -596,12 +627,12 @@ def _get_gmt_ensemble(o, parser):
             logger.info(f"Fit GSAT temperature distribution ({o.gsat_dist}) with {o.gsat_samples} samples.")
 
             if len(iamdf_filtered.variable) != 3:
-                logger.error(f"Expected three variables in GSAT fit mode after applying filter: {repr(filter_kw)}. Found {len(iamdf_filtered.variable)}")
+                logger.error(f"Expected three variables in GSAT fit mode. Found {len(iamdf_filtered.variable)}")
                 logger.error(f"Remaining variable: {str(iamdf_filtered.variable)}")
                 parser.exit(1)
 
             if len(iamdf_filtered) != len(iamdf_filtered.year)*3:
-                logger.error(f"Number of entries expected: 3 * years after applying filter: {repr(filter_kw)}. Got {len(iamdf_filtered)} entries and {len(iamdf_filtered.year)} years.")
+                logger.error(f"Number of entries expected: 3 * years. Got {len(iamdf_filtered)} entries and {len(iamdf_filtered.year)} years.")
                 logger.error(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=iamdf_filtered.year[0]).as_pandas())}")
                 parser.exit(1)                
 
@@ -760,7 +791,7 @@ def _get_impact_parser():
     group.add_argument("--impact-file", nargs='+', default=[], 
         help=f'Files such as produced by Werning et al 2014 (.csv with ixmp4 standard). Also accepted is a glob * pattern to match downloaded datasets (see also rime-download-ls).')
     group.add_argument("--impact-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
-        help="other fields e.g. --impact-filter scenario='ssp2*'")
+        help="other fields e.g. --impact-filter scenario='ssp2*'", action="append")
     group.add_argument("--model", nargs="+", help="if provided, only consider a set of specified model(s)")
     group.add_argument("--experiment", nargs="+", help="if provided, only consider a set of specified experiment(s)")
 
@@ -797,21 +828,27 @@ def _get_impact_data(o, parser):
 
     sep = '\n'
     logger.info(f"Load {len(filtered_files)} impact files")
+
+
     filter_kw = {} 
-    for k, v in o.impact_filter:
-        filter_kw.setdefault(k, [])
-        filter_kw[k].append(v)
 
     if o.variable:
         filter_kw["variable"] = o.variable
+
     if o.region:
         filter_kw["region"] = o.region
 
+    custom_filters = _get_custom_filters(o.impact_filter)
+
+    def _filter_iamdf(df, concat=concat):
+        df = df.filter(**filter_kw)
+        return concat([df.filter(**kw) for kw in custom_filters])
+
     if o.pyam:
         import pyam
-        impact_data_table = pyam.concat([pyam.IamDataFrame(f).filter(**filter_kw) for f in filtered_files])
+        impact_data_table = pyam.concat([_filter_iamdf(pyam.IamDataFrame(f), concat=pyam.concat) for f in filtered_files])
     else:
-        impact_data_table = concat([FastIamDataFrame.load(f).filter(**filter_kw) for f in filtered_files])
+        impact_data_table = concat([_filter_iamdf(FastIamDataFrame.load(f)) for f in filtered_files])
 
     if len(impact_data_table.variable) == 0:
         logger.error(f"Empty climate impact file with variable: {o.variable} and region {o.region}")
