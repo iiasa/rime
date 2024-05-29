@@ -19,7 +19,8 @@ from rimeX.preproc.warminglevels import get_warming_level_file
 from rimeX.preproc.digitize import (
     get_binned_isimip_records, 
     make_equiprobable_groups, interpolate_years, interpolate_warming_levels, 
-    fit_records)
+    fit_records, average_per_group)
+
 from rimeX.compat import FastIamDataFrame, concat, read_table, _isnumerical
 from rimeX.datasets import get_datapath
 
@@ -976,7 +977,6 @@ def main():
     impact_data_records = impact_data_frame.to_dict('records')
 
     if o.average_scenarios:
-        from rimeX.preproc.digitize import average_per_group
         logger.info("average across scenarios (and years)...")
         impact_data_records = average_per_group(impact_data_records, by=("variable", "region", 'model', 'warming_level', 'year'))
         logger.info("average across scenarios (and years)...done")
