@@ -952,7 +952,8 @@ def main():
     group.add_argument("--impact-samples", default=100, type=int, help="Number of samples to draw if --impact-fit is set")
 
     group = parser.add_argument_group('Result')
-    group.add_argument("-O", "--overwrite", action='store_true', help='overwrite final results')
+    group.add_argument("-O", "--overwrite", action='store_true', help=argparse.SUPPRESS)
+    group.add_argument("--no-overwrite", action='store_false', dest='overwrite', help=argparse.SUPPRESS)
     # group.add_argument("--backend-isimip-bins", nargs="+", default=CONFIG["preprocessing.isimip_binned_backend"], choices=["csv", "feather"])
     # parser.add_argument("--overwrite-isimip-bins", action='store_true', help='overwrite the intermediate calculations (binned isimip)')
     # parser.add_argument("--overwrite-all", action='store_true', help='overwrite intermediate and final')
