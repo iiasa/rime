@@ -50,7 +50,8 @@ The following scripts are made available, for which inline help is available wit
 
 - Actually use the emulator (works anywhere as long as the data is available)
 	
-	- `rime-run-timeseries` : run the main emulator (time-series)
+	- `rime-run-timeseries` : run the main emulator with proper uncertainty calculations (time-series)
+	- `rime-run-table` : vectorized version of `rime-run-timeseries` with on-the-fly interpolation, without uncertainties recombination
 	- `rime-run-map` : run the map emulator
 
 - Also useful to specify the data paths:
@@ -317,7 +318,7 @@ For now `ImpactRecords` is the main class for work, and `ImpactFrame` is mostly 
 	- to_frame() -> back to ImpactFrame, which can be more suitable for certain operations
 
 
-### TODO script
+### Scripts
 
 In general: harmonize run-timeseries run-table. The former should be able to do much of what the latter can do (except on-the-fly interp).
 - `rime-run-table`: only match SSP and `year` on-demand
@@ -339,3 +340,6 @@ Currently we assume a set of "coordinates" dimensions to keep track of (`model, 
 We currently "guess" some fields (lower case, remove space and hyphen, and even rename a few). Possibly use an explicit mapping as user input for renaming to standard fields without the current guessing.
 
 I think the most efficient way forward it to [implement the data classes](#internal-classes) as they will offer a natural bridge across the methods, and make it easier to choose consistent parameters
+
+
+### Rename rimeX to rime
