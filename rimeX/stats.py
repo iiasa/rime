@@ -28,8 +28,10 @@ def fit_dist(values, quants=None, dist_name=None, threshold=0.55):
         # this ensures symmetry in the log-transformed quantiles (I wrote it down and solved the equality)
         loc = (mid ** 2 - hi*lo) / (2*mid - lo - hi)
 
-        # this seems to be true, but I haven't proved it
         assert lo - loc > 0
+        # It's not too difficult to prove `lo - loc > 0` since we have hi - mid >= mid - lo, and as a result 2*mid - lo - hi <= 0
+        # the equality lo - loc > 0 becomes lo * (2*mid - lo - hi) - mid **2 - hi*lo <= 0
+        # and suffices to note that lo * (2*mid - lo - hi) - mid **2 - hi*lo = - (mid - lo)**2 which is always < 0
 
         normdist = fit_dist([np.log(mid - loc), np.log(lo - loc), np.log(hi - loc)], [50, 5, 95], "norm")
         mu, sigma = normdist.args
