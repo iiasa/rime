@@ -10,6 +10,7 @@ from dask import delayed
 import holoviews as hv
 import hvplot.pandas
 import hvplot.xarray
+import math
 import numpy as np
 import pandas as pd
 import pyam
@@ -19,7 +20,7 @@ import xarray as xr
 from rime.utils import check_ds_dims
 
 
-def loop_interpolate_gwl(df, yr_start, yr_end, interval=50):
+def loop_interpolate_gwl(df, yr_start, yr_end, interval=50, gmt_out_resolution=0.01, gmt_smooth_resolution=0.05):
     """
     Loop through the variables and regions in df and interpolate the impacts data
     between the global warming levels (typically at 0.5 °C).
@@ -41,10 +42,15 @@ def loop_interpolate_gwl(df, yr_start, yr_end, interval=50):
     df_ind : pandas.DataFrame()
 
     """
-
+    years = list(range(yr_start, yr_end))
     df_ind = pd.DataFrame(columns=df.columns)
     regions = df.region.unique()
     SSPs = df.SSP.unique()
+    
+    def round_down(x, a):
+        return math.floor(x / a) * a
+    def round_up(x, a):
+        return math.ceil(x / a) * a        
 
     for variable in df.variable.unique():
         print(variable)
@@ -52,21 +58,48 @@ def loop_interpolate_gwl(df, yr_start, yr_end, interval=50):
             for region in regions:
                 dfs = df.loc[
                     (df.region == region) & (df.SSP == ssp) & (df.variable == variable)
-                ]
-                if len(dfs) > 0:
-                    dfs.index = range(0, interval * len(dfs), interval)
-                    dfs = dfs.reindex(index=range(interval * len(dfs)))
+                ].reset_index(drop=True)
+                # if len(dfs) > 0:
+                    # dfs.index = range(0, interval * len(dfs), interval)
+                    # dfs = dfs.reindex(index=range(interval * len(dfs)))
+                    # tcols = pyam.IAMC_IDX + ["SSP"]
+                    # dfs[tcols] = dfs.loc[0, tcols]
+
+                    # cols = list(
+                        # range(yr_start, yr_end + 1),
+                    # ) + ["GWL"]
+
+                    # dfs[cols] = dfs[cols].interpolate()
+                    # dfs.drop_duplicates(inplace=True)
+                    # df_ind = pd.concat([df_ind, dfs])
+                    
+                ## new
+                if len(dfs) > 0:                
+                    min_gwl = np.round(round_down(dfs['GWL'].min(), gmt_smooth_resolution),2)
+                    max_gwl = np.round(round_up(dfs['GWL'].max(), gmt_smooth_resolution),2)
+                    new_gwl = np.arange(min_gwl, max_gwl + gmt_out_resolution, gmt_out_resolution).round(2)
+                    new_df = pd.DataFrame({'GWL': new_gwl})
+                    
+                                       
                     tcols = pyam.IAMC_IDX + ["SSP"]
                     dfs[tcols] = dfs.loc[0, tcols]
 
                     cols = list(
                         range(yr_start, yr_end + 1),
                     ) + ["GWL"]
-
-                    dfs[cols] = dfs[cols].interpolate()
-                    dfs.drop_duplicates(inplace=True)
+                    
+                    
+                    dfs[years] = dfs[years].interpolate(axis=1, limit_direction='both')
+                    # dfs[years] = dfs[years].fillna(method='ffill', axis=1).fillna(method='bfill', axis=1)
+                    
+                    merged_df = pd.merge(new_df, dfs, on='GWL', how='left')
+                    merged_df[tcols] = dfs.loc[0, tcols]
+                    
+                    dfs = merged_df.interpolate(method='linear', limit_direction='both')
+                    
                     df_ind = pd.concat([df_ind, dfs])
 
+    df_ind.drop(columns='gmt')
     return df_ind
 
 
