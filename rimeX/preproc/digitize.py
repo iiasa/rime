@@ -347,7 +347,7 @@ def bin_isimip_records(indicator_data, warming_levels,
     -------
     binned_isimip_data: list of records with fields {"value": ..., "warming_level": ...} and more
     """
-    if running_mean_window is None: running_mean_window = CONFIG["emulator.running_mean_window"]
+    if running_mean_window is None: running_mean_window = CONFIG["preprocessing.running_mean_window"]
 
     logger.info("bin ISIMIP data")
     binned_isimip_data = _bin_isimip_records(indicator_data, warming_levels, 
@@ -375,7 +375,7 @@ def get_binned_isimip_file(variable, region, subregion, weights, season,
     root=None, backend="csv"):
 
     if root is None: root = CONFIG["isimip.climate_impact_explorer"]
-    if running_mean_window is None: running_mean_window = CONFIG["emulator.running_mean_window"]
+    if running_mean_window is None: running_mean_window = CONFIG["preprocessing.running_mean_window"]
 
     extensions = {
         "feather": ".ftr",
@@ -464,7 +464,7 @@ def main():
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[config_parser, log_parser])
     
     group = parser.add_argument_group('Warming level matching')
-    group.add_argument("--running-mean-window", default=CONFIG["emulator.running_mean_window"], help="default: %(default)s years")
+    group.add_argument("--running-mean-window", default=CONFIG["preprocessing.running_mean_window"], help="default: %(default)s years")
     group.add_argument("--warming-level-file", default=None)
 
     group = parser.add_argument_group('Indicator variable')
@@ -477,7 +477,7 @@ def main():
     group.add_argument("--season", nargs="+", default=list(CONFIG["preprocessing.seasons"]), choices=list(CONFIG["preprocessing.seasons"]))
 
     group = parser.add_argument_group('Result')
-    group.add_argument("--backend", nargs="+", default=CONFIG["emulator.isimip_binned_backend"], choices=["csv", "feather"])
+    group.add_argument("--backend", nargs="+", default=CONFIG["preprocessing.isimip_binned_backend"], choices=["csv", "feather"])
     group.add_argument("-O", "--overwrite", action='store_true')
     group.add_argument("--cpus", type=int)
 
