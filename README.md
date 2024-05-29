@@ -159,29 +159,29 @@ First let's define the common part to all commands below:
 
 - Median GSAT and single impact model and scenario:
 
-	rime-run-timeseries $FILES --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_ts-0p01.csv --warming-level-step 0.01
+	rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_ts-0p01.csv --warming-level-step 0.01
 
-	rime-run-table $FILES --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_table.csv --ignore-ssp
+	rime-run-table $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_table.csv --ignore-ssp
 
 
 - Median GSAT and all impact models and scenarios:
 
 
-	rime-run-timeseries $FILES --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_ts-0p01.csv --warming-level-step 0.01
+	rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_ts-0p01.csv --warming-level-step 0.01
 
-	rime-run-table $FILES --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_table.csv --ignore-ssp
+	rime-run-table $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_table.csv --ignore-ssp
 
 - Resampled GSAT and single impact model and scenario:
 
-	rime-run-timeseries $FILES --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_resampled_one_ts-0p01.csv --warming-level-step 0.01
+	rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_resampled_one_ts-0p01.csv --warming-level-step 0.01
 
-	rime-run-table $FILES --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_quantile_one_table.csv --ignore-ssp
+	rime-run-table $COMMON --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_quantile_one_table.csv --ignore-ssp
 
 - Resampled GSAT and all impact model and scenario:
 
-	rime-run-timeseries $FILES --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 -o rimeX_ITA_resampled_all_ts-0p01.csv --warming-level-step 0.01
+	rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 -o rimeX_ITA_resampled_all_ts-0p01.csv --warming-level-step 0.01
 
-	rime-run-table $FILES --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_quantile_all_table.csv --ignore-ssp
+	rime-run-table $COMMON --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_quantile_all_table.csv --ignore-ssp
 
 
 And here the results:
@@ -261,16 +261,12 @@ The time-step is normally set by the input GSAT data file, but it can be subsamp
 
 ### Python API
 
-The python API is currentl unstable and will be documented in the future.
+The python API is currently unstable and will be documented in the future.
 
-The python API consists in a set of functions to transform a list of records. By records, I mean dictionaries as the result of `pandas.DataFrame.to_dict('records')`, where each dict record corresponds to a row in a long pandas DataFrame.
+For now, the inner working consists in a set of functions to transform a list of records. By records, I mean dictionaries as the result of `pandas.DataFrame.to_dict('records')`, where each dict record corresponds to a row in a long pandas DataFrame. 
+There are functions to interpolate the records w.r.t warming levels or years, average across scenarios, etc. 
 
-The API is currently unstable but is documented nonetheless:
-- rimeX.emulator.interpolate_years
-- rimeX.emulator.interpolate_warming_levels
-- rimeX.emulator.fit_records
-- rimeX.emulator.average_per_group
-- rimeX.emulator.make_equiprobable_groups
+Check out [the TODO internal classes](#internal-classes) section for an insight where it might be going.
 
 
 ## Config files and default parameters
@@ -285,7 +281,45 @@ By default, ISIMIP3b data are used, but that can be changed to ISIMIP2b via the 
 
 ## TODO
 
-TODO in general: harmonize run-timeseries run-table. The former should be able to do much of what the latter can do (except on-the-fly interp).
+
+### Code organization
+
+Move script-related code to a subpackage rime.run, so that `emulator` gets thinner.
+
+
+### Internal classes
+
+A prospective API would be a set of classes with methods, some of which would be shared across `rime-run-timeseries` and `rime-run-table`. The proposal below has a focus on the internal data structure.
+
+- `ImpactRecords` -> internal data structure is a list of records: this is the base structure of `rime-run-timeseries`. The methods below return another `ImpactRecords` instance, unless otherwise specified:
+	- interpolate_years
+	- interpolate_warming_levels
+	- mean : (current average_per_group)
+	- make_equiprobable_groups
+	- resample_from_quantiles 
+	- resample_dims : resample from an index (e.g. model, scenario)  
+	- resample_montecarlo : return an `ImpactEnsemble` instance
+	- to_frame() (internally `ImpactFrame(pandas.DataFrame(self.records))`) would return an `ImpactFrame`
+	- sample_by_gmt_pathway() -> return a DataFrame of results (current `recombine_gmt_ensemble`)
+
+- `ImpactEnsemble` : DataFrame with an index (years as multi-index if other dimensions should be accounted for), and samples as columns, for vectorized sampling. 
+	- sample_by_gmt_pathway() -> return a DataFrame of results (current `recombine_gmt_vectorized`)
+
+- `ImpactFrame`: semantically equivalent to `ImpactRecords`, but internal data structure is a DataFrame : good for reading, writing and as an intermediate state, but operations of destruction / reconstruction can be costly. Eventually, this could be merged with `ImpactRecords`, with one or ther other taking over depending on performance tests. 
+For now `ImpactRecords` is the main class for work, and `ImpactFrame` is mostly a data holder.
+	- ... : some of the methods above may also be implemented using pandas methods (should be equivalent to ImpactRecords methods: ideal for unit tests)
+	- to_cube(dims) -> transform to `ImpactCube`
+
+- `ImpactCube` : current `ImpactDataInterpolator`, whose internal data structure is a DataArray
+	- sel : (select e.g. specific SSP family)
+	- interpolate_by_warming_levels(warming_levels)
+	- interpolate_by_warming_levels_and_year()
+	- to_frame() -> back to ImpactFrame, which can be more suitable for certain operations
+
+
+### TODO script
+
+In general: harmonize run-timeseries run-table. The former should be able to do much of what the latter can do (except on-the-fly interp).
 - `rime-run-table`: only match SSP and `year` on-demand
 - `rime-run-timeseries`: add do not mix everything by default: use groupby (and mix on demand)
 - both: pool [+ mean or other stat] scenario / years / models before interp
@@ -300,8 +334,8 @@ NOTE about `rime-run-table` ssp-family indexing:
 			- do not bother matching if not required, or if scenario is pooled
 
 
-NOTE:
+Currently we assume a set of "coordinates" dimensions to keep track of (`model, scenario, quantile, variable, year, warming_level, ...`) and to be passed to groupby. It's probably best to pass an `--index` parameter to specify what dimensions should be considered for indexing, groupby etc. 
 
-The appeal of the table version is its efficiency and on-the-fly interpolation.
-Its main downside is that it does not handle combining uncertainty.
-I wonder if a Monte Carlo resampling of the table / list of records could overcome this. However, this will likely be 
+We currently "guess" some fields (lower case, remove space and hyphen, and even rename a few). Possibly use an explicit mapping as user input for renaming to standard fields without the current guessing.
+
+I think the most efficient way forward it to [implement the data classes](#internal-classes) as they will offer a natural bridge across the methods, and make it easier to choose consistent parameters
