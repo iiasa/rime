@@ -73,6 +73,7 @@ def print_list(x, n):
 
 class FastIamDataFrame:
     def __init__(self, df, index=["model", "scenario"]):
+        logger.debug(f"FastIamDataFrame input df columns {df.columns}")
         self.df = df
         self._index = [self._get_col_name(c) for c in index]
 

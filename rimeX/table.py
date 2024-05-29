@@ -4,7 +4,7 @@ import argparse
 import os
 from pathlib import Path
 import xarray as xa
-from rimeX.emulator import (recombine_gmt_table, get_datapath, logger,
+from rimeX.emulator import (recombine_gmt_table, get_datapath, logger, hack_add_scenario_from_ssp_family,
     _get_gmt_parser, _get_gmt_dataframe, setup_logger, _get_impact_parser, _get_impact_data, log_parser, config_parser)
 
 def main():
@@ -17,6 +17,8 @@ def main():
     parser.add_argument("--nc-impacts", nargs='+')
     parser.add_argument("--pyam", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("-o", "--output-file", required=True)
+    parser.add_argument("--ignore-ssp", action='store_true')
+    parser.add_argument("--ignore-year", action='store_true')
     
     o = parser.parse_args()
     setup_logger(o)
@@ -30,14 +32,17 @@ def main():
     else:        
         impact_data = _get_impact_data(o, parser)
 
-    data = recombine_gmt_table(impact_data, gmt_table, method=o.method, return_dataarray=True, bounds_error=o.bounds_check)
+    data = recombine_gmt_table(impact_data, gmt_table, method=o.method, return_dataarray=True, bounds_error=o.bounds_check, 
+        ignore_ssp=o.ignore_ssp, ignore_year=o.ignore_year)
 
     Path(o.output_file).parent.mkdir(exist_ok=True, parents=True)
 
     if "csv" in o.backend:
         file = o.output_file if len(o.backend) == 1 else os.path.splitext(o.output_file)[0] + ".csv"
         logger.info(f"Write to {file}")
-        data.to_series().reset_index(name='value').to_csv(file, index=None)
+        df = data.to_series().reset_index(name='value')
+        hack_add_scenario_from_ssp_family(df, data)
+        df.to_csv(file, index=None)
 
     if "netcdf" in o.backend:
         file = o.output_file if len(o.backend) == 1 else os.path.splitext(o.output_file)[0] + ".nc"

@@ -248,26 +248,30 @@ class ImpactDataInterpolator:
     def __init__(self, dataarray, **kwargs):
 
         if isinstance(dataarray, xa.Dataset):
-            logger.debug("convert Dataset to DataArray")
+            logger.debug("ImpactDataInterpolator: convert Dataset to DataArray")
             dataarray = dataarray.to_array("variable")
-            logger.debug("convert Dataset to DataArray...done")
 
-        logger.debug("rename dataarray")
-        dataarray = dataarray.rename(get_rename_mapping(dataarray.dims))
-        logger.debug("rename dataarray...done")
+        logger.debug(f"ImpactDataInterpolator: input dimensions of DataArray: {dataarray.dims}")
+        logger.debug(f"ImpactDataInterpolator: input coordinates of DataArray: {list(dataarray.coords)}")
+
+        mapping = get_rename_mapping(dataarray.dims)
+        logger.debug(f"ImpactDataInterpolator: rename: {mapping}")
+        dataarray = dataarray.rename(mapping)
+
         assert "warming_level" in dataarray.dims
 
-        logger.debug("check ssp_family")
         if "ssp_family" in dataarray.dims: 
+            logger.debug("ImpactDataInterpolator: ssp_family found in DataArray dims")
             dataarray = dataarray.assign_coords({"ssp_family": _get_ssp_mapping(dataarray.ssp_family.values)})
         elif "scenario" in dataarray.dims:
-            dataarray = dataarray.rename({"scenario": "ssp_family"}).assign_coords({"ssp_family": _get_ssp_mapping(dataarray.scenario.values)})
-        logger.debug("check ssp_family...done")
+            logger.debug("ImpactDataInterpolator: ssp_family derived from scenario dim")
+            dataarray = dataarray.assign_coords({"ssp_family": _get_ssp_mapping(dataarray.scenario.values)})
+        else:
+            logger.debug("ImpactDataInterpolator: ssp_family not found in input DataArray")
 
-        logger.debug("transpose dataarray")
         indices = [c for c in ["warming_level", "year", "ssp_family"] if c in dataarray.dims]
+        logger.debug(f"ImpactDataInterpolator: transpose dataarray {indices}...")
         dataarray = dataarray.transpose(*indices, ...)
-        logger.debug("transpose dataarray...done")
 
         self.dataarray = dataarray
         self.kwargs = kwargs
@@ -277,39 +281,57 @@ class ImpactDataInterpolator:
     def from_dataframe(cls, table, mapping=None, meta_levels=None, index_levels=None, **kwargs):
 
         if mapping:
-            logger.debug("index rename")
             table = table.rename(mapping or {}, axis=1)
-            logger.debug("index rename...done")
+
+        logger.debug(f"ImpactDataInterpolator.from_dataframe: table columns: {list(table.columns)}")            
 
         # use ssp_family as grouping, if provided
         if "ssp_family" not in table.columns:
-            logger.debug("check ssp_family")        
             if "scenario" in table.columns:
+                logger.debug("ImpactDataInterpolator.from_dataframe: derive ssp_family from scenario")
                 # raise ValueError("Expected either ssp_family or scenario in the impact table")
                 table["ssp_family"] = _get_ssp_mapping(table["scenario"].values)
-            logger.debug("check ssp_family...done")        
+            else:
+                logger.debug("ImpactDataInterpolator.from_dataframe: no ssp_family in impact_data")
+        else:
+            logger.debug("ImpactDataInterpolator.from_dataframe: ssp_family column found in impact_data")
 
         if index_levels is None:
             index_levels = [c for c in ['warming_level', 'year', 'ssp_family'] if c in table.columns]
 
         if meta_levels is None:
-            meta_levels = [c for c in ['region', 'model', 'variable'] if c in table.columns]
+            meta_levels = [c for c in ['region', 'model', 'variable', 'scenario'] if c in table.columns]
+
+        if "scenario" in meta_levels and "ssp_family" in index_levels:
+            logger.debug("ImpactDataInterpolator.from_dataframe: cannot have both ssp_family and scenario for transpose: remove scenario")
+            meta_levels.remove('scenario')
 
         if "warming_level" not in table.columns:
             raise ValueError("impact table must contain `warming_level`")
 
+        # logger.debug(f"ImpactDataInterpolator.from_dataframe: {table}")
+
         # Create a 2-D data frame indexed by year and warming level
         # (this is usually very fast)        
-        logger.debug("reshape impact table with multi indices")
+        logger.debug("ImpactDataInterpolator.from_dataframe: reshape impact table with multi indices")
         levels = index_levels + meta_levels
         series = table.set_index(levels)['value'];
 
         if not series.index.is_unique:
-            logger.warning("index is not unique: drop duplicates")
+            logger.warning("ImpactDataInterpolator.from_dataframe: index is not unique: drop duplicates")
             series = table.drop_duplicates(levels).set_index(levels)['value']
 
-        logger.debug("transform to xarray.DataArray")
+        # logger.debug(f"ImpactDataInterpolator.from_dataframe: series: {series}")
+        logger.debug("ImpactDataInterpolator.from_dataframe: transform to xarray.DataArray")
         dataarray = xa.DataArray.from_series(series)
+
+        if "scenario" in table.columns and "scenario" not in dataarray.dims:
+            logger.debug("add scenario coordinate back")
+            scenarios = {}
+            for scenario, ssp_family in zip(table['scenario'].values, table['ssp_family'].values):
+                scenarios.setdefault(ssp_family, set())
+                scenarios[ssp_family].add(scenario)
+            dataarray = dataarray.assign_coords({"scenario": xa.DataArray([" or ".join(sorted(scenarios[ssp_family])) for ssp_family in dataarray.ssp_family.values], dims="ssp_family")})
 
         return cls(dataarray, **kwargs)
 
@@ -332,6 +354,7 @@ class ImpactDataInterpolator:
 
         from scipy.interpolate import RegularGridInterpolator
 
+        logger.debug(f"input gmt_table columns: {gmt_table.columns}")
         logger.debug("rename gmt_table columns")
         gmt_table = gmt_table.rename({"value":"warming_level", **(mapping or {})}, axis=1)
 
@@ -357,7 +380,7 @@ class ImpactDataInterpolator:
         gmt = gmt_table['warming_level'].values
 
         index_levels = ["warming_level"]
-        meta_levels = [c for c in self.dataarray.dims if c not in ["warminglevel", "year", "ssp_family"]]
+        meta_levels = [c for c in self.dataarray.dims if c not in ["warming_level", "year", "ssp_family"]]
 
         logger.debug("check years")
 
@@ -385,6 +408,9 @@ class ImpactDataInterpolator:
                     raise ValueError("Expected 'ssp_family' column in GMT input (because `ssp_family` is present in the impact table), but None was found. Set `ignore_ssp=True` to ignore the ssp_family (this will result in an outer product).")
                 index_levels += ['ssp_family']
 
+        logger.debug(f"index levels for interp: {index_levels}")
+        logger.debug(f"meta levels for interp: {meta_levels}")
+
         logger.debug("build indices")
 
         index = []
@@ -397,7 +423,6 @@ class ImpactDataInterpolator:
             index.append(gmt_year)
 
         if "ssp_family" in index_levels:
-            logger.debug("build ssp_family index")
             gmt_ssp_family = gmt_table["ssp_family"].values
             index.append(gmt_ssp_family)
 
@@ -409,25 +434,42 @@ class ImpactDataInterpolator:
         # first step build a self.dataarray
         logger.debug("rebuild a DataArray")
         other_dims = [d for d in self.dataarray.dims if d not in index_levels]
-        data = xa.DataArray(values, dims=['index']+other_dims, coords={k:v for k, v in self.dataarray.coords.items() if k in other_dims})
+        all_other_dims = [d for d in self.dataarray.coords if d not in index_levels]
+        logger.debug(f"dimensions inherited from impact table {other_dims}")
+        logger.debug(f"coordinates inherited from impact table {all_other_dims}")
+        data = xa.DataArray(values, dims=['index']+other_dims, coords={k:v for k, v in self.dataarray.coords.items() if k in all_other_dims})
 
         # Provide the detail of the multi-index
-        gmt_index_names = [c for c in ["year", "ssp_family", "warming_level", "model", "scenario"] if c in gmt_table.columns]
+        gmt_index_names = [c for c in ["year", "ssp_family", "warming_level", "model", "scenario", "quantile", "percentile"] if c in gmt_table.columns]
 
         # ...also add other info like model and scenario, but rename them to avoid any conflict with the impact table
-        gmt_index_rename = {"model": "gsat_model", "scenario": "gsat_scenario"}
+        gmt_index_rename = {"model": "gsat_model", "scenario": "gsat_scenario", "quantile": "gsat_quantile", "percentile": "gsat_percentile"}
         gmt_index_names = [gmt_index_rename.get(c, c) for c in gmt_index_names]
+        logger.debug(f"dimensions inherited from gsat table {gmt_index_names}")
 
         midx = xa.Coordinates.from_pandas_multiindex(
             gmt_table.rename(gmt_index_rename, axis=1).set_index(gmt_index_names).index, 'index')
         data = data.assign_coords(midx)
+        
+        logger.debug(f"full dataarray {data}")
 
         if return_dataarray:
             return data
 
         # ... now flatten to a Dataframe
         logger.debug("transform to DataFrame")
-        return data.to_series().reset_index(name='value')
+        df = data.to_series().reset_index(name='value')
+        hack_add_scenario_from_ssp_family(df, data)
+        return df
+
+
+def hack_add_scenario_from_ssp_family(df, data):
+    " make sure we also include secondary coordinates (here scenario => ssp_family) "
+    if "scenario" in data.coords and "scenario" not in df.columns and 'ssp_family' in df.columns and "ssp_family" in data.coords:
+        logger.debug("add back scenario to the dataframe")
+        mapping = dict(zip(data.coords['ssp_family'].values, data.coords['scenario'].values))
+        df['scenario'] = [mapping[ssp_family] for ssp_family in df['ssp_family']]
+
 
 
 def recombine_gmt_table(impact_data, gmt, **kwargs):
@@ -633,22 +675,22 @@ def _get_gmt_ensemble(o, parser):
 
             logger.info(f"Fit GSAT temperature distribution ({o.gsat_dist}) with {o.gsat_samples} samples.")
 
-            if len(iamdf_filtered.variable) != 3:
-                logger.error(f"Expected three variables in GSAT fit mode. Found {len(iamdf_filtered.variable)}")
-                logger.error(f"Remaining variable: {str(iamdf_filtered.variable)}")
+            if len(df.variable.unique()) != 3:
+                logger.error(f"Expected three variables in GSAT fit mode. Found {len(df.variable.unique())}")
+                logger.error(f"Remaining variable: {str(df.variable.unique())}")
                 parser.exit(1)
 
-            if len(iamdf_filtered) != len(iamdf_filtered.year)*3:
-                logger.error(f"Number of entries expected: 3 * years. Got {len(iamdf_filtered)} entries and {len(iamdf_filtered.year)} years.")
-                logger.error(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=iamdf_filtered.year[0]).as_pandas())}")
+            if len(df) != len(df.year.unique())*3:
+                logger.error(f"Number of entries expected: 3 * years. Got {len(df)} entries and {len(df.year.unique())} years.")
+                logger.error(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=df.year[0]).as_pandas())}")
                 parser.exit(1)                
 
             try:
-                sat_quantiles = _sort_out_quantiles(iamdf_filtered.variable)
+                sat_quantiles = _sort_out_quantiles(df.variable.unique())
             except Exception as error:
                 logger.error(f"Failed to extract quantiles.")
                 logger.error(f"Expected variables contained the following strings: {dict(QUANTILES_MAP)}")
-                logger.error(f"Remaining variables: {str(iamdf_filtered.variable)}")
+                logger.error(f"Remaining variables: {str(df.variable.unique())}")
                 parser.exit(1)
 
             gmt_q = pd.DataFrame({q: df[df["variable"] == sat_quantiles[q]].set_index('year')['value'] for q in [50, 5, 95]})
