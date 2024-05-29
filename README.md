@@ -140,22 +140,82 @@ Below a simple example using [ixmp4](https://docs.ece.iiasa.ac.at/projects/ixmp4
 
 ## Taking uncertainties into account
 
-The `rime-run-timeseries` script is similar to `rime-run-table` but it is designed to account for the full uncertainty. 
+The `rime-run-timeseries` script is similar to but more general than `rime-run-table`, and it is designed to account for the full uncertainty. 
+It operates on list of records that are grouped in various ways, rather than on pandas DataFrames or multi-dimensional arrays.
 At the moment it accepts a single impact indicator and temperature pathway. Any remaining dimension will contribute to the uncertainty 
 estimate. More in-depth description of the underlying assumption will be provided in Schwind et al (2024, in prep).
 
-First a simple example that could be computed with `rime-run-table`:
+In essence, the main difference between `run-timeseries` and `run-table` is that the latter is structured (DataFrame -> DataArray -> ND numpy index) and the former is unstructured (list of records with `groupby`). The structured version can lead to speed for certain data forms, and allows on-the-fly interpolation without any preliminary data transformation (this is the main speed-up gain).
 
-	$ rime-run-timeseries --gsat-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-file werning2024/table_output_climate_exposure/table_output_heatwave_COUNTRIES.csv --region MEX --variable "hw_95_10|Exposure|Population" --match-year-population  -o output.csv --overwrite
+
+### Comparison with `rime-run-table`
+
+Here we run a systematic comparison between `rime-run-timeseries` and `rime-run-table`, using `AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv` dataset for temperature and impact file `isimip_binned_data/tas/ITA/ITA/latWeight/tas_ita_ita_annual_latweight_21-yrs.csv`.
+
+First let's define the common part to all commands below:
+
+	COMMON="--gsat-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --gsat-filter category_show_lhs=C6 --impact-file isimip_binned_data/tas/ITA/ITA/latWeight/tas_ita_ita_annual_latweight_21-yrs.csv"
+
+
+- Median GSAT and single impact model and scenario:
+
+	rime-run-timeseries $FILES --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_ts-0p01.csv --warming-level-step 0.01
+
+	rime-run-table $FILES --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_table.csv --ignore-ssp
+
+
+- Median GSAT and all impact models and scenarios:
+
+
+	rime-run-timeseries $FILES --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_ts-0p01.csv --warming-level-step 0.01
+
+	rime-run-table $FILES --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_table.csv --ignore-ssp
+
+- Resampled GSAT and single impact model and scenario:
+
+	rime-run-timeseries $FILES --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_resampled_one_ts-0p01.csv --warming-level-step 0.01
+
+	rime-run-table $FILES --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_quantile_one_table.csv --ignore-ssp
+
+- Resampled GSAT and all impact model and scenario:
+
+	rime-run-timeseries $FILES --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 -o rimeX_ITA_resampled_all_ts-0p01.csv --warming-level-step 0.01
+
+	rime-run-table $FILES --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_quantile_all_table.csv --ignore-ssp
+
+
+And here the results:
+
+![](notebooks/images/comparison_table.png)
+
+
+Some comments:
+
+- the `rime-run-table` script requires `--ignore-ssp` so that it does not attempt to match GSAT `ssp-family` with the impact table's SSP family (this must be done on-request in `rime-run-timeseries`)
+
+- the `rime-run-timeseries` script uses `--warming-level-step 0.01` to interpolate the impact table prior to binning, for a smoother result (this is done by default in `rime-run-table` since it relies on `scipy.interpolate.RegularGridInterpolator`).
+
+- The resamples GSAT (almost) perfectly covers the `table` version, as desired
+
+- The `rime-run-table` version (single, dashed color lines) is an outer product of all GSAT (whichever quantiles are present) and `impacts`. 
+  Each line represents a different combination of impact `model, scenario` pair and `gsat_quantile`. In contrast the `rune-run-timeseries` version combines those into bins.
+
+- The `all impacts` version looks a little fishy (the flat bottom), especially compared to the `table` runs. Not sure why. The overall uncertainty range also *decreases* as GSAT uncertainty is added. TODO: check the code.
+
+See also the [todos](#todo) below.
+
+
+### Match years
+
+The defaults for `rime-run-timeseries` slightly differ from `rime-run-table`, but it can be brought to do similar things.
+
+Let's come back to the Werning et al dataset, and see how 
+
+	$ rime-run-timeseries --gsat-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-file werning2024/table_output_climate_exposure/table_output_heatwave_COUNTRIES.csv --region MEX --variable "hw_95_10|Exposure|Population" --match-year-population  -o output.csv
 
 Note that by default, the years and ssp family are considered an "uncertainty" and they show up as quantiles in the output file (in this example they are the only contributor). To match the year according to the GSAT time-series year, we add the `--match-year-population` option
 
 ![](notebooks/images/population_exposed_match_year.png)
-
-
-### Ensemble data
-
-Complete this section which should be the default usage of RIME 2.0
 
 
 ### Fitting a distribution to quantiles (experimental)
@@ -199,6 +259,19 @@ The time-step is normally set by the input GSAT data file, but it can be subsamp
 ![](notebooks/images/time_step.png)
 
 
+### Python API
+
+The python API is currentl unstable and will be documented in the future.
+
+The python API consists in a set of functions to transform a list of records. By records, I mean dictionaries as the result of `pandas.DataFrame.to_dict('records')`, where each dict record corresponds to a row in a long pandas DataFrame.
+
+The API is currently unstable but is documented nonetheless:
+- rimeX.emulator.interpolate_years
+- rimeX.emulator.interpolate_warming_levels
+- rimeX.emulator.fit_records
+- rimeX.emulator.average_per_group
+- rimeX.emulator.make_equiprobable_groups
+
 
 ## Config files and default parameters
 
@@ -208,3 +281,27 @@ You can specify your own defaults by having a `rimeX.toml` or `rime.toml` file i
 If used interactively or imported from a custom script, the config can be changed on-the-fly by accessing the `rimeX.config.CONFIG` flat dictionary.
 
 By default, ISIMIP3b data are used, but that can be changed to ISIMIP2b via the `--simulation-round` flag (available models and experiments and defaults are adjusted automatically).
+
+
+## TODO
+
+TODO in general: harmonize run-timeseries run-table. The former should be able to do much of what the latter can do (except on-the-fly interp).
+- `rime-run-table`: only match SSP and `year` on-demand
+- `rime-run-timeseries`: add do not mix everything by default: use groupby (and mix on demand)
+- both: pool [+ mean or other stat] scenario / years / models before interp
+
+
+NOTE about `rime-run-table` ssp-family indexing:
+	- currently we pool SSP_family in impact data (mapped from scenarios), but for the above example there is not reason to do that
+	- TODO: add options for finer-grained control about what is going on. E.g.
+		- if scenarios are not pooled, factor over scenarios, not SSP_family
+		- add options to match temperature and impact's SSP_family indexing:
+			- match-ssp (like run-timeseries) --> only if scenario is not pooled (that will require some kind of looping over scenarios)
+			- do not bother matching if not required, or if scenario is pooled
+
+
+NOTE:
+
+The appeal of the table version is its efficiency and on-the-fly interpolation.
+Its main downside is that it does not handle combining uncertainty.
+I wonder if a Monte Carlo resampling of the table / list of records could overcome this. However, this will likely be 
