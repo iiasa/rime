@@ -160,29 +160,27 @@ First let's define the common part to all commands below:
 
 - Median GSAT and single impact model and scenario:
 
-	rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_ts-0p01.csv --warming-level-step 0.01
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_ts-0p01.csv --warming-level-step 0.01
 
-	rime-run-table $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_table.csv --ignore-ssp
-
+		rime-run-table $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_table.csv --ignore-ssp
 
 - Median GSAT and all impact models and scenarios:
 
-
-	rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_ts-0p01.csv --warming-level-step 0.01
-
-	rime-run-table $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_table.csv --ignore-ssp
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_ts-0p01.csv --warming-level-step 0.01
+	
+		rime-run-table $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_table.csv --ignore-ssp
 
 - Resampled GSAT and single impact model and scenario:
 
-	rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_resampled_one_ts-0p01.csv --warming-level-step 0.01
-
-	rime-run-table $COMMON --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_quantile_one_table.csv --ignore-ssp
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_resampled_one_ts-0p01.csv --warming-level-step 0.01
+	
+		rime-run-table $COMMON --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_quantile_one_table.csv --ignore-ssp
 
 - Resampled GSAT and all impact model and scenario:
 
-	rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 -o rimeX_ITA_resampled_all_ts-0p01.csv --warming-level-step 0.01
-
-	rime-run-table $COMMON --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_quantile_all_table.csv --ignore-ssp
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 -o rimeX_ITA_resampled_all_ts-0p01.csv --warming-level-step 0.01
+	
+		rime-run-table $COMMON --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_quantile_all_table.csv --ignore-ssp
 
 
 And here the results:
