@@ -26,6 +26,51 @@ def read_table(file, backend=None, index=["model", "scenario"], **kwargs):
     return df
 
 
+def print_list(x, n):
+    """Return a printable string of a list shortened to n characters
+
+    Source: copied from pyam.utils
+    """
+    # if list is empty, only write count
+    if len(x) == 0:
+        return "(0)"
+
+    # write number of elements, subtract count added at end from line width
+    x = [i if i != "" else "''" for i in map(str, x)]
+    count = f" ({len(x)})"
+    n -= len(count)
+
+    # if not enough space to write first item, write shortest sensible line
+    if len(x[0]) > n - 5:
+        return "..." + count
+
+    # if only one item in list
+    if len(x) == 1:
+        return f"{x[0]} (1)"
+
+    # add first item
+    lst = f"{x[0]}, "
+    n -= len(lst)
+
+    # if possible, add last item before number of elements
+    if len(x[-1]) + 4 > n:
+        return lst + "..." + count
+    else:
+        count = f"{x[-1]}{count}"
+        n -= len({x[-1]}) + 3
+
+    # iterate over remaining entries until line is full
+    for i in x[1:-1]:
+        if len(i) + 6 <= n:
+            lst += f"{i}, "
+            n -= len(i) + 2
+        else:
+            lst += "... "
+            break
+
+    return lst + count
+
+
 class FastIamDataFrame:
     def __init__(self, df, index=["model", "scenario"]):
         self.df = df
@@ -141,6 +186,51 @@ class FastIamDataFrame:
         meta = columns[:i_first_year]
         df_meta = self.df[meta].rename({name:name.lower() for name in self.df.columns}, axis=1)
         return pd.concat(df_meta.join(pd.DataFrame({"year": _to_numerical(year), "value": self.df[year]})) for year in years).set_index([c.lower() for c in self._index]).reset_index()
+
+    @property
+    def dimensions(self):
+        return [c for c in self.df.columns if c not in ['value', 'unit'] and not _isnumerical(c)]
+
+
+    def info(self, n=80):
+        """Print a summary of the object index dimensions and meta indicators
+
+        Parameters
+        ----------
+        n : int
+            The maximum line length
+        
+        Source
+        ------
+        This is adapted from pyam's IamDataFrame's info method
+        """
+
+        # concatenate list of index dimensions and levels
+        info = f"{type(self)}\nIndex:\n"
+        c1 = max([len(i) for i in self.dimensions]) + 1
+        c2 = n - c1 - 5
+        info += "\n".join(
+            [
+                f" * {i:{c1}}: {print_list(getattr(self.df, i).unique(), c2)}"
+                for i in self.index.names
+            ]
+        )
+
+        # concatenate list of index of _data (not in index.names)
+        info += "\nOther columns:\n"
+        info += "\n".join(
+            [
+                f"   {i:{c1}}: {print_list(getattr(self.df, i).unique(), c2)}"
+                for i in self.dimensions
+                if i not in self.index.names
+            ]
+        )
+
+        return info
+
+
+    def __repr__(self):
+        return self.info()
 
 
 def _to_numerical(year):
