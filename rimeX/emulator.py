@@ -671,7 +671,7 @@ def _get_gmt_ensemble(o, parser):
 
         if o.gsat_resample:
             from rimeX.preproc.digitize import QUANTILES_MAP, _sort_out_quantiles
-            from rimeX.stats import fit_dist
+            from rimeX.stats import fit_dist, repr_dist
 
             logger.info(f"Fit GSAT temperature distribution ({o.gsat_dist}) with {o.gsat_samples} samples.")
 
@@ -702,7 +702,7 @@ def _get_gmt_ensemble(o, parser):
                 # fit
                 quants = [50, 5, 95]
                 dist = fit_dist(gmt_q.iloc[i][quants], quants, o.gsat_dist)
-                logger.debug(f"{i}: {dist.dist.name}({','.join([str(r) for r in dist.args])})")
+                logger.debug(f"{i}: {repr_dist(dist)}")
 
                 # resample (equally spaced percentiles)
                 step = 1/o.gsat_samples
