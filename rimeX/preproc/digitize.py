@@ -46,7 +46,16 @@ def load_regional_indicator_data(variable, region, subregion, weights, season, m
     all_data = {}
     for model in models:
         
-        historical = load_seasonal_means_per_region(variable, model, "historical", region, subregion, weights, seasons=[season])[season]
+        try:
+            historical = load_seasonal_means_per_region(variable, model, "historical", region, subregion, weights, seasons=[season])[season]
+        except FileNotFoundError as error:
+            logger.warning(str(error))
+            logger.warning(f"=> Historical data file not found for {variable} | {model} | {region} | {subregion} | {weights} | {season}. Skip")
+            continue
+
+        if np.isnan(historical).all():
+            logger.warning(f"Historical is NaN for {variable} | {model} | {region} | {subregion} | {weights} | {season}. Skip")
+            continue
 
         for experiment in experiments:
             if experiment == "historical":
@@ -63,16 +72,22 @@ def load_regional_indicator_data(variable, region, subregion, weights, season, m
 
             data = pd.concat([historical, future])
 
-            if np.isnan(data.values).any(): 
-                raise ValueError(f"{model} | {experiment} => some NaNs were found")
+            if np.isnan(data.values).all(): 
+                logger.warning(f"All NaNs: {variable} | {model} | {region} | {subregion} | {weights} | {season}. Skip")
+                continue
+
+            elif np.isnan(data.values).any(): 
+                logger.warning(f"Some NaNs ({np.isnan(data.values).sum()} out of {data.size}): {variable} | {model} | {region} | {subregion} | {weights} | {season}. Skip")
+                continue
+                # raise ValueError(f"{model} | {experiment} => some NaNs were found")
 
             # indicator-dependent treatment
-            if variable == "tas":
-                y1, y2 = CONFIG["emulator.projection_baseline"]
+            if variable in ("tas", "tasmin", "tasmax"):
+                y1, y2 = CONFIG["preprocessing.projection_baseline"]
                 data -= data.loc[y1:y2].mean()
 
             elif variable == "pr":
-                y1, y2 = CONFIG["emulator.projection_baseline"]
+                y1, y2 = CONFIG["preprocessing.projection_baseline"]
                 data = (data / data.loc[y1:y2].mean() - 1) * 100
 
             all_data[(model, experiment)] = data
@@ -294,7 +309,11 @@ def _bin_isimip_records(indicator_data, warming_levels,
         warming_level_in_this_group = set(r["warming_level"] for r in group)
 
         if set.isdisjoint(warming_levels_reached, warming_level_in_this_group):
-            logger.warning(f"{model}|{experiment}: none of {len(warming_level_in_this_group)} warming levels are needed")
+            logger.warning(f"{model}|{experiment}: none of {len(warming_level_in_this_group)} warming levels are needed. Skip")
+            continue
+
+        if (model, experiment) not in indicator_data:
+            logger.warning(f"{model}|{experiment} is not present in impact data: Skip")
             continue
 
         data = indicator_data[(model, experiment)]
@@ -419,6 +438,11 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
     experiments = warming_levels['experiment'].unique().tolist()
 
     indicator_data = load_regional_indicator_data(variable, region, subregion, weights, season, models, experiments)
+
+    if len(indicator_data) == 0:
+        logger.warning(f"No indicator data for {variable} | {region} | {subregion} | {weights} | {season}.")
+        return []
+
     all_data = bin_isimip_records(indicator_data, warming_levels, meta={
         "region": region, 
         "subregion": subregion, 

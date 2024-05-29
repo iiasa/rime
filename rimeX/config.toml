@@ -21,6 +21,7 @@ warming_level_step = 0.1  # used for pre-processing (input files for emulator)
 warming_level_min = 1
 running_mean_window = 21
 isimip_binned_backend = [ "csv", ]
+projection_baseline = [ 1995, 2014,] # this is used in rime-preproc-digitize
 
 [preprocessing.regional]
 weights = [ "latWeight", "gdp2005", "pop2005",]
