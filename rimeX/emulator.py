@@ -637,19 +637,19 @@ def _get_gmt_dataframe(o, parser):
 
     if o.check_single_index:
         if len(iamdf_filtered.index) > 1:
-            logger.error(f"More than one index")
-            logger.error(f"Remaining index: {str(iamdf_filtered.index)}")
-            parser.exit(1)
+            logger.warning(f"More than one index")
+            logger.warning(f"Remaining index: {str(iamdf_filtered.index)}")
+            # parser.exit(1)
 
         if not o.gsat_resample and len(iamdf_filtered.variable) > 1:
-            logger.error(f"More than one variable")
-            logger.error(f"Remaining variable: {str(iamdf_filtered.variable)}")
-            parser.exit(1)
+            logger.warning(f"More than one variable")
+            logger.warning(f"Remaining variable: {str(iamdf_filtered.variable)}")
+            # parser.exit(1)
 
         if not o.gsat_resample and len(iamdf_filtered) != len(iamdf_filtered.year):
-            logger.error(f"More entries than years. Years: {len(iamdf_filtered.year)}. Entries: {len(iamdf_filtered)}")
-            logger.error(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=iamdf_filtered.year[0]).as_pandas())}")
-            parser.exit(1)
+            logger.warning(f"More entries than years. Years: {len(iamdf_filtered.year)}. Entries: {len(iamdf_filtered)}")
+            logger.warning(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=iamdf_filtered.year[0]).as_pandas())}")
+            # parser.exit(1)
 
     df = iamdf_filtered.as_pandas()
     df2 = df.drop_duplicates()
