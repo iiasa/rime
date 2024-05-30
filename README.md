@@ -318,19 +318,23 @@ For now `ImpactRecords` is the main class for work, and `ImpactFrame` is mostly 
 
 ### Scripts
 
-In general: harmonize run-timeseries run-table. The former should be able to do much of what the latter can do (except on-the-fly interp).
+In general: harmonize `rime-run-timeseries` and `rime-run-table`. The former should be able to do much of what the latter can do (except on-the-fly interp):
+
 - `rime-run-table`: only match SSP and `year` on-demand
 - `rime-run-timeseries`: add do not mix everything by default: use groupby (and mix on demand)
 - both: pool [+ mean or other stat] scenario / years / models before interp
 
 
 NOTE about `rime-run-table` ssp-family indexing:
-	- currently we pool SSP_family in impact data (mapped from scenarios), but for the above example there is not reason to do that
-	- TODO: add options for finer-grained control about what is going on. E.g.
-		- if scenarios are not pooled, factor over scenarios, not SSP_family
-		- add options to match temperature and impact's SSP_family indexing:
-			- match-ssp (like run-timeseries) --> only if scenario is not pooled (that will require some kind of looping over scenarios)
-			- do not bother matching if not required, or if scenario is pooled
+
+- currently we pool SSP_family in impact data (mapped from scenarios), but for the above example there is not reason to do that
+- TODO: add options for finer-grained control about what is going on. E.g.
+
+	- if scenarios are not pooled, factor over scenarios, not SSP_family
+	- add options to match temperature and impact's SSP_family indexing:
+
+		- match-ssp (like run-timeseries) --> only if scenario is not pooled (that will require some kind of looping over scenarios)
+		- do not bother matching if not required, or if scenario is pooled
 
 
 Currently we assume a set of "coordinates" dimensions to keep track of (`model, scenario, quantile, variable, year, warming_level, ...`) and to be passed to groupby. It's probably best to pass an `--index` parameter to specify what dimensions should be considered for indexing, groupby etc. 
