@@ -339,5 +339,5 @@ We currently "guess" some fields (lower case, remove space and hyphen, and even 
 
 I think the most efficient way forward it to [implement the data classes](#internal-classes) as they will offer a natural bridge across the methods, and make it easier to choose consistent parameters
 
-
+### ADD UNIT TESTS
 ### Rename rimeX to rime
