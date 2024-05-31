@@ -101,8 +101,7 @@ def interpolate_warming_levels(impact_data_records, warming_level_step, by):
     input_gwls = set(r['warming_level'] for r in impact_data_records)
     gwls = np.arange(min(input_gwls), max(input_gwls)+warming_level_step, warming_level_step)
     interpolated_records = []
-    len_groupby = len(list(groupby(sorted(impact_data_records, key=key_fn), key=key_fn)))
-    for key, group in tqdm.tqdm(groupby(sorted(impact_data_records, key=key_fn), key=key_fn), total=len_groupby):
+    for key, group in groupby(sorted(impact_data_records, key=key_fn), key=key_fn):
         igwls, ivalues = np.array([(r['warming_level'], r['value']) for r in sorted(group, key=lambda r: r['warming_level'])]).T
         # assert len(igwls) == 6, f"Expected 6 warming level for {ssp_family},{year}. Got {len(igwls)}: {repr(igwls)}"
         values = np.interp(gwls, igwls, ivalues)
@@ -114,8 +113,7 @@ def interpolate_warming_levels(impact_data_records, warming_level_step, by):
 def interpolate_years(impact_data_records, years, by):
     interpolated_records = []
     key_fn = lambda r: tuple(r.get(k, 0) for k in by)
-    len_groupby = len(list(groupby(sorted(impact_data_records, key=key_fn), key=key_fn)))
-    for key, group in tqdm.tqdm(groupby(sorted(impact_data_records, key=key_fn), key=key_fn), total=len_groupby):
+    for key, group in groupby(sorted(impact_data_records, key=key_fn), key=key_fn):
         group = sorted(group, key=lambda r: r['year'])
         iyears, ivalues = np.array([(r['year'], r['value']) for r in group]).T
         assert not (np.diff(iyears) == 0).any(), "some years were duplicate"
