@@ -978,9 +978,9 @@ def main():
     impact_data_records = impact_data_frame.to_dict('records')
 
     if o.average_scenarios:
-        logger.info("average across scenarios (and years)...")
+        logger.info("average across scenarios...")
         impact_data_records = average_per_group(impact_data_records, by=("variable", "region", 'model', 'warming_level', 'year'))
-        logger.info("average across scenarios (and years)...done")
+        logger.info("average across scenarios...done")
 
     # Harmonize weights
     if o.equiprobable_models:
@@ -988,30 +988,34 @@ def main():
         make_equiprobable_groups(impact_data_records, by=["variable", "region", "model", "warming_level"])
         logger.info("Normalization to give equal weight for each model per temperature bin...done")        
 
-    # Interpolate records
-    if o.warming_level_step:
-        logger.info("Impact data: interpolate warming levels...")
-        impact_data_records = interpolate_warming_levels(impact_data_records, o.warming_level_step,
-            by = ["variable", "region", "scenario", "year", "model"])
-        logger.info("Impact data: interpolate warming levels...done")
-
-    # For population dataset the year can be matched to temperatrure time-series. It must be interpolated to yearly values first.
-    if o.match_year_population:
-        logger.info("Impact data: interpolate years...")
-        impact_data_records = interpolate_years(impact_data_records, gmt_ensemble.index, 
-            by=['variable', "region", 'warming_level', 'scenario', 'model'])
-        logger.info("Impact data: interpolate years...done")
-
     # Fit and resample impact data if required
     if o.impact_resample:
         logger.info(f"Fit Impact Percentiles ({o.impact_dist}) with {o.impact_samples} samples...")
         try:
             impact_data_records = fit_records(impact_data_records, o.impact_samples, dist_name=o.impact_dist,
-                by=["region", "warming_level", "year", "scenario", "model"])
+                by=["region", "model", "scenario", "warming_level", "year"])
         except Exception as error:
+            raise
             logger.error(str(error))
             parser.exit(1)
         logger.info(f"Fit Impact Percentiles ({o.impact_dist}) with {o.impact_samples} samples...done")
+
+
+    # Interpolate records
+    if o.warming_level_step:
+        logger.info("Impact data: interpolate warming levels...")
+        impact_data_records = interpolate_warming_levels(impact_data_records, o.warming_level_step,
+            by=["variable", "region", "model", "scenario", "year", "sample"])
+        logger.info("Impact data: interpolate warming levels...done")
+
+
+    # For population dataset the year can be matched to temperatrure time-series. It must be interpolated to yearly values first.
+    if o.match_year_population:
+        logger.info("Impact data: interpolate years...")
+        impact_data_records = interpolate_years(impact_data_records, gmt_ensemble.index, 
+            # by=['variable', "region", 'warming_level', "model", "scenario"])
+            by=["variable", "region", "model", "scenario", "warming_level", "sample"])
+        logger.info("Impact data: interpolate years...done")
 
     if o.save_impact_table:
         logger.info("Save impact table...")

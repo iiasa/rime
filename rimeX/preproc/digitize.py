@@ -97,7 +97,7 @@ def load_regional_indicator_data(variable, region, subregion, weights, season, m
 
 def interpolate_warming_levels(impact_data_records, warming_level_step, by):
     # key = lambda r: (r.get('ssp_family'), r.get('year'), r['variable'], r.get('model'), r.get('scenario'))
-    key_fn = lambda r: tuple(r.get(k) for k in by)
+    key_fn = lambda r: tuple(r.get(k, 0) for k in by)
     input_gwls = set(r['warming_level'] for r in impact_data_records)
     gwls = np.arange(min(input_gwls), max(input_gwls)+warming_level_step, warming_level_step)
     interpolated_records = []
@@ -112,12 +112,11 @@ def interpolate_warming_levels(impact_data_records, warming_level_step, by):
 
 def interpolate_years(impact_data_records, years, by):
     interpolated_records = []
-    key_fn = lambda r: tuple(r.get(k) for k in by)
-    input_years = set(r['year'] for r in impact_data_records)
+    key_fn = lambda r: tuple(r.get(k, 0) for k in by)
     for key, group in groupby(sorted(impact_data_records, key=key_fn), key=key_fn):
-        group = list(group)
-        input_years = np.sort([r["year"] for r in group])
+        group = sorted(group, key=lambda r: r['year'])
         iyears, ivalues = np.array([(r['year'], r['value']) for r in group]).T
+        assert not (np.diff(iyears) == 0).any(), "some years were duplicate"
         # assert len(iyears) == 6, f"Expected 6 warming level for {scenario},{year}. Got {len(iyears)}: {repr(iyears)}"
         values = np.interp(years, iyears, ivalues)
         interpolated_records.extend([{"year": year, "value": value, **dict(zip(by, key))} for year, value in zip(years, values)])
@@ -142,7 +141,7 @@ def _sort_out_quantiles(sat_variables):
     return sat_quantiles
 
 
-def fit_records(impact_data_records, samples, by, dist_name=None):
+def fit_records(impact_data_records, samples, by, dist_name=None, sample_dim="sample"):
     """Expand a set of percentile records with proper samples (experimental)
 
     [
@@ -192,7 +191,11 @@ def fit_records(impact_data_records, samples, by, dist_name=None):
 
     for keys, group in tqdm.tqdm(groupby(sorted(impact_data_records, key=key_fn), key=key_fn), total=groupby_length):
         group = list(group)
-        assert len(group) == 3, f'Expected group of 3 records (the percentiles). Got group of length {len(group)}:\n{group}'
+        if len(group) != 3:
+            logger.error(f'Expected group of 3 records (the percentiles). Got group of length {len(group)}:\n{keys}. Skip resampling.')
+            logger.debug(f'{group}')
+            resampled_records.append(group[0])
+            continue
         by_var = {r['variable']: r for r in group}
         quants = [50, 5, 95]
         dist = fit_dist([by_var[sat_quantiles[q]]['value'] for q in quants], quants, dist_name=dist_name)
@@ -202,8 +205,8 @@ def fit_records(impact_data_records, samples, by, dist_name=None):
         step = 1/samples
         values = dist.ppf(np.linspace(step/2, 1-step/2, samples))
         r0 = by_var[sat_quantiles[50]]
-        for v in values:
-            resampled_records.append({**r0, **{"value": v}, **dict(zip(by, keys))})
+        for i, v in enumerate(values):
+            resampled_records.append({**r0, **{"value": v, sample_dim: i}, **dict(zip(by, keys))})
 
     return resampled_records
 
@@ -221,7 +224,7 @@ def average_per_group(records, by, keep_meta=True):
     average_records: (weighted) list of records
     """
     average_records = []
-    key_avg_year = lambda r: tuple(r.get(k) for k in by)
+    key_avg_year = lambda r: tuple(r.get(k, 0) for k in by)
     for key, group in groupby(sorted(records, key=key_avg_year), key=key_avg_year):
         if keep_meta: 
             group = list(group)
@@ -258,7 +261,7 @@ def make_equiprobable_groups(records, by):
     do it anyway in case the functions are used independently, given the low computational cost of such an operation.
     """
     # key = lambda r: (r['warming_level'], r['model'])
-    key_fn = lambda r: tuple(r.get(k) for k in by)
+    key_fn = lambda r: tuple(r.get(k, 0) for k in by)
     for r in records:
         r.setdefault("weight", 1)
 
