@@ -941,7 +941,8 @@ def main():
     group.add_argument("--equiprobable-models", action="store_true", help="if True, each model will have the same probability")
     group.add_argument("--quantiles", nargs='+', default=CONFIG["emulator.quantiles"], help="(default: %(default)s)")
     group.add_argument("--match-year-population", action="store_true")
-    group.add_argument("--warming-level-step", default=CONFIG.get("preprocessing.warming_level_step"), type=float,
+    group.add_argument("--warming-level-step", type=float,
+        # default=CONFIG.get("preprocessing.warming_level_step"),
         help="Impact indicators will be interpolated to match this warming level (default: %(default)s)")
     group.add_argument("--impact-resample", action="store_true", 
         help="""Fit a distribution to the impact data from which to resample. 
