@@ -28,7 +28,8 @@ def main(cmd=None):
     gmt_parser = _get_gmt_parser(ensemble=True)
     impact_parser = _get_impact_parser()
 
-    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, gmt_parser, impact_parser])
+    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, 
+        parents=[log_parser, config_parser, gmt_parser, impact_parser])
     
     group = parser.add_argument_group('Warming level matching')
     group.add_argument("--running-mean-window", default=CONFIG["preprocessing.running_mean_window"])
@@ -59,7 +60,6 @@ def main(cmd=None):
     group.add_argument("-o", "--output-file", required=True)
     group.add_argument("--save-impact-table", help='file name to save the processed impacts table (e.g. for debugging)')
 
-    parser.add_argument("--pyam", action="store_true", help='use pyam instead of own wrapper')
 
     o = parser.parse_args()
 

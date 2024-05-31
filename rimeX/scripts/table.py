@@ -26,7 +26,6 @@ def main():
     parser.add_argument("--bounds-check", action="store_true")
     parser.add_argument("--backend", nargs='+', default=['csv'], choices=['csv', 'netcdf'])
     parser.add_argument("--nc-impacts", nargs='+')
-    parser.add_argument("--pyam", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("-o", "--output-file", required=True)
     parser.add_argument("--ignore-ssp", action='store_true')
     parser.add_argument("--ignore-year", action='store_true')

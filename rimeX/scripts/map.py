@@ -42,7 +42,6 @@ def main():
     group = parser.add_argument_group('Result')
     group.add_argument("-O", "--overwrite", action='store_true', help='overwrite final results')
     group.add_argument("-o", "--output-file", required=True)
-    parser.add_argument("--pyam", action="store_true", help='use pyam instead of own wrapper')
 
     o = parser.parse_args()
     setup_logger(o)

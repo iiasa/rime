@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import xarray as xa
 
+import rimeX
 from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 
@@ -61,6 +62,10 @@ def _get_gmt_parser(ensemble=False):
 
     group.add_argument("--no-check-single-index", action='store_false', dest='check_single_index', help=argparse.SUPPRESS)
 
+    if "pyam" not in [a.dest for a in parser._actions]:
+        parser.add_argument("--pyam", action="store_true", help='use pyam instead of own wrapper')
+
+
     if not ensemble:
         for action in group._actions:
             action.help = argparse.SUPPRESS
@@ -94,9 +99,11 @@ def _get_gmt_dataframe(o, parser):
     df_wide = read_table(o.gsat_file)
 
     if o.pyam:
-        import pyam
-        iamdf = pyam.IamDataFrame(df_wide)
+        import pyam.core
+        concat = pyam.core.concat
+        iamdf = pyam.core.IamDataFrame(df_wide)
     else:
+        concat = rimeX.compat.concat
         iamdf = FastIamDataFrame(df_wide)
 
     ## The variables below are applies as an outer product (e.g. 3 variables x 2 models x 1 scenario = 6 items)
@@ -246,12 +253,16 @@ def _get_impact_parser():
         help="other fields e.g. --impact-filter scenario='ssp2*'", action="append")
     group.add_argument("--model", nargs="+", help="if provided, only consider a set of specified model(s)")
     group.add_argument("--experiment", nargs="+", help="if provided, only consider a set of specified experiment(s)")
+    # group.add_argument("--pyam", action="store_true", help='use pyam instead of own wrapper')
+    # already added to GMT parser...
 
     group = parser.add_argument_group('Impact indicator (CIE)')
     group.add_argument("--subregion", help="if not provided, will default to region average")
     group.add_argument("--list-subregions", action='store_true', help="print all subregions and exit")
     group.add_argument("--weights", default='LonLatWeight', choices=CONFIG["preprocessing.regional.weights"])
     group.add_argument("--season", default='annual', choices=list(CONFIG["preprocessing.seasons"]))
+
+
 
     return parser
 
@@ -292,16 +303,18 @@ def _get_impact_data(o, parser):
 
     custom_filters = _get_custom_filters(o.impact_filter)
 
-    def _filter_iamdf(df, concat=concat):
+    def _filter_iamdf(df, concat=rimeX.compat.concat):
         df = df.filter(**filter_kw)
         if not custom_filters:
             return df
         return concat([df.filter(**kw) for kw in custom_filters])
 
     if o.pyam:
-        import pyam
-        impact_data_table = pyam.concat([_filter_iamdf(pyam.IamDataFrame(f), concat=pyam.concat) for f in filtered_files])
+        import pyam.core
+        concat = rimeX.compat.concat
+        impact_data_table = pyam.core.concat([_filter_iamdf(pyam.core.IamDataFrame(f), concat=pyam.core.concat) for f in filtered_files])
     else:
+        concat = rimeX.compat.concat
         impact_data_table = concat([_filter_iamdf(FastIamDataFrame.load(f)) for f in filtered_files])
 
     if len(impact_data_table.variable) == 0:
