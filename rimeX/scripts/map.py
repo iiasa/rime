@@ -2,29 +2,32 @@
 from pathlib import Path
 import argparse
 import glob
-import fnmatch
-import itertools
-import tqdm
-from itertools import groupby
 import xarray as xa
 import numpy as np
 import pandas as pd
 
-
-from rimeX.logs import logger, log_parser, setup_logger
-from rimeX.config import CONFIG, config_parser
-# from rimeX.warminglevels import get_warming_level_file
-# from rimeX.digitize import get_binned_isimip_records, make_models_equiprobable
-from rimeX.compat import FastIamDataFrame, concat, _isnumerical
-from rimeX.emulator import _get_gmt_parser, _get_gmt_ensemble, validate_iam_filter
 from rimeX.datasets import get_datapath
 
+from rimeX.scripts.share import (
+    _get_gmt_parser, 
+    validate_iam_filter,
+    # _get_gmt_dataframe, 
+    _get_gmt_ensemble, 
+    log_parser,
+    config_parser,
+    logger,
+    get_datapath,
+    setup_logger,
+    CONFIG,
+    )
 
 
 def main():
-    gmt_parser = _get_gmt_parser()
+    gmt_parser = _get_gmt_parser(ensemble=False)
 
-    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, gmt_parser])
+    parser = argparse.ArgumentParser(epilog="""""", 
+        formatter_class=argparse.RawDescriptionHelpFormatter, 
+        parents=[log_parser, config_parser, gmt_parser])
     
     group = parser.add_argument_group('Impact indicator')
     group.add_argument("-v", "--variable", required=True)

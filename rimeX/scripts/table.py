@@ -4,8 +4,19 @@ import argparse
 import os
 from pathlib import Path
 import xarray as xa
-from rimeX.emulator import (recombine_gmt_table, get_datapath, logger, hack_add_scenario_from_ssp_family,
-    _get_gmt_parser, _get_gmt_dataframe, setup_logger, _get_impact_parser, _get_impact_data, log_parser, config_parser)
+from rimeX.emulator import recombine_gmt_table, hack_add_scenario_from_ssp_family
+
+from rimeX.scripts.share import (
+    _get_gmt_parser, 
+    _get_impact_parser, 
+    _get_impact_data, 
+    _get_gmt_dataframe, 
+    log_parser,
+    config_parser,
+    logger,
+    get_datapath,
+    setup_logger,
+    )
 
 def main():
     gmt_parser = _get_gmt_parser()

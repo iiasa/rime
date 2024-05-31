@@ -56,9 +56,9 @@ rime-pre-gmt = "rimeX.preproc.global_average_tas:main"
 rime-pre-region = "rimeX.preproc.regional_average:main"
 rime-pre-wl = "rimeX.preproc.warminglevels:main"
 rime-pre-digitize = "rimeX.preproc.digitize:main"
-rime-run-timeseries = "rimeX.emulator:main"
-rime-run-map = "rimeX.map:main"
-rime-run-table = "rimeX.table:main"
+rime-run-timeseries = "rimeX.scripts.timeseries:main"
+rime-run-map = "rimeX.scripts.map:main"
+rime-run-table = "rimeX.scripts.table:main"
 
 [project.urls]
 homepage = "https://github.com/iiasa/rime/tree/rimeX"
