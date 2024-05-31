@@ -550,26 +550,26 @@ def _get_gmt_parser(ensemble=False):
     group.add_argument("--projection-baseline", type=int, nargs=2, default=CONFIG['emulator.projection_baseline'])
     group.add_argument("--projection-baseline-offset", type=float, default=CONFIG['emulator.projection_baseline_offset'])
 
-    if ensemble:
-        group.add_argument("--gsat-resample", action="store_true", help="Fit a distribution to GSAT from which to resample")
-        group.add_argument("--gsat-dist", default="auto", 
-            choices=["auto", "norm", "lognorm"], 
-            # choices=["auto", "norm", "lognorm"], 
-            help="In auto mode, a normal or log-normal distribution will be fitted if percentiles are provided")
-        group.add_argument("--gsat-samples", default=100, type=int, help="GSAT samples to draw if --gsat-fit is set")
 
-        group.add_argument("--time-step", type=int, help="GSAT time step. By default whatever time-step is present in the input file.")
-        group.add_argument("--save-gsat", help='filename to save the processed GSAT (e.g. for debugging)')
+    # group = parser.add_argument_group('Ensemble' + ' (invalid for this command)' if not ensemble else '')
+    group = parser.add_argument_group('Ensemble' if ensemble else argparse.SUPPRESS)
+    group.add_argument("--gsat-resample", action="store_true", help="Fit a distribution to GSAT from which to resample")
+    group.add_argument("--gsat-dist", default="auto",
+        choices=["auto", "norm", "lognorm"],
+        # choices=["auto", "norm", "lognorm"],
+        help="In auto mode, a normal or log-normal distribution will be fitted if percentiles are provided")
+    group.add_argument("--gsat-samples", default=100, type=int, help="GSAT samples to draw if --gsat-fit is set")
 
-    if ensemble:
-        group.add_argument("--magicc-files", nargs='+', help='if provided these files will be used instead if iam scenario')
-    else:
-        group.add_argument("--magicc-files", nargs='+', help=argparse.SUPPRESS)
+    group.add_argument("--time-step", type=int, help="GSAT time step. By default whatever time-step is present in the input file.")
+    group.add_argument("--save-gsat", help='filename to save the processed GSAT (e.g. for debugging)')
 
-    if ensemble:
-        group.add_argument("--no-check-single-index", action='store_false', dest='check_single_index', help=argparse.SUPPRESS)
-    else:
-        group.add_argument("--check-single-index", action='store_true', help=argparse.SUPPRESS)
+    group.add_argument("--magicc-files", nargs='+', help='if provided these files will be used instead if iam scenario')
+
+    group.add_argument("--no-check-single-index", action='store_false', dest='check_single_index', help=argparse.SUPPRESS)
+
+    if not ensemble:
+        for action in group._actions:
+            action.help = argparse.SUPPRESS
         
     return parser
 
