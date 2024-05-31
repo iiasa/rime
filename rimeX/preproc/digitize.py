@@ -142,7 +142,7 @@ def _sort_out_quantiles(sat_variables):
     return sat_quantiles
 
 
-def fit_records(impact_data_records, samples, by, dist=None):
+def fit_records(impact_data_records, samples, by, dist_name=None):
     """Expand a set of percentile records with proper samples (experimental)
 
     [
@@ -167,7 +167,7 @@ def fit_records(impact_data_records, samples, by, dist=None):
     This funciton is experimental because it works on somewhat subjective naming. 
     TODO: use the "quantile" field instead.
     """
-    from rimeX.stats import fit_dist
+    from rimeX.stats import fit_dist, repr_dist
 
     impact_variables = set(r['variable'] for r in impact_data_records)
     impact_years = sorted(set(r['year'] for r in impact_data_records))
@@ -189,18 +189,18 @@ def fit_records(impact_data_records, samples, by, dist=None):
     resampled_records = []
     for keys, group in groupby(sorted(impact_data_records, key=key_fn), key=key_fn):
         group = list(group)
-        assert len(group) == 3, f'Expected group of 3 records (the percentiles). Got {len(group)}: {group}'
+        assert len(group) == 3, f'Expected group of 3 records (the percentiles). Got group of length {len(group)}:\n{group}'
         by_var = {r['variable']: r for r in group}
         quants = [50, 5, 95]
-        dist = fit_dist([by_var[sat_quantiles[q]]['value'] for q in quants], quants, dist_name=dist)
-        logger.debug(f"{keys}: {dist.dist.name}({','.join([str(r) for r in dist.args])})")
+        dist = fit_dist([by_var[sat_quantiles[q]]['value'] for q in quants], quants, dist_name=dist_name)
+        logger.debug(f"{keys}: {repr_dist(dist)}")
 
         # resample (equally spaced percentiles)
         step = 1/samples
         values = dist.ppf(np.linspace(step/2, 1-step/2, samples))
         r0 = by_var[sat_quantiles[50]]
         for v in values:
-            resampled_records.append({**r0, **{"value": v}, **keys})
+            resampled_records.append({**r0, **{"value": v}, **dict(zip(by, keys))})
 
     return resampled_records
 

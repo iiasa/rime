@@ -1006,9 +1006,10 @@ def main():
     if o.impact_resample:
         logger.info(f"Fit Impact Percentiles ({o.impact_dist}) with {o.impact_samples} samples...")
         try:
-            impact_data_records = fit_records(impact_data_records, o.impact_samples, o.impact_dist, 
-                by=["variable", "region", "warming_level", "year", "scenario", "model"])
+            impact_data_records = fit_records(impact_data_records, o.impact_samples, dist_name=o.impact_dist,
+                by=["region", "warming_level", "year", "scenario", "model"])
         except Exception as error:
+            logger.error(str(error))
             parser.exit(1)
         logger.info(f"Fit Impact Percentiles ({o.impact_dist}) with {o.impact_samples} samples...done")
 
