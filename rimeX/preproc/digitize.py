@@ -187,7 +187,10 @@ def fit_records(impact_data_records, samples, by, dist_name=None):
 
     key_fn = lambda r: tuple(r[f] for f in by)
     resampled_records = []
-    for keys, group in groupby(sorted(impact_data_records, key=key_fn), key=key_fn):
+    # for tqdm... (distribution fitting takes time, not groupby, so OK)
+    groupby_length = len(list(groupby(sorted(impact_data_records, key=key_fn), key=key_fn))) 
+
+    for keys, group in tqdm.tqdm(groupby(sorted(impact_data_records, key=key_fn), key=key_fn), total=groupby_length):
         group = list(group)
         assert len(group) == 3, f'Expected group of 3 records (the percentiles). Got group of length {len(group)}:\n{group}'
         by_var = {r['variable']: r for r in group}
