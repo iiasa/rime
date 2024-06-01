@@ -12,10 +12,9 @@ import rimeX
 from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 
-from rimeX.compat import FastIamDataFrame, concat, read_table, _isnumerical
+from rimeX.compat import FastIamDataFrame, concat, read_table
+from rimeX.compat import homogenize_table_names, load_files
 from rimeX.datasets import get_datapath
-
-from rimeX.emulator import homogenize_table_names
 
 
 def validate_iam_filter(keyval):
@@ -34,12 +33,13 @@ def _get_gmt_parser(ensemble=False):
 
     parser = argparse.ArgumentParser(add_help=False)
     group = parser.add_argument_group('Scenario')
-    group.add_argument("--gsat-file", default=get_datapath("test_data/emissions_temp_AR6_small.xlsx"), help='pyam-readable data')
+    group.add_argument("--gsat-file", nargs="*", help='pyam-readable data')
     group.add_argument("--gsat-variable", nargs="+", default="*GSAT*", help="Filter iam variable")
     group.add_argument("--gsat-scenario", nargs="+", help="Filter iam scenario e.g. --gsat-scenario SSP1.26")
     group.add_argument("--gsat-model", nargs="+", help="Filter iam model")
     group.add_argument("--gsat-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
         help="other fields e.g. --gsat model='IMAGE 3.0.1' scenario=SSP1.26", action='append')
+    group.add_argument("--gsat-index", help="specify what defines a unique 'row'.")
     group.add_argument("--year", type=int, nargs="*", help="specify a set of years (e.g. for maps)")
 
     group.add_argument("--projection-baseline", type=int, nargs=2, default=CONFIG['emulator.projection_baseline'])
@@ -73,18 +73,6 @@ def _get_gmt_parser(ensemble=False):
     return parser
 
 
-
-def _get_custom_filters(groups):
-    all_filters = []
-    for group in groups:
-        kw = {}
-        for k, v in group:
-            kw.setdefault(k, [])
-            kw[k].append(v)
-        all_filters.append(kw)
-    return all_filters
-
-
 def _get_gmt_dataframe(o, parser):
 
     assert not o.magicc_files
@@ -92,45 +80,13 @@ def _get_gmt_dataframe(o, parser):
     if not o.gsat_file:
         parser.error("Need to indicate MAGICC or IAM data file --gsat-file")
         parser.exit(1)
-        
-    if not Path(o.gsat_file).exists() and get_datapath(o.gsat_file).exists():
-        o.gsat_file = str(get_datapath(o.gsat_file))
-
-    df_wide = read_table(o.gsat_file)
-
-    if o.pyam:
-        import pyam.core
-        concat = pyam.core.concat
-        iamdf = pyam.core.IamDataFrame(df_wide)
-    else:
-        concat = rimeX.compat.concat
-        iamdf = FastIamDataFrame(df_wide)
-
-    ## The variables below are applies as an outer product (e.g. 3 variables x 2 models x 1 scenario = 6 items)
-    filter_kw = {}
-
-    if o.gsat_variable: 
-        for v in o.gsat_variable:
-            filter_kw.setdefault('variable', [])
-            filter_kw['variable'].append(v)
-
-    if o.gsat_model: 
-        for v in o.gsat_model:
-            filter_kw.setdefault('model', [])
-            filter_kw['model'].append(v)
-
-    if o.gsat_scenario: 
-        for v in o.gsat_scenario:
-            filter_kw.setdefault('scenario', [])
-            filter_kw['scenario'].append(v)
-
-    iamdf_filtered = iamdf.filter(**filter_kw)
-
-    # additionally, use --gsat-filter to combine groups of arguments in an additive manner
-    custom_filters = _get_custom_filters(o.gsat_filter)
-    if custom_filters:
-        iamdf_filtered = concat([iamdf_filtered.filter(**kw) for kw in custom_filters])
-
+            
+    iamdf_filtered = load_files(o.gsat_file, and_filters={
+        "variable":o.gsat_variable, 
+        "model": o.gsat_model, 
+        "scenario": o.gsat_scenario
+        }, or_filters=o.gsat_filter,
+        index=o.gsat_index)
 
     if len(iamdf_filtered) == 0:
         logger.error(f"0-length dataframe")
@@ -251,8 +207,9 @@ def _get_impact_parser():
         help=f'Files such as produced by Werning et al 2014 (.csv with ixmp4 standard). Also accepted is a glob * pattern to match downloaded datasets (see also rime-download-ls).')
     group.add_argument("--impact-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
         help="other fields e.g. --impact-filter scenario='ssp2*'", action="append")
+    group.add_argument("--impact-index")
     group.add_argument("--model", nargs="+", help="if provided, only consider a set of specified model(s)")
-    group.add_argument("--experiment", nargs="+", help="if provided, only consider a set of specified experiment(s)")
+    group.add_argument("--scenario", nargs="+", help="if provided, only consider a set of specified experiment(s)")
     # group.add_argument("--pyam", action="store_true", help='use pyam instead of own wrapper')
     # already added to GMT parser...
 
@@ -273,49 +230,13 @@ def _get_impact_data(o, parser):
         parser.error("the following argument is required: --impact-file")
         parser.exit(1)
 
-    # Load impact data
-    filtered_files = []
-    for file in o.impact_file:
-        # file can be provided directly
-        if Path(file).exists():
-            filtered_files.append(file)
-        # Provided as data name (glob pattern) under rimeX_datasets
-        else:
-            for f in sorted(glob.glob(str(get_datapath(file)))):
-                filtered_files.append(f)
-
-    if not len(filtered_files):
-        logger.warn("Empty list of impact files.")
-        print("See rime-download. E.g. rime-download --all")
-        parser.exit(1)
-
-    sep = '\n'
-    logger.info(f"Load {len(filtered_files)} impact files")
-
-
-    filter_kw = {} 
-
-    if o.variable:
-        filter_kw["variable"] = o.variable
-
-    if o.region:
-        filter_kw["region"] = o.region
-
-    custom_filters = _get_custom_filters(o.impact_filter)
-
-    def _filter_iamdf(df, concat=rimeX.compat.concat):
-        df = df.filter(**filter_kw)
-        if not custom_filters:
-            return df
-        return concat([df.filter(**kw) for kw in custom_filters])
-
-    if o.pyam:
-        import pyam.core
-        concat = rimeX.compat.concat
-        impact_data_table = pyam.core.concat([_filter_iamdf(pyam.core.IamDataFrame(f), concat=pyam.core.concat) for f in filtered_files])
-    else:
-        concat = rimeX.compat.concat
-        impact_data_table = concat([_filter_iamdf(FastIamDataFrame.load(f)) for f in filtered_files])
+    impact_data_table = load_files(o.impact_file, and_filters={
+        "variable":o.variable, 
+        "model": o.model, 
+        "scenario": o.scenario,
+        "region": o.region,
+        }, or_filters=o.impact_filter,
+        index=o.impact_index)
 
     if len(impact_data_table.variable) == 0:
         logger.error(f"Empty climate impact file with variable: {o.variable} and region {o.region}")
@@ -338,120 +259,3 @@ def _get_impact_data(o, parser):
     impact_data_frame = homogenize_table_names(impact_data_frame)
 
     return impact_data_frame    
-
-
-def main():
-
-    gmt_parser = _get_gmt_parser(ensemble=True)
-    impact_parser = _get_impact_parser()
-
-    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, gmt_parser, impact_parser])
-    
-    group = parser.add_argument_group('Warming level matching')
-    group.add_argument("--running-mean-window", default=CONFIG["preprocessing.running_mean_window"])
-    # group.add_argument("--warming-level-file", default=None)
-
-    group = parser.add_argument_group('Aggregation')
-    group.add_argument("--average-scenarios", action="store_true")
-    group.add_argument("--equiprobable-models", action="store_true", help="if True, each model will have the same probability")
-    group.add_argument("--quantiles", nargs='+', default=CONFIG["emulator.quantiles"], help="(default: %(default)s)")
-    group.add_argument("--match-year-population", action="store_true")
-    group.add_argument("--warming-level-step", type=float,
-        # default=CONFIG.get("preprocessing.warming_level_step"),
-        help="Impact indicators will be interpolated to match this warming level (default: %(default)s)")
-    group.add_argument("--impact-resample", action="store_true", 
-        help="""Fit a distribution to the impact data from which to resample. 
-        Assumes the quantile variables are named "{NAME}|5th percentile" and "{NAME}|95th percentile".""")
-    group.add_argument("--impact-dist", default="auto", 
-        choices=["auto", "norm", "lognorm"], 
-        help="In auto mode, a normal or log-normal distribution will be fitted if percentiles are provided")
-    group.add_argument("--impact-samples", default=100, type=int, help="Number of samples to draw if --impact-fit is set")
-
-    group = parser.add_argument_group('Result')
-    group.add_argument("--no-overwrite", action='store_false', dest='overwrite', help=argparse.SUPPRESS)
-    group.add_argument("-O", "--overwrite", action='store_true', help=argparse.SUPPRESS)
-    # group.add_argument("--backend-isimip-bins", nargs="+", default=CONFIG["preprocessing.isimip_binned_backend"], choices=["csv", "feather"])
-    # parser.add_argument("--overwrite-isimip-bins", action='store_true', help='overwrite the intermediate calculations (binned isimip)')
-    # parser.add_argument("--overwrite-all", action='store_true', help='overwrite intermediate and final')
-    group.add_argument("-o", "--output-file", required=True)
-    group.add_argument("--save-impact-table", help='file name to save the processed impacts table (e.g. for debugging)')
-
-    parser.add_argument("--pyam", action="store_true", help='use pyam instead of own wrapper')
-
-    o = parser.parse_args()
-
-    setup_logger(o)
-
-    if not o.overwrite and Path(o.output_file).exists():
-        logger.info(f"{o.output_file} already exist. Use -O or --overwrite to reprocess.")
-        parser.exit(0)
-
-    # Load GMT data
-    gmt_ensemble = _get_gmt_ensemble(o, parser)
-    impact_data_frame = _get_impact_data(o, parser)
-
-    # Now convert into a list of records
-    impact_data_records = impact_data_frame.to_dict('records')
-
-    if o.average_scenarios:
-        logger.info("average across scenarios...")
-        impact_data_records = average_per_group(impact_data_records, by=("variable", "region", 'model', 'warming_level', 'year'))
-        logger.info("average across scenarios...done")
-
-    # Harmonize weights
-    if o.equiprobable_models:
-        logger.info("Normalization to give equal weight for each model per temperature bin...")        
-        make_equiprobable_groups(impact_data_records, by=["variable", "region", "model", "warming_level"])
-        logger.info("Normalization to give equal weight for each model per temperature bin...done")        
-
-    # Fit and resample impact data if required
-    if o.impact_resample:
-        logger.info(f"Fit Impact Percentiles ({o.impact_dist}) with {o.impact_samples} samples...")
-        try:
-            impact_data_records = fit_records(impact_data_records, o.impact_samples, dist_name=o.impact_dist,
-                by=["region", "model", "scenario", "warming_level", "year"])
-        except Exception as error:
-            raise
-            logger.error(str(error))
-            parser.exit(1)
-        logger.info(f"Fit Impact Percentiles ({o.impact_dist}) with {o.impact_samples} samples...done")
-
-
-    # Interpolate records
-    if o.warming_level_step:
-        logger.info("Impact data: interpolate warming levels...")
-        impact_data_records = interpolate_warming_levels(impact_data_records, o.warming_level_step,
-            by=["variable", "region", "model", "scenario", "year", "sample"])
-        logger.info("Impact data: interpolate warming levels...done")
-
-
-    # For population dataset the year can be matched to temperatrure time-series. It must be interpolated to yearly values first.
-    if o.match_year_population:
-        logger.info("Impact data: interpolate years...")
-        impact_data_records = interpolate_years(impact_data_records, gmt_ensemble.index, 
-            # by=['variable', "region", 'warming_level', "model", "scenario"])
-            by=["variable", "region", "model", "scenario", "warming_level", "sample"])
-        logger.info("Impact data: interpolate years...done")
-
-    if o.save_impact_table:
-        logger.info("Save impact table...")
-        pd.DataFrame(impact_data_records).to_csv(o.save_impact_table, index=None)
-        logger.info("Save impact table...done")
-
-
-    # Only use future values to avoid getting in trouble with the warming levels.
-    gmt_ensemble = gmt_ensemble.loc[2015:]  
-
-    assert np.isfinite(gmt_ensemble.values).all(), 'some NaN in MAGICC run'
-
-    # Recombine GMT ensemble with binned ISIMIP data
-    quantiles = recombine_gmt_ensemble(impact_data_records, gmt_ensemble, o.quantiles, match_year=o.match_year_population)
-
-    # GMT result to disk
-    logger.info(f"Write output to {o.output_file}")
-    Path(o.output_file).parent.mkdir(exist_ok=True, parents=True)
-    quantiles.to_csv(o.output_file)
-
-
-if __name__ == "__main__":
-    main()

@@ -1,28 +1,21 @@
 """
 For a given scenario, return the mapped percentile for an indicator
 """
-from pathlib import Path
-import argparse
-import glob
-import fnmatch
-import itertools
 import tqdm
 from itertools import groupby
 import numpy as np
 import pandas as pd
 import xarray as xa
 
-from rimeX.logs import logger, log_parser, setup_logger
-from rimeX.config import CONFIG, config_parser
+from rimeX.logs import logger
+from rimeX.compat import get_rename_mapping, _get_ssp_mapping
 
-from rimeX.preproc.warminglevels import get_warming_level_file
-from rimeX.preproc.digitize import (
-    get_binned_isimip_records, 
-    make_equiprobable_groups, interpolate_years, interpolate_warming_levels, 
-    fit_records, average_per_group)
+# from rimeX.preproc.digitize import (
+#     make_equiprobable_groups, interpolate_years, interpolate_warming_levels, 
+#     fit_records, average_per_group)
 
-from rimeX.compat import FastIamDataFrame, concat, read_table, _isnumerical
-from rimeX.datasets import get_datapath
+# from rimeX.compat import (FastIamDataFrame, concat, read_table, _isnumerical, _simplify, homogenize_table_names)
+# from rimeX.datasets import get_datapath
 
 
 def load_magicc_ensemble(file, projection_baseline=None, projection_baseline_offset=None):
@@ -521,94 +514,3 @@ def recombine_gmt_table(impact_data, gmt, **kwargs):
         raise TypeError(f"Expeced list of dict, pandas.DataFrame, xarray.DataArray or xarray.Dataset, got: {type(impact_data)}")
 
     return interpolator(gmt, **kwargs)
-
-
-def _simplify(name):
-    name = name.replace("_","").replace("-","").lower()
-    if name in ("warminglevel", "gwl", "gmt"):
-        name = "warming_level"
-    elif name in ("sspfamily", "ssp"):
-        name = "ssp_family"
-    elif name in ("experiment"):
-        name = "scenario"
-    return name
-
-
-def get_rename_mapping(names):
-    simplified = [_simplify(nm) for nm in names]
-    if len(set(simplified)) != len(names):
-        logger.error(f"input names: {names}")
-        logger.error(f"would be renamed to: {simplified}")
-        raise ValueError("some column names are duplicate or ambiguous")
-
-    return dict(zip(names, simplified))
-
-
-def _get_ssp_mapping(scenarios):
-    """Returns a common mapping for SSP family, in the form of ["ssp1", etc..]
-    """
-    if _isnumerical(scenarios[0]):
-        # return [f"ssp{int(s)}" for s in scenarios]
-        return scenarios
-    else:
-        return [int(s[3]) for s in scenarios]
-
-
-def _parse_warming_level_and_ssp(scenarios):
-    """ Parse warming levels and SSP family from the Werning et al scenarios
-
-    Parameters
-    ----------
-    scenarios: array-like of type "ssp1_2p5"
-
-    Returns
-    -------
-    warming_levels: float, array-like (global warming levels)
-    scenarios: list of strings ["ssp1", ...]
-    """
-    warming_levels = np.empty(len(scenarios))
-    ssp_family = []
-    try:
-        for i, value in enumerate(scenarios):
-            ssp, gwl = value.split("_")
-            warming_levels[i] = float(gwl.replace('p', '.'))
-            ssp_family.append(ssp)
-    except:
-        logger.error(f"Expected scenario such as ssp1_2p0 to derive warming_level. Got: {value}")
-        raise
-
-    return warming_levels, ssp_family
-
-
-def homogenize_table_names(df):
-    """Make sure loosely named input table names are understood by the script, e.g. WarmingLevel or gwl or gmt => warming_level,
-    and retrieve the warming level from the scenario name if need be.
-
-    Parameters
-    ----------
-    df: DataFrame
-
-    Returns
-    -------
-    DataFrame
-    """
-    names = df.columns
-
-    mapping = get_rename_mapping(names)
-
-    df = df.rename(mapping, axis=1)
-
-    names = df.columns
-
-    # ADD 'warming_level' threshold if absent. For now assume scenarios like ssp1_2p0 ==> warming level = 2.0 
-    # ...also replace scenario with the ssp scenario only
-    if "warming_level" not in names:
-        assert 'scenario' in names, "Input table must contain `warming_level` or a `scenario` column of the form `ssp1_2p0`"        
-        df['warming_level'], df['scenario'] = _parse_warming_level_and_ssp(df["scenario"].values)
-
-    # # Also add missing fields that are not actually mandatory but expected in various subfunctions
-    # for field in ["variable", "region", "scenario", "model"]:
-    #     if field not in df:
-    #         df[field] = ""
-
-    return df
