@@ -181,7 +181,7 @@ If this behavior is not desired, input --average several times""")
     # Check Impact Table
     check_index = ["warming_level"]
     if o.match_year_population: check_index.append("year")
-    logger.info(f"Impact data prior binning via warming_level / year:\n{FastIamDataFrame(pd.DataFrame(impact_data_records), index=check_index)}")
+    logger.debug(f"Impact data prior binning via warming_level / year:\n{FastIamDataFrame(pd.DataFrame(impact_data_records), index=check_index)}")
 
     # Recombine GMT ensemble with binned ISIMIP data
     quantiles = recombine_gmt_ensemble(impact_data_records, gmt_ensemble, o.quantiles, match_year=o.match_year_population)

@@ -453,7 +453,7 @@ def load_file(file, and_filters={}, or_filters=[], index=None,
         iamdf = FastIamDataFrame(df_wide, index=index)
         index = iamdf.index.names  # update index
 
-    logger.debug(f"Before filtering:\n{iamdf}")
+    # logger.debug(f"Before filtering:\n{iamdf}")
 
     ## The variables below are applies as an outer product (e.g. 3 variables x 2 models x 1 scenario = 6 items)
     filter_kw = {}
@@ -468,7 +468,9 @@ def load_file(file, and_filters={}, or_filters=[], index=None,
 
     iamdf_filtered = iamdf.filter(**filter_kw)
 
-    logger.debug(f"After AND filters:\n{iamdf_filtered}")
+    assert len(iamdf_filtered) > 0, f"{filter_kw} resulted in 0-length datarray"
+
+    # logger.debug(f"After AND filters:\n{iamdf_filtered}")
 
     # additionally, use --gsat-filter to combine groups of arguments in an additive manner
     custom_filters = _get_custom_filters(or_filters)
@@ -480,9 +482,6 @@ def load_file(file, and_filters={}, or_filters=[], index=None,
         else:
             df = dfs[0]
         iamdf_filtered = iamdf_cls(df, index=index)
-
-    logger.debug(f"After OR filters:\n{iamdf_filtered}")
-    assert len(iamdf_filtered) > 0
 
     return iamdf_filtered
 

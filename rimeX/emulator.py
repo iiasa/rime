@@ -257,7 +257,7 @@ class ImpactDataInterpolator:
             logger.debug("ImpactDataInterpolator: ssp_family derived from scenario dim")
             dataarray = dataarray.assign_coords({"ssp_family": _get_ssp_mapping(dataarray.scenario.values)})
         else:
-            logger.debug("ImpactDataInterpolator: ssp_family not found in input DataArray")
+            logger.debug(f"ImpactDataInterpolator: ssp_family not found in input DataArray: {dataarray.dims}")
 
         indices = [c for c in ["warming_level", "year", "ssp_family"] if c in dataarray.dims]
         logger.debug(f"ImpactDataInterpolator: transpose dataarray {indices}...")
@@ -275,26 +275,11 @@ class ImpactDataInterpolator:
 
         logger.debug(f"ImpactDataInterpolator.from_dataframe: table columns: {list(table.columns)}")            
 
-        # use ssp_family as grouping, if provided
-        if "ssp_family" not in table.columns:
-            if "scenario" in table.columns:
-                logger.debug("ImpactDataInterpolator.from_dataframe: derive ssp_family from scenario")
-                # raise ValueError("Expected either ssp_family or scenario in the impact table")
-                table["ssp_family"] = _get_ssp_mapping(table["scenario"].values)
-            else:
-                logger.debug("ImpactDataInterpolator.from_dataframe: no ssp_family in impact_data")
-        else:
-            logger.debug("ImpactDataInterpolator.from_dataframe: ssp_family column found in impact_data")
-
         if index_levels is None:
-            index_levels = [c for c in ['warming_level', 'year', 'ssp_family'] if c in table.columns]
+            index_levels = [c for c in ['warming_level', 'year'] if c in table.columns]
 
         if meta_levels is None:
-            meta_levels = [c for c in ['region', 'model', 'variable', 'scenario'] if c in table.columns]
-
-        if "scenario" in meta_levels and "ssp_family" in index_levels:
-            logger.debug("ImpactDataInterpolator.from_dataframe: cannot have both ssp_family and scenario for transpose: remove scenario")
-            meta_levels.remove('scenario')
+            meta_levels = [c for c in ['region', 'model', 'variable', 'scenario'] if c in table.columns and c not in index_levels]
 
         if "warming_level" not in table.columns:
             raise ValueError("impact table must contain `warming_level`")
@@ -315,57 +300,70 @@ class ImpactDataInterpolator:
         logger.debug("ImpactDataInterpolator.from_dataframe: transform to xarray.DataArray")
         dataarray = xa.DataArray.from_series(series)
 
-        if "scenario" in table.columns and "scenario" not in dataarray.dims:
-            logger.debug("add scenario coordinate back")
-            scenarios = {}
-            for scenario, ssp_family in zip(table['scenario'].values, table['ssp_family'].values):
-                scenarios.setdefault(ssp_family, set())
-                scenarios[ssp_family].add(scenario)
-            dataarray = dataarray.assign_coords({"scenario": xa.DataArray([" or ".join(sorted(scenarios[ssp_family])) for ssp_family in dataarray.ssp_family.values], dims="ssp_family")})
-
         return cls(dataarray, **kwargs)
 
 
     def hasyear(self):
         return "year" in self.dataarray.dims
 
-    def hasssp(self):
-        return "ssp_family" in self.dataarray.dims
-
-    # def hasmultiplessp(self):
-    #     return self.hasssp() and table["ssp_family"].unique().size > 1
-
-
     def __call__(self, values, **kwargs):
         return self.interpolate_scipy(values, **{**self.kwargs, **kwargs})
 
 
-    def interpolate_scipy(self, gmt_table, method="linear", mapping=None, return_dataarray=False, ignore_year=False, ignore_ssp=False, bounds_error=False):
+    def interpolate_scipy(self, gmt_table, ignore_ssp=False, **kwargs):
+
+        if not ignore_ssp:
+            if "ssp_family" not in self.dataarray.dims:
+                ignore_ssp = True
+                logger.debug("No SSP information found in impact data: ignore")
+
+        if not ignore_ssp:
+            if "ssp_family" in gmt_table:
+                gsat_ssp_family = _get_ssp_mapping(gmt_table["ssp_family"].values)
+            elif "scenario" in gmt_table:
+                gsat_ssp_family = _get_ssp_mapping(gmt_table["scenario"].values)
+            else:
+                ignore_ssp = True
+                logger.debug("No SSP information found in GSAT data: ignore")
+
+        if ignore_ssp:
+            return self._interpolate_scipy(gmt_table, **kwargs)
+
+        # Group by ssp family and combine
+        ssp_family = self.dataarray.ssp_family.values
+
+        diff = set(ssp_family).symmetric_difference(gsat_ssp_family)
+        if diff:
+            logger.warning(f"SSP family present in only GSAT or only impact data: {diff}. It will be ignored (see also --ignore-ssp)")
+
+        return_dataarray = kwargs.pop("return_dataarray", False)
+
+        data = []
+        for ssp in set(ssp_family).intersection(gsat_ssp_family):
+            logger.info(f"recombine_gmt_table for {ssp}")
+            interp_ssp = ImpactDataInterpolator(self.dataarray.sel(ssp_family=[ssp]), **self.kwargs)
+            gsat_ssp = gmt_table.iloc[gsat_ssp_family == ssp][[c for c in gmt_table if c != "ssp_family"]]
+            # gsat_ssp = gmt_table.iloc[gsat_ssp_family == ssp]
+            res = interp_ssp._interpolate_scipy(gsat_ssp, return_dataarray=True, **kwargs)
+            # res['ssp_family'] = ssp
+            data.append( res.to_series() )
+
+        data = pd.concat(data)
+
+        if not return_dataarray:
+            return data.reset_index(name='value')
+
+        else:
+            return xa.DataArray.from_series(data)
+
+
+    def _interpolate_scipy(self, gmt_table, method="linear", mapping=None, return_dataarray=False, ignore_year=False, bounds_error=False):
 
         from scipy.interpolate import RegularGridInterpolator
 
         logger.debug(f"input gmt_table columns: {gmt_table.columns}")
         logger.debug("rename gmt_table columns")
         gmt_table = gmt_table.rename({"value":"warming_level", **(mapping or {})}, axis=1)
-
-        # try to derive the SSP family if present
-        logger.debug("find out ssp_family")
-        if "ssp_family" in gmt_table.columns:
-            logger.debug("ssp_family found in columns")
-            gmt_table["ssp_family"] = _get_ssp_mapping(gmt_table["ssp_family"].values)
-
-        elif "scenario" in gmt_table.columns:
-            logger.debug("derive ssp_family from scenario")
-            gmt_scenario = gmt_table['scenario'].values
-            try:
-                gmt_table["ssp_family"] = _get_ssp_mapping(gmt_scenario)
-            except:
-                logger.debug("could not get the ssp_family from GMT scenario")
-
-        else:
-            logger.debug("no ssp_family_found")
-
-        logger.debug("find out ssp_family...done")
 
         gmt = gmt_table['warming_level'].values
 
@@ -387,17 +385,6 @@ class ImpactDataInterpolator:
 
                 index_levels += ['year']
 
-        logger.debug("check ssp_family")
-
-        if self.hasssp():
-            if ignore_ssp:
-                meta_levels += ["ssp_family"]
-
-            else:
-                if "ssp_family" not in gmt_table.columns:
-                    raise ValueError("Expected 'ssp_family' column in GMT input (because `ssp_family` is present in the impact table), but None was found. Set `ignore_ssp=True` to ignore the ssp_family (this will result in an outer product).")
-                index_levels += ['ssp_family']
-
         logger.debug(f"index levels for interp: {index_levels}")
         logger.debug(f"meta levels for interp: {meta_levels}")
 
@@ -411,10 +398,6 @@ class ImpactDataInterpolator:
         if "year" in index_levels:
             gmt_year = gmt_table['year'].values
             index.append(gmt_year)
-
-        if "ssp_family" in index_levels:
-            gmt_ssp_family = gmt_table["ssp_family"].values
-            index.append(gmt_ssp_family)
 
         indices = np.array(index).T
 
@@ -433,7 +416,7 @@ class ImpactDataInterpolator:
         gmt_index_names = [c for c in ["year", "ssp_family", "warming_level", "model", "scenario", "quantile", "percentile"] if c in gmt_table.columns]
 
         # ...also add other info like model and scenario, but rename them to avoid any conflict with the impact table
-        gmt_index_rename = {"model": "gsat_model", "scenario": "gsat_scenario", "quantile": "gsat_quantile", "percentile": "gsat_percentile"}
+        gmt_index_rename = {"model": "gsat_model", "scenario": "gsat_scenario", "ssp_family": "gsat_ssp_family", "quantile": "gsat_quantile", "percentile": "gsat_percentile"}
         gmt_index_names = [gmt_index_rename.get(c, c) for c in gmt_index_names]
         logger.debug(f"dimensions inherited from gsat table {gmt_index_names}")
 
@@ -441,7 +424,7 @@ class ImpactDataInterpolator:
             gmt_table.rename(gmt_index_rename, axis=1).set_index(gmt_index_names).index, 'index')
         data = data.assign_coords(midx)
         
-        logger.debug(f"full dataarray {data}")
+        # logger.debug(f"full dataarray {data}")
 
         if return_dataarray:
             return data
@@ -449,17 +432,7 @@ class ImpactDataInterpolator:
         # ... now flatten to a Dataframe
         logger.debug("transform to DataFrame")
         df = data.to_series().reset_index(name='value')
-        hack_add_scenario_from_ssp_family(df, data)
         return df
-
-
-def hack_add_scenario_from_ssp_family(df, data):
-    " make sure we also include secondary coordinates (here scenario => ssp_family) "
-    if "scenario" in data.coords and "scenario" not in df.columns and 'ssp_family' in df.columns and "ssp_family" in data.coords:
-        logger.debug("add back scenario to the dataframe")
-        mapping = dict(zip(data.coords['ssp_family'].values, data.coords['scenario'].values))
-        df['scenario'] = [mapping[ssp_family] for ssp_family in df['ssp_family']]
-
 
 
 def recombine_gmt_table(impact_data, gmt, **kwargs):

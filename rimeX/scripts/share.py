@@ -184,7 +184,7 @@ def _get_gmt_ensemble(o, parser):
             gmt_ensemble = xa.DataArray(gmt_ensemble.values, coords={"year": gmt_ensemble.index}, dims=['year', 'sample']).interp(year=years).to_pandas()
             logger.info(f"Interpolate GSAT to {o.time_step}-year(s) time-step...done")
 
-    logger.info(f"Loaded temperature ensemble:\n{gmt_ensemble}")
+    # logger.debug(f"Loaded temperature ensemble:\n{gmt_ensemble}")
 
     if o.save_gsat:
         logger.info("Save GSAT...")

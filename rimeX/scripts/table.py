@@ -4,7 +4,8 @@ import argparse
 import os
 from pathlib import Path
 import xarray as xa
-from rimeX.emulator import recombine_gmt_table, hack_add_scenario_from_ssp_family
+from rimeX.emulator import recombine_gmt_table
+from rimeX.compat import _get_ssp_mapping
 
 from rimeX.scripts.share import (
     _get_gmt_parser, 
@@ -24,11 +25,10 @@ def main():
     parser = argparse.ArgumentParser(parents=[log_parser, config_parser, gmt_parser, impact_parser])
     parser.add_argument("--method", choices=["nearest", "linear"], default="linear")
     parser.add_argument("--bounds-check", action="store_true")
-    parser.add_argument("--backend", nargs='+', default=['csv'], choices=['csv', 'netcdf'])
     parser.add_argument("--nc-impacts", nargs='+')
     parser.add_argument("-o", "--output-file", required=True)
-    parser.add_argument("--ignore-ssp", action='store_true')
     parser.add_argument("--ignore-year", action='store_true')
+    parser.add_argument("--ignore-ssp", action='store_true')
     
     o = parser.parse_args()
     setup_logger(o)
@@ -42,22 +42,15 @@ def main():
     else:        
         impact_data = _get_impact_data(o, parser)
 
-    data = recombine_gmt_table(impact_data, gmt_table, method=o.method, return_dataarray=True, bounds_error=o.bounds_check, 
-        ignore_ssp=o.ignore_ssp, ignore_year=o.ignore_year)
+    data = recombine_gmt_table(impact_data, gmt_table, method=o.method, bounds_error=o.bounds_check, 
+        ignore_year=o.ignore_year, ignore_ssp=o.ignore_ssp)
 
     Path(o.output_file).parent.mkdir(exist_ok=True, parents=True)
 
-    if "csv" in o.backend:
-        file = o.output_file if len(o.backend) == 1 else os.path.splitext(o.output_file)[0] + ".csv"
-        logger.info(f"Write to {file}")
-        df = data.to_series().reset_index(name='value')
-        hack_add_scenario_from_ssp_family(df, data)
-        df.to_csv(file, index=None)
-
-    if "netcdf" in o.backend:
-        file = o.output_file if len(o.backend) == 1 else os.path.splitext(o.output_file)[0] + ".nc"
-        logger.info(f"Write to {file}")
-        data.reset_index('index').to_netcdf(file)
+    # if "csv" in o.backend:
+    file = o.output_file
+    logger.info(f"Write to {file}")
+    data.to_csv(file, index=None)
 
 
 if __name__ == "__main__":
