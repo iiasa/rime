@@ -255,7 +255,7 @@ class ImpactDataInterpolator:
             dataarray = dataarray.assign_coords({"ssp_family": _get_ssp_mapping(dataarray.ssp_family.values)})
         elif "scenario" in dataarray.dims:
             logger.debug("ImpactDataInterpolator: ssp_family derived from scenario dim")
-            dataarray = dataarray.assign_coords({"ssp_family": _get_ssp_mapping(dataarray.scenario.values)})
+            dataarray = dataarray.assign_coords({"ssp_family": xa.DataArray(_get_ssp_mapping(dataarray.scenario.values), dims=["scenario"])})
         else:
             logger.debug(f"ImpactDataInterpolator: ssp_family not found in input DataArray: {dataarray.dims}")
 

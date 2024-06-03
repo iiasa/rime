@@ -144,18 +144,20 @@ If this behavior is not desired, input --average several times""")
 
     # Interpolate records
     if o.interp_warming_levels:
-        logger.info("Impact data: interpolate warming levels...")
+        dims = [c for c in all_impact_dims if c not in "warming_level"]
+        logger.info(f"Impact data: interpolate warming levels (group: {dims})...")
         impact_data_records = interpolate_warming_levels(impact_data_records, o.warming_level_step,
-            by=[c for c in all_impact_dims if c not in "warming_level"])
+            by=dims)
             # by=["variable", "region", "model", "scenario", "year", "sample"])
         logger.info("Impact data: interpolate warming levels...done")
 
 
     # For population dataset the year can be matched to temperatrure time-series. It must be interpolated to yearly values first.
     if o.interp_years:
-        logger.info("Impact data: interpolate years...")
+        dims = [c for c in all_impact_dims if c not in "year"]
+        logger.info(f"Impact data: interpolate years...(group by {dims})")
         impact_data_records = interpolate_years(impact_data_records, gmt_ensemble.index, 
-            by=[c for c in all_impact_dims if c != "year"])
+            by=dims)
             # by=["variable", "region", "model", "scenario", "warming_level", "sample"])
         logger.info("Impact data: interpolate years...done")
 
