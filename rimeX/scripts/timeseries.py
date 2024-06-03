@@ -10,7 +10,7 @@ import xarray as xa
 from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 
-from rimeX.preproc.digitize import (
+from rimeX.records import (
     make_equiprobable_groups, interpolate_years, interpolate_warming_levels, 
     fit_records, average_per_group)
 
