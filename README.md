@@ -148,6 +148,14 @@ estimate. More in-depth description of the underlying assumption will be provide
 
 In essence, the main difference between `run-timeseries` and `run-table` is that the latter is structured (DataFrame -> DataArray -> ND numpy index) and the former is unstructured (list of records with `groupby`). The structured version can lead to speed for certain data forms, and allows on-the-fly interpolation without any preliminary data transformation (this is the main speed-up gain).
 
+A few practical differences, that will be examplified below:
+
+- only a single variable can be calculated at a time
+
+- no assumption is made about which specific dimension should be used for indexing. Some fields have a specific meaning attached, such as `value`, `warming_level`, `year`, `scenario`, but by default all fields besides `value` are used for indexing (for grouping operation such as interpolation across warming levels). If some secondary dimensions vary along with values, such as `year` (or `midyear`), it is necessary to explicitly exclude then from the index via the `--pool` command, e.g. `--pool midyear`, or pass the index directly `--index model scenario`, say. Note that `warming_level` will always be added to the index.
+
+- the binning and recombination method does not (yet?) allow for on-the-fly interpolation, so to interpolate across warming levels it is necessary to pass explicit parameters `--interp-warming-levels`, and in case `--match-year` is also specified, `--interp-year`.
+
 
 ### Comparison with `rime-run-table`
 
