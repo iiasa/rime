@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from rimeX.logs import logger
 from rimeX.datasets import get_datapath
+from rimeX.config import CONFIG
 
 def read_table(file, backend=None, index=None, **kwargs):
     logger.info(f"Read {file}")
@@ -188,7 +189,7 @@ class FastIamDataFrame:
             # self._index_names = [self._get_col_name(c) for c in index]
             self._index_names = index
         else:
-            self._index_names = [c for c in self.dimensions if _simplify(c) not in ["year", "warming_level"]]
+            self._index_names = self.dimensions
         self._mapping = get_rename_mapping(df.columns)
         self._inv_mapping = {v:k for k,v in self._mapping.items()}
         self._index = None
@@ -204,13 +205,13 @@ class FastIamDataFrame:
         # #     logger.warning(f"FastIamDataFrame: the index is not unique {len(full_index)} > {len(self.index)}\n{full_index}")
 
     def rename(self, **kwargs):
-        return FastIamDataFrame(self.df.rename(**kwargs, axis=1), index=[kwargs.get(c, c) for c in self._index_names])
+        return FastIamDataFrame(self.df.rename(kwargs, axis=1), index=[kwargs.get(c, c) for c in self._index_names])
 
     def standardize(self):
         if not self._mapping:
             return self
         logger.info(f"FastIamDataFrame: rename columns: {self._mapping}")
-        return self.rename(self._mapping)
+        return self.rename(**self._mapping)
         # return FastIamDataFrame(self.df.rename(self._mapping, axis=1), [self._mapping.get(c, c) for c in self._index_names])
 
     def _get_col_name(self, name):
@@ -245,7 +246,7 @@ class FastIamDataFrame:
         return cls(df)
 
     def __len__(self):
-        return len(self.df) * len(self.year)
+        return len(self.df)
 
     def filter(self, **kwargs):
 
@@ -269,9 +270,13 @@ class FastIamDataFrame:
             for value in keep:
                 orcond = (df[k].values == value) | orcond
             andcond = orcond & andcond
+            if andcond is False:
+                raise ValueError(f"No data match the filter: {k_} = {exprs}. Values found: {set(values)}.")
 
         # we actually went through the loop
         if andcond is not True:
+            if andcond is False:
+                raise ValueError("No data match the required filter")
             df = df[andcond] # actually indexing
 
         res = FastIamDataFrame(df, index=self._index_names)
@@ -304,7 +309,7 @@ class FastIamDataFrame:
 
         meta = columns[:i_first_year]
         df_meta = self.df[meta]
-        return FastIamDataFrame(pd.concat(df_meta.join(pd.DataFrame({"year": _to_numerical(year), "value": self.df[year]})) for year in years), index=self.index.names)
+        return FastIamDataFrame(pd.concat(df_meta.join(pd.DataFrame({"year": _to_numerical(year), "value": self.df[year]})) for year in years), index=self.index.names+['year'])
 
 
     def as_pandas(self):
@@ -317,7 +322,7 @@ class FastIamDataFrame:
     def dimensions(self):
         """Returns an index
         """
-        return [c for c in self.df.columns if c not in ['value', 'unit'] and not _isnumerical(c)]
+        return [c for c in self.df.columns if c not in CONFIG["index.ignore"] and not _isnumerical(c)]
 
 
     def info(self, n=80):
@@ -334,25 +339,30 @@ class FastIamDataFrame:
         """
 
         # concatenate list of index dimensions and levels
-        info = f"{type(self)}\nIndex:\n"
+        info = f"{type(self)}\nIndex ({len(self.index)}):\n"
         c1 = max([len(i) for i in self.dimensions]) + 1
         c2 = n - c1 - 5
         info += "\n".join(
             [
-                f" * {i:{c1}}: {print_list(getattr(self.df, i).unique(), c2)}"
+                f" * {i:{c1}}: {print_list(self.df[i].unique(), c2)}"
                 for i in self.index.names
             ]
         )
 
+        if self.is_wide():
+            info += "\nYear in columns:\n"
+            info += f" * {'year':{c1}}: {print_list(self.year, c2)}"          
+
         # concatenate list of index of _data (not in index.names)
-        info += "\nOther columns:\n"
-        info += "\n".join(
-            [
-                f"   {i:{c1}}: {print_list(getattr(self.df, i).unique(), c2)}"
-                for i in self.dimensions
-                if i not in self.index.names
-            ]
-        )
+        if len([i for i in self.dimensions if i not in self.index.names]):
+            info += "\nOther columns:\n"
+            info += "\n".join(
+                [
+                    f"   {i:{c1}}: {print_list(self.df[i].unique(), c2)}"
+                    for i in self.dimensions
+                    if i not in self.index.names
+                ]
+            )
 
         return info
 
@@ -395,7 +405,7 @@ def _get_custom_filters(groups, mapping=None):
 
 
 def load_file(file, and_filters={}, or_filters=[], index=None, 
-    choices=["variable", "model", "scenario", "region", "sample", "quantile"], rename=True, pyam=False):
+    choices=None, rename=True, pyam=False):
     """Load data files in table form (primarily for command-line use)
 
     Parameters
@@ -429,20 +439,21 @@ def load_file(file, and_filters={}, or_filters=[], index=None,
     if remap:
         df_wide = df_wide.rename(remap, axis=1)
 
-    if index is None:
-        index = [c for c in df_wide.columns if c in choices]
-        logger.info(f"index guess: {index}")
-
-    else:
+    if index is not None:
         index = [_simplify(c) for c in index]
 
     if pyam:
         import pyam.core
         concat_func = pyam.core.concat
+        iamdf_cls = pyam.core.IamDataFrame
         iamdf = pyam.core.IamDataFrame(df_wide, index=index)
     else:
         concat_func = concat
+        iamdf_cls = FastIamDataFrame
         iamdf = FastIamDataFrame(df_wide, index=index)
+        index = iamdf.index.names  # update index
+
+    logger.debug(f"Before filtering:\n{iamdf}")
 
     ## The variables below are applies as an outer product (e.g. 3 variables x 2 models x 1 scenario = 6 items)
     filter_kw = {}
@@ -457,10 +468,21 @@ def load_file(file, and_filters={}, or_filters=[], index=None,
 
     iamdf_filtered = iamdf.filter(**filter_kw)
 
+    logger.debug(f"After AND filters:\n{iamdf_filtered}")
+
     # additionally, use --gsat-filter to combine groups of arguments in an additive manner
     custom_filters = _get_custom_filters(or_filters)
     if custom_filters:
-        iamdf_filtered = concat_func([iamdf_filtered.filter(**{_simplify(k):v for k,v in kw.items()}) for kw in custom_filters])
+        dfs = [iamdf_filtered.filter(**{_simplify(k):v for k,v in kw.items()}).as_pandas() for kw in custom_filters]
+        # this create duplicates => must be drop afterwardsthis should handle duplicates
+        if len(custom_filters) > 1:
+            df = pd.concat(dfs).drop_duplicates()
+        else:
+            df = dfs[0]
+        iamdf_filtered = iamdf_cls(df, index=index)
+
+    logger.debug(f"After OR filters:\n{iamdf_filtered}")
+    assert len(iamdf_filtered) > 0
 
     return iamdf_filtered
 

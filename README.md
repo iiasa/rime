@@ -160,25 +160,25 @@ First let's define the common part to all commands below:
 
 - Median GSAT and single impact model and scenario:
 
-		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_ts-0p01.csv --warming-level-step 0.01
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_ts-0p01.csv --interp-warming-levels
 
 		rime-run-table $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_table.csv --ignore-ssp
 
 - Median GSAT and all impact models and scenarios:
 
-		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_ts-0p01.csv --warming-level-step 0.01
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_ts-0p01.csv --interp-warming-levels
 	
 		rime-run-table $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_table.csv --ignore-ssp
 
 - Resampled GSAT and single impact model and scenario:
 
-		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_resampled_one_ts-0p01.csv --warming-level-step 0.01
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_resampled_one_ts-0p01.csv --interp-warming-levels
 	
 		rime-run-table $COMMON --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_quantile_one_table.csv --ignore-ssp
 
 - Resampled GSAT and all impact model and scenario:
 
-		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 -o rimeX_ITA_resampled_all_ts-0p01.csv --warming-level-step 0.01
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 -o rimeX_ITA_resampled_all_ts-0p01.csv --interp-warming-levels
 	
 		rime-run-table $COMMON --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_quantile_all_table.csv --ignore-ssp
 
@@ -192,7 +192,7 @@ Some comments:
 
 - the `rime-run-table` script requires `--ignore-ssp` so that it does not attempt to match GSAT `ssp-family` with the impact table's SSP family (this must be done on-request in `rime-run-timeseries`)
 
-- the `rime-run-timeseries` script uses `--warming-level-step 0.01` to interpolate the impact table prior to binning, for a smoother result (this is done by default in `rime-run-table` since it relies on `scipy.interpolate.RegularGridInterpolator`).
+- the `rime-run-timeseries` script uses `--interp-warming-levels` to interpolate the impact table prior to binning (default step of 0.01 deg. C), for a smoother result (this is done by default in `rime-run-table` since it relies on `scipy.interpolate.RegularGridInterpolator`).
 
 - The resamples GSAT (almost) perfectly covers the `table` version, as desired
 
@@ -210,9 +210,10 @@ The defaults for `rime-run-timeseries` slightly differ from `rime-run-table`, bu
 
 Let's come back to the Werning et al dataset, and see how 
 
-	$ rime-run-timeseries --gsat-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-file werning2024/table_output_climate_exposure/table_output_heatwave_COUNTRIES.csv --region MEX --variable "hw_95_10|Exposure|Population" --match-year-population  -o output.csv
+	$ rime-run-timeseries --gsat-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-file werning2024/table_output_climate_exposure/table_output_heatwave_COUNTRIES.csv --region MEX --variable "hw_95_10|Exposure|Population" --match-year-population --interp-years -o output.csv
 
-Note that by default, the years and ssp family are considered an "uncertainty" and they show up as quantiles in the output file (in this example they are the only contributor). To match the year according to the GSAT time-series year, we add the `--match-year-population` option
+Note that by default, the years and ssp family are considered an "uncertainty" and they show up as quantiles in the output file (in this example they are the only contributor). To match the year according to the GSAT time-series year, we add the `--match-year-population` option, 
+and this requires prior interpolation of the years via `--interp-years`
 
 ![](notebooks/images/population_exposed_match_year.png)
 
@@ -233,16 +234,16 @@ Similarly, if quantiles are present, the impacts can be sampled with the flags `
 Note how several impact variables can be specified so that three variables end up considered (corresponding to median, 5th and 95th percentiles). 
 They are then sorted out by parsing the variable name (e.g. " 5th" or "|5th" is expected, and the median is whatever is left).
 
-GSAT and impact distribution fitting can be combined (see figure below), however, when this occurs in parallel to other costly options such as `--match-year` and `--warming-level-step 0.01`, this starts to slow down the calculation (up to 12 seconds in our current tests). A Monte Carlo option is in the works to combine a larger number of uncertainty sources in a vectorized form. 
+GSAT and impact distribution fitting can be combined (see figure below).
 
 ![](notebooks/images/fit_and_resample_gsat_and_impacts.png)
 
 
 ### Warming level steps
 
-The default step for warming level interpolation is 0.1 degC. This is fine for a probabilistic setting, but sometimes it is preferrable to have finer warming level steps, especially when working with the median temperature time-series, to avoid visible aliasing. The option `--warming-level-step` is available (so far only available with the table format as input):
+The default step for warming level interpolation is 0.1 degC. This is fine for a probabilistic setting, but sometimes it is preferrable to have finer warming level steps, especially when working with the median temperature time-series, to avoid visible aliasing. The option `--interp-warming-levels` with the default `--warming-level-step 0.01` is available (so far only available with the table format as input):
 
-	 $ rime-run-timeseries [...] --warming-level-step 0.01
+	 $ rime-run-timeseries [...] --interp-warming-levels --warming-level-step 0.01
 
 
 ![](notebooks/images/warming_level_step.png)

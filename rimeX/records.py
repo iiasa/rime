@@ -164,7 +164,7 @@ def average_per_group(records, by, keep_meta=True):
     return average_records
 
 
-def drop_dims(records, *dims):
+def drop_dims(records, dims):
     """in-place dropping of dimensions
     """
     for r in records:
@@ -232,3 +232,7 @@ def make_equiprobable_groups(records, by):
 
         for r in group:
             r['weight'] = r["weight"] / total_weights
+
+
+def make_models_equiprobable(records):
+    make_equiprobable_groups(records, by=[ "model", "variable", "region", "warming_level" ])

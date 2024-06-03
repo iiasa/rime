@@ -10,10 +10,6 @@ import xarray as xa
 from rimeX.logs import logger
 from rimeX.compat import get_rename_mapping, _get_ssp_mapping
 
-# from rimeX.preproc.digitize import (
-#     make_equiprobable_groups, interpolate_years, interpolate_warming_levels, 
-#     fit_records, average_per_group)
-
 # from rimeX.compat import (FastIamDataFrame, concat, read_table, _isnumerical, _simplify, homogenize_table_names)
 # from rimeX.datasets import get_datapath
 

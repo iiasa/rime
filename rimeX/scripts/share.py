@@ -13,8 +13,10 @@ from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 
 from rimeX.compat import FastIamDataFrame, concat, read_table
-from rimeX.compat import homogenize_table_names, load_files
+from rimeX.compat import homogenize_table_names, load_files, _simplify
 from rimeX.datasets import get_datapath
+from rimeX.records import QUANTILES_MAP, _sort_out_quantiles
+from rimeX.stats import fit_dist, repr_dist
 
 
 def validate_iam_filter(keyval):
@@ -124,8 +126,6 @@ def _get_gmt_ensemble(o, parser):
         df = _get_gmt_dataframe(o, parser)
 
         if o.gsat_resample:
-            from rimeX.preproc.digitize import QUANTILES_MAP, _sort_out_quantiles
-            from rimeX.stats import fit_dist, repr_dist
 
             logger.info(f"Fit GSAT temperature distribution ({o.gsat_dist}) with {o.gsat_samples} samples.")
 
@@ -165,8 +165,9 @@ def _get_gmt_ensemble(o, parser):
             gmt_ensemble = pd.DataFrame(ens, index=gmt_q.index)
 
         else:
-            gmt_ensemble = df.set_index('year')[['value']]
-
+            # By default returns a year x warming_level matrix
+            gmt_ensemble = df.pivot(index='year', values='value', columns=[c for c in df.columns if c not in ['year', 'value']])
+        
 
     if o.year is not None:
         gmt_ensemble = gmt_ensemble.loc[o.year]
@@ -183,6 +184,7 @@ def _get_gmt_ensemble(o, parser):
             gmt_ensemble = xa.DataArray(gmt_ensemble.values, coords={"year": gmt_ensemble.index}, dims=['year', 'sample']).interp(year=years).to_pandas()
             logger.info(f"Interpolate GSAT to {o.time_step}-year(s) time-step...done")
 
+    logger.info(f"Loaded temperature ensemble:\n{gmt_ensemble}")
 
     if o.save_gsat:
         logger.info("Save GSAT...")
@@ -203,7 +205,6 @@ def _get_impact_parser():
         help=f'Files such as produced by Werning et al 2014 (.csv with ixmp4 standard). Also accepted is a glob * pattern to match downloaded datasets (see also rime-download-ls).')
     group.add_argument("--impact-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
         help="other fields e.g. --impact-filter scenario='ssp2*'", action="append")
-    group.add_argument("--impact-index")
     group.add_argument("--model", nargs="+", help="if provided, only consider a set of specified model(s)")
     group.add_argument("--scenario", nargs="+", help="if provided, only consider a set of specified experiment(s)")
     # group.add_argument("--pyam", action="store_true", help='use pyam instead of own wrapper')
@@ -212,10 +213,19 @@ def _get_impact_parser():
     group = parser.add_argument_group('Impact indicator (CIE)')
     group.add_argument("--subregion", help="if not provided, will default to region average")
     group.add_argument("--list-subregions", action='store_true', help="print all subregions and exit")
-    group.add_argument("--weights", default='LonLatWeight', choices=CONFIG["preprocessing.regional.weights"])
-    group.add_argument("--season", default='annual', choices=list(CONFIG["preprocessing.seasons"]))
+    group.add_argument("--weights", choices=CONFIG["preprocessing.regional.weights"])
+    group.add_argument("--season", choices=list(CONFIG["preprocessing.seasons"]))
 
-
+    group = parser.add_argument_group('Impact Data Index')
+    # group = parser.add_argument_group(argparse.SUPPRESS)
+    group.add_argument("--index", type=_simplify, 
+        help=f"The dimensions that describe a unique sample in the impact dataset, besides `warming_level` (and if `match_year_population` is True, `year`). The dimensions not specified in the index will be pooled and will contribute to the uncertainty estimate. If the index is not specified, all but the following dimensions will be used: {CONFIG['index.ignore']}.")
+    # group.add_argument("--keep-dims", type=_simplify, nargs='+', help=argparse.SUPPRESS)
+    # group.add_argument("--ignore-dims", type=_simplify, nargs='+', help=f"Dimensions to drop (meta data not useful for grouping). The following will never be considered: {CONFIG['index.ignore']}")
+    # group.add_argument("--meta-dims", type=_simplify, nargs='+', help=argparse.SUPPRESS)
+    # group.add_argument("--pool-name", type=_simplify, nargs='+', 
+    #     help=argparse.SUPPRESS)
+        # help="name of new pooled dimension(s) (default is sample, sample2 etc)")
 
     return parser
 
@@ -231,8 +241,10 @@ def _get_impact_data(o, parser):
         "model": o.model, 
         "scenario": o.scenario,
         "region": o.region,
+        "subregion": o.subregion,
+        "season": o.season,
         }, or_filters=o.impact_filter,
-        index=o.impact_index)
+        index=o.index)
 
     if len(impact_data_table.variable) == 0:
         logger.error(f"Empty climate impact file with variable: {o.variable} and region {o.region}")
@@ -250,8 +262,7 @@ def _get_impact_data(o, parser):
     #     print(f"More than one region found.\n {sep.join(impact_data_table.region)}\nPlease restrict the --region filter.")
     #     parser.exit(1)
 
-    # Convert to DataFrame
-    impact_data_frame = impact_data_table.as_pandas()
-    impact_data_frame = homogenize_table_names(impact_data_frame)
-
-    return impact_data_frame    
+    # Convert to standardized long-form DataFrame
+    df = impact_data_table.as_pandas()
+    df = homogenize_table_names(df)
+    return df

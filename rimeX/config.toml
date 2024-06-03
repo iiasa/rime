@@ -35,8 +35,13 @@ spring = [ 3, 4, 5,]
 summer = [ 6, 7, 8,]
 autumn = [ 9, 10, 11,]
 
+[index]
+ignore = [ "value", "unit", "units" ]
+required = [ "warming_level" ]
+# default = [ "model", "scenario", "variable", "region", "year", "warming_level", "quantile", "percentile", "sample" ]
+
 [emulator]
 projection_baseline = [ 1995, 2014,]
 projection_baseline_offset = 0.85
-# warming_level_step = 0.1 # used for interpolation
+warming_level_step = 0.01 # used by default in rime-run-timeseries when --interp-warming-level is set
 quantiles = [ 0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99,]
