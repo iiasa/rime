@@ -80,7 +80,7 @@ In the example above, we make use of advanced filtering, where each occurrence o
 
 ![](notebooks/images/table-interp-linear-join.png)
 
-Internally, the impact data is transformed into a multi-dimensional `xarray.DataArray` with main dimensions `(warming_level, [year,] [ssp_family])`, and broadcast dimensions `(variable, region, model)` and interpolated along the temperature pathway with `scipy.interpolate.RegularGridInterpolator`. By default, if the `year` and `ssp_family` (or `scenario`) are present in the impact data, these will be matched with the temperature forcing as well. 
+Internally, the impact data is transformed into a multi-dimensional `xarray.DataArray` with main dimensions `(warming_level, [year,])`, and broadcast dimensions `(scenario, variable, region, model)` and interpolated along the temperature pathway with `scipy.interpolate.RegularGridInterpolator`. By default, if the `year` and `ssp_family` (or `scenario`) are present in the impact data and in the temperature data, these will be matched with the temperature forcing as well. See also `--ignore-ssp` and `--ignore-year`. 
 
 For more advanced usage, the underlying `rimeX.emulator.ImpactDataInterpolator` class is made available. The above would be achieved as follow:
 
