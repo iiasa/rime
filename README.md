@@ -196,10 +196,7 @@ Some comments:
 
 - The resamples GSAT (almost) perfectly covers the `table` version, as desired
 
-- The `rime-run-table` version (single, dashed color lines) is an outer product of all GSAT (whichever quantiles are present) and `impacts`. 
-  Each line represents a different combination of impact `model, scenario` pair and `gsat_quantile`. In contrast the `rune-run-timeseries` version combines those into bins.
-
-- The `all impacts` version looks a little fishy (the flat bottom), especially compared to the `table` runs. Not sure why. The overall uncertainty range also *decreases* as GSAT uncertainty is added. TODO: check the code.
+- The `rime-run-table` version (single, dashed color lines) is an outer product of all GSAT (whichever quantiles are present) and `impacts`. Each line represents a different combination of impact `model, scenario` pair and `gsat_quantile`. In contrast the `rune-run-timeseries` version combines those into bins.
 
 See also the [todos](#todo) below.
 
