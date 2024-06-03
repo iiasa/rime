@@ -264,7 +264,7 @@ The time-step is normally set by the input GSAT data file, but it can be subsamp
 The python API is currently unstable and will be documented in the future.
 
 For now, the inner working consists in a set of functions to transform a list of records. By records, I mean dictionaries as the result of `pandas.DataFrame.to_dict('records')`, where each dict record corresponds to a row in a long pandas DataFrame. 
-There are functions to interpolate the records w.r.t warming levels or years, average across scenarios, etc. 
+There are functions to interpolate the records w.r.t warming levels or years, average across scenarios, etc. These functions can be found in the `rimeX.records` module. The emulator itself, to combine GSAT and impact data, is present in the `rimeX.emulator` module (`rime-run-timeseries` relies on `recombine_gmt_ensemble`, whereas `rime-run-table` relies on `recombine_gmt_table`).
 
 Check out [the TODO internal classes](#internal-classes) section for an insight where it might be going.
 
@@ -280,12 +280,6 @@ By default, ISIMIP3b data are used, but that can be changed to ISIMIP2b via the 
 
 
 ## TODO
-
-
-### Code organization
-
-Move script-related code to a subpackage rime.run, so that `emulator` gets thinner.
-
 
 ### Internal classes
 
@@ -329,20 +323,11 @@ In general: harmonize `rime-run-timeseries` and `rime-run-table`. The former sho
 NOTE about `rime-run-table` ssp-family indexing:
 
 - currently we pool SSP_family in impact data (mapped from scenarios), but for the above example there is not reason to do that
-- TODO: add options for finer-grained control about what is going on. E.g.
 
-	- if scenarios are not pooled, factor over scenarios, not SSP_family
-	- add options to match temperature and impact's SSP_family indexing:
-
-		- match-ssp (like run-timeseries) --> only if scenario is not pooled (that will require some kind of looping over scenarios)
-		- do not bother matching if not required, or if scenario is pooled
-
-
-Currently we assume a set of "coordinates" dimensions to keep track of (`model, scenario, quantile, variable, year, warming_level, ...`) and to be passed to groupby. It's probably best to pass an `--index` parameter to specify what dimensions should be considered for indexing, groupby etc. 
+Currently we assume a set of "coordinates" dimensions to keep track of (`model, scenario, quantile, variable, year, warming_level, ...`) and to be passed to groupby. It's probably best to pass an `--index` parameter to specify what dimensions should be considered for indexing, groupby etc. : WE NOW DO THIS FOR `rime-run-timeseries`.
 
 We currently "guess" some fields (lower case, remove space and hyphen, and even rename a few). Possibly use an explicit mapping as user input for renaming to standard fields without the current guessing.
 
-I think the most efficient way forward it to [implement the data classes](#internal-classes) as they will offer a natural bridge across the methods, and make it easier to choose consistent parameters
 
 ### ADD UNIT TESTS
 ### Rename rimeX to rime
