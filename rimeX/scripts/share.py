@@ -60,7 +60,8 @@ def _get_gmt_parser(ensemble=False):
 
     group.add_argument("--magicc-files", nargs='+', help='if provided these files will be used instead if iam scenario')
 
-    group.add_argument("--no-check-single-index", action='store_false', dest='check_single_index', help=argparse.SUPPRESS)
+    # group.add_argument("--no-check-single-index", action='store_false', dest='check_single_index', help=argparse.SUPPRESS)
+    group.add_argument("--check-single-index", action='store_true', dest='check_single_index', help=argparse.SUPPRESS)
 
     if "pyam" not in [a.dest for a in parser._actions]:
         parser.add_argument("--pyam", action="store_true", help='use pyam instead of own wrapper')
@@ -108,12 +109,7 @@ def _get_gmt_dataframe(o, parser):
             logger.warning(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=iamdf_filtered.year[0]).as_pandas())}")
             # parser.exit(1)
 
-    df = iamdf_filtered.as_pandas()
-    df2 = df.drop_duplicates()
-    if len(df2) < len(df):
-        logger.warning(f"Drop duplicates: GMT size {len(df)} => {len(df2)}")
-        df = df2
-    return df
+    return iamdf_filtered.as_pandas()
 
 
 def _get_gmt_ensemble(o, parser):

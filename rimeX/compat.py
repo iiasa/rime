@@ -17,12 +17,15 @@ def read_table(file, backend=None, index=None, **kwargs):
             # Also consider the "meta" columns, similarly to pyam
             if "meta" in xls.sheet_names:
                 meta = pd.read_excel(xls, "meta", **kwargs)
-                idx_cols = [c for c in FastIamDataFrame(df, index=index)._index_names if c in meta.columns]
+                # idx_cols = [c for c in FastIamDataFrame(df, index=index)._index_names if c in meta.columns]
+                idx_cols = [c for c in df.columns if c in meta.columns]
                 logger.info(f"Join meta based on index {idx_cols}")
                 meta = meta.set_index(idx_cols)
-                df2 = df.set_index(idx_cols)
-                # put meta names first to keep the years at the end
-                df = df2.join(meta.loc[df2.index])[list(meta.columns) + list(df2.columns)].reset_index()
+                df = df.set_index(idx_cols)
+                nlen = len(df)
+                df = pd.concat([meta.loc[df.index], df], axis=1).reset_index()
+                assert len(df) == nlen, 'an issue arose during merging metadata'
+
 
     elif backend == "parquet" or str(file).endswith((".parquet")):
         df = pd.read_parquet(file, **kwargs)
