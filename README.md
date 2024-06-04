@@ -275,6 +275,10 @@ The default step for warming level interpolation is 0.1 degC. This is fine for a
 
 	 $ rime-run-timeseries [...] --interp-warming-levels --warming-level-step 0.01
 
+Or preferably used the [vectorized](#vectorize) form:
+
+	 $ rime-run-timeseries [...] --vectorize
+
 
 ![](notebooks/images/warming_level_step.png)
 
