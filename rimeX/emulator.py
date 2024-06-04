@@ -50,11 +50,9 @@ def weighted_quantiles(values, weights, quantiles=0.5, interpolate=True):
         return sorted_values[np.searchsorted(Sn, np.asarray(quantiles) * Sn[-1])]
 
 
-def deterministic_resampling(values, size, weights=None, rng=None, axis=None):
+def deterministic_resampling(values, size, weights=None, rng=None, axis=None, shuffle=True):
     """ Deterministic resampling of real-numbered values, with interpolation allowed
     """
-    if rng is None:
-        rng = np.random.default_rng()
 
     step = 1/size
     quantiles = np.linspace(step/2, 1-step/2, num=size)
@@ -65,13 +63,20 @@ def deterministic_resampling(values, size, weights=None, rng=None, axis=None):
     else:
         resampled = weighted_quantiles(values, weights, quantiles)
 
-    rng.shuffle(resampled)
+    if shuffle:
+        if rng is None:
+            rng = np.random.default_rng()
+        rng.shuffle(resampled)
+
     return resampled
 
 
-def vectorize_impact_values(binned_isimip_data, samples, warming_levels, rng=None):
+def vectorize_impact_values(binned_isimip_data, samples, warming_levels, rng=None, shuffle=False):
     impacts = np.empty(shape=(samples, warming_levels.size))
     impacts.fill(np.nan)
+
+    if rng is None and shuffle:
+        rng = np.random.default_rng()
 
     # Vectorize impact values
     logger.info(f"Re-sample impact values (samples={samples})")
@@ -81,7 +86,25 @@ def vectorize_impact_values(binned_isimip_data, samples, warming_levels, rng=Non
         values, weights = np.array([[r['value'], r.get('weight', 1)] for r in group]).T
         weights /= weights.sum() # normalize weights within group
         # deterministic resampling and reshuffling
-        impacts[:, i] = deterministic_resampling(values, size=samples, weights=weights, rng=rng)
+        impacts[:, i] = deterministic_resampling(values, size=samples, weights=weights, rng=rng, shuffle=shuffle)
+
+    return impacts
+
+
+def vectorize_impact_values_with_year(binned_isimip_data, samples, warming_levels, years, rng=None, shuffle=False):
+    impacts = np.empty(shape=(samples, warming_levels.size, years.size))
+    impacts.fill(np.nan)
+
+    # Vectorize impact values
+    logger.info(f"Re-sample impact values (samples={samples})")
+    key_wl = lambda r: (r['warming_level'], r['year'])
+    for (wl, year), group in groupby(sorted(binned_isimip_data, key=key_wl), key=key_wl):
+        i = np.searchsorted(warming_levels, wl)
+        j = np.searchsorted(years, year)
+        values, weights = np.array([[r['value'], r.get('weight', 1)] for r in group]).T
+        weights /= weights.sum() # normalize weights within group
+        # deterministic resampling and reshuffling
+        impacts[:, i, j] = deterministic_resampling(values, size=samples, weights=weights, rng=rng, shuffle=shuffle)
 
     return impacts
 
@@ -92,7 +115,8 @@ def digitize_gmt(gmt_ensemble, warming_levels):
     return np.digitize(gmt_ensemble, bins)
 
 
-def recombine_gmt_vectorized(binned_isimip_data, gmt_ensemble, quantile_levels, samples=5000, seed=None):
+def recombine_gmt_vectorized(binned_isimip_data, gmt_ensemble, samples=5000, seed=None, 
+    match_year=False, interp=True, interp_method="linear", interp_bounds_error=False, shuffle_impacts=False):
     """Take binned ISIMIP data and GMT time-series as input and  returns quantiles as output
 
     This method uses Monte Carlo sampling.
@@ -101,11 +125,26 @@ def recombine_gmt_vectorized(binned_isimip_data, gmt_ensemble, quantile_levels, 
     ----------
     binned_isimip_data : list of records with fields {"value": ..., "warming_level": ...}
     gmt_ensemble : pandas DataFrame with years as index and ensemble members as columns (warming since P.I.)
-    quantile_levels : quantiles to include in the output, default from config.toml files
+    samples: int, optional
+        Number of samples. 5000 by default
+    seed: random speed for resampling GSAT values
+    match_year: match GMT and impact's year dimension
+    interp : bool, optional (default to True)
+        if True, use RegularGridInterpolator
+    interp_method: passed as RegularGridInterpolator's method parameter (default to linear)
+    interp_bounds_error: passed as RegularGridInterpolator's bounds_error parameter (default to False)
+    shuffle_impacts: bool, optional (default to False)
+        if False, the `sample` dimension of the vectorized impact matrix is sorted in increasing order (the default)
+        With linear interpolation, shuffling the impact data results in spurious autocorrelation 
+        (at least when a single GSAT curve is used), because the temperature forcing remains within an 
+        interpolation bin for a few years. It must be left to False. As long as the temperature data is
+        shuffled (for a GSAT ensemble), the resulting statistics should remain valid. 
+        (note the samples in the results will be correlated with the impact !)
+        
 
     Returns
     -------
-    quantiles : pandas DataFrame (years as index, quantiles as columns)
+    results : pandas DataFrame (years as index, samples as columns)
 
     Note
     ----
@@ -116,7 +155,11 @@ def recombine_gmt_vectorized(binned_isimip_data, gmt_ensemble, quantile_levels, 
     # bins for digitization
     warming_levels = np.sort(np.fromiter(set(r['warming_level'] for r in binned_isimip_data), float))
 
-    impacts_resampled = vectorize_impact_values(binned_isimip_data, samples=samples, rng=rng, warming_levels=warming_levels)
+    if match_year:
+        years = np.sort(np.fromiter(set(r['year'] for r in binned_isimip_data), int))
+        impacts_resampled = vectorize_impact_values_with_year(binned_isimip_data, samples=samples, rng=rng, warming_levels=warming_levels, years=years, shuffle=shuffle_impacts)
+    else:
+        impacts_resampled = vectorize_impact_values(binned_isimip_data, samples=samples, rng=rng, warming_levels=warming_levels, shuffle=shuffle_impacts)
 
     gmt_years = np.floor(gmt_ensemble.index.values).astype(int)
     gmt_ensemble = gmt_ensemble.values
@@ -127,22 +170,38 @@ def recombine_gmt_vectorized(binned_isimip_data, gmt_ensemble, quantile_levels, 
     # gmt_ensemble = gmt_ensemble[:, resample_gmt_idx] # climate
     gmt_ensemble = deterministic_resampling(gmt_ensemble, size=samples, rng=rng, axis=1)
 
-    # Digitize GMT
-    # 0 means first warming level or less
-    # bins.size = warming_level.size - 1  means last  warming level or more
-    # bins can be irregularly spaced, that's OK (e.g. holes in the data)
-    logger.info("Digitize GMT")
-    bins = warming_levels[1:] - np.diff(warming_levels)/2  
-    indices = np.digitize(gmt_ensemble, bins)
+    # Bypass the need to interpolate across warming levels
+    # Note the linear interpolation methods with RegularGridInterpolator does not work if shuffling is enabled on impact data.
+    # (see docstring)
+    # That should not be a problem as long as GSAT is shuffled. 
+    # We use samples as index to leveral numpy's smart indexing and obtain a result with shape `samples x time` 
+    # (this is unrelated to the shuffling issue)
+    if interp:
+        from scipy.interpolate import RegularGridInterpolator
+        if match_year:
+            interpolator = RegularGridInterpolator((np.arange(samples), warming_levels, years), impacts_resampled,
+                bounds_error=interp_bounds_error, method=interp_method)
+            results = interpolator((np.arange(samples)[None, :], gmt_ensemble.T, gmt_years[:, None]))
+        else:
+            interpolator = RegularGridInterpolator((np.arange(samples), warming_levels), impacts_resampled,
+                bounds_error=interp_bounds_error, method=interp_method)
+            results = interpolator((np.arange(samples)[None, :], gmt_ensemble.T))
 
-    allvalues = impacts_resampled[np.arange(samples), indices.T]
+    else:
+        assert not match_year, 'match_year=True is only implemented with interp=True'
 
-    badvalues = np.isnan(allvalues)
-    if badvalues.any():
-        logger.warning("Some NaNs found: intermediate ")
+        # Digitize GMT
+        # 0 means first warming level or less
+        # bins.size = warming_level.size - 1  means last  warming level or more
+        # bins can be irregularly spaced, that's OK (e.g. holes in the data)
+        logger.info("Digitize GMT")
+        bins = warming_levels[1:] - np.diff(warming_levels)/2  
+        indices = np.digitize(gmt_ensemble, bins)
 
-    quantiles = np.percentile(allvalues, np.array(quantile_levels)*100, axis=1).T
-    return pd.DataFrame(quantiles, index=gmt_years, columns=quantile_levels)
+        results = impacts_resampled[np.arange(samples), indices.T]
+
+
+    return pd.DataFrame(results, index=pd.Index(gmt_years, name='year'))
 
 
 def recombine_gmt_ensemble(impact_data, gmt_ensemble, quantile_levels, match_year=False):

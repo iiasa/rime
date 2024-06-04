@@ -146,7 +146,7 @@ It operates on list of records that are grouped in various ways, rather than on 
 At the moment it accepts a single impact indicator and temperature pathway. Any remaining dimension will contribute to the uncertainty 
 estimate. More in-depth description of the underlying assumption will be provided in Schwind et al (2024, in prep).
 
-In essence, the main difference between `run-timeseries` and `run-table` is that the latter is structured (DataFrame -> DataArray -> ND numpy index) and the former is unstructured (list of records with `groupby`). The structured version can lead to speed for certain data forms, and allows on-the-fly interpolation without any preliminary data transformation (this is the main speed-up gain).
+In essence, the main difference between `run-timeseries` and `run-table` is that the latter is structured (DataFrame -> DataArray -> ND numpy index) and the former is unstructured (list of records with `groupby`). The structured version can lead to speed for certain data forms, and allows on-the-fly interpolation without any preliminary data transformation (this is the main speed-up gain). See also the `--vectorize` option with [vectorize][#vectorize].
 
 A few practical differences, that will be examplified below:
 
@@ -168,25 +168,25 @@ First let's define the common part to all commands below:
 
 - Median GSAT and single impact model and scenario:
 
-		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_ts-0p01.csv --pool midyear --interp-warming-levels
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_ts.csv
 
 		rime-run-table $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_table.csv --pool midyear --ignore-ssp
 
 - Median GSAT and all impact models and scenarios:
 
-		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_ts-0p01.csv --pool midyear --interp-warming-levels
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_ts.csv
 	
 		rime-run-table $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_table.csv  --ignore-ssp
 
 - Resampled GSAT and single impact model and scenario:
 
-		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_resampled_one_ts-0p01.csv --pool midyear --interp-warming-levels
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_resampled_one_ts.csv
 	
 		rime-run-table $COMMON --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_quantile_one_table.csv --ignore-ssp
 
 - Resampled GSAT and all impact model and scenario:
 
-		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 -o rimeX_ITA_resampled_all_ts-0p01.csv --pool midyear --interp-warming-levels
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 -o rimeX_ITA_resampled_all_ts.csv
 	
 		rime-run-table $COMMON --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_quantile_all_table.csv --ignore-ssp
 
@@ -196,15 +196,40 @@ And here the results:
 ![](notebooks/images/comparison_table.png)
 
 
+Now let's see what happen when we interpolate the impact results to have finer warming levels:
+
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_ts.csv --pool midyear --interp-warming-levels
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_ts.csv --pool midyear --interp-warming-levels
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_resampled_one_ts.csv --pool midyear --interp-warming-levels
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 -o rimeX_ITA_resampled_all_ts.csv --pool midyear --interp-warming-levels
+
+
+![](notebooks/images/comparison_table_interp.png)
+
+
+Finally, we compare with the `vectorized` version (see [vectorize](#vectorize)), which involves deterministic resampling of the impact data and temperature forcing, and can also use scipy interpolator to bypass the need for interpolating records:
+
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585  -o rimeX_ITA_median_one_ts.csv --vectorize --sample 1000
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_ts.csv --vectorize --sample 1000
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_resampled_one_ts.csv --vectorize --sample 1000
+		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 -o rimeX_ITA_resampled_all_ts.csv --vectorize --sample 1000
+
+
+![](notebooks/images/comparison_table_vectorized.png)
+
+
 Some comments:
 
 - the `rime-run-table` script requires `--ignore-ssp` so that it does not attempt to match GSAT `ssp-family` with the impact table's SSP family (this must be done on-request in `rime-run-timeseries`)
 
 - the `rime-run-timeseries` script uses `--interp-warming-levels` to interpolate the impact table prior to binning (default step of 0.01 deg. C), for a smoother result (this is done by default in `rime-run-table` since it relies on `scipy.interpolate.RegularGridInterpolator`).
 
-- The resamples GSAT (almost) perfectly covers the `table` version, as desired
+- The resamples GSAT (almost) perfectly covers the `table` version, as desired (especially with interpolation)
 
 - The `rime-run-table` version (single, dashed color lines) is an outer product of all GSAT (whichever quantiles are present) and `impacts`. Each line represents a different combination of impact `model, scenario` pair and `gsat_quantile`. In contrast the `rune-run-timeseries` version combines those into bins.
+
+- The `--vectorize` flag involves resampling. By default 1000 samples are used. Since the resampling is deterministic (the data is resampled according to a weighted quantiles method), few samples are enough. (Randomness only plays a role when shuffling GSAT forcing data after resampling.)
+
 
 See also the [todos](#todo) below.
 
@@ -264,12 +289,27 @@ The time-step is normally set by the input GSAT data file, but it can be subsamp
 ![](notebooks/images/time_step.png)
 
 
+### Vectorize
+
+Vectorization uses `rimeX.emulator.recombine_gmt_vectorized`. This is a different method from the default `rimeX.emulator.recombine_gmt_ensembe` . It first packs the impact records in a table form by resampling them, and then uses `RegularGridInterpolator` to combine with GMT, thus bypassing the need for preliminary interpolation. 
+Here a matrix of samples is returned, instead of quantiles, thus allowing probabilistic uses. 
+Note for some applications the result
+may need to be reshuffled, because the sample number is correlated to the impact, by construction.
+I checked that with 1000 samples it is faster than first interpolating the records and then calling `recombine_gmt_ensemble`, and also smoother.
+
+Probably in the future the vectorized form will be used as default when interpolation is required.
+
+
 ### Python API
 
 The python API is currently unstable and will be documented in the future.
 
 For now, the inner working consists in a set of functions to transform a list of records. By records, I mean dictionaries as the result of `pandas.DataFrame.to_dict('records')`, where each dict record corresponds to a row in a long pandas DataFrame. 
-There are functions to interpolate the records w.r.t warming levels or years, average across scenarios, etc. These functions can be found in the `rimeX.records` module. The emulator itself, to combine GSAT and impact data, is present in the `rimeX.emulator` module (`rime-run-timeseries` relies on `recombine_gmt_ensemble`, whereas `rime-run-table` relies on `recombine_gmt_table`).
+There are functions to interpolate the records w.r.t warming levels or years, average across scenarios, etc. These functions can be found in the `rimeX.records` module. The emulator itself, to combine GSAT and impact data, is present in the `rimeX.emulator` module (`rime-run-timeseries` relies on `recombine_gmt_ensemble` or `recombine_gmt_vectorized`, whereas `rime-run-table` relies on `recombine_gmt_table`).
+
+Note the scripts are located in `rimeX.scripts` and can also be run in the notebook via module import for easier debugging (note the `--` separator to pass arguments to the module's `main()`, and not to `%run`):
+- `rime-run-timeseries` as `%run -m rimeX.scripts.timeseries --` 
+- `rime-run-table` as `%run -m rimeX.scripts.table --` 
 
 Check out [the TODO internal classes](#internal-classes) section for an insight where it might be going.
 
@@ -286,7 +326,7 @@ By default, ISIMIP3b data are used, but that can be changed to ISIMIP2b via the 
 
 ## TODO
 
-### Internal classes
+### Internal classes (maybe ...)
 
 A prospective API would be a set of classes with methods, some of which would be shared across `rime-run-timeseries` and `rime-run-table`. The proposal below has a focus on the internal data structure.
 

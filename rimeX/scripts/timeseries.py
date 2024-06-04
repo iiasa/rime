@@ -16,7 +16,7 @@ from rimeX.records import (
     pool_dims, drop_dims,
     )
 
-from rimeX.emulator import recombine_gmt_ensemble
+from rimeX.emulator import recombine_gmt_ensemble, recombine_gmt_vectorized
 from rimeX.compat import _simplify, FastIamDataFrame
 
 from rimeX.scripts.share import (
@@ -61,6 +61,9 @@ If this behavior is not desired, input --average several times""")
     group.add_argument("--equiprobable-dims", nargs='+', type=_simplify,
         help="Make sure weights within a group are equal, e.g --equiprobable model. By default special dimensions like `variable`, `region` and `warming_level` are added to the group specifiers.")
     group.add_argument("--match-year-population", action="store_true")
+    group.add_argument("--vectorize", action="store_true", help="Monte Carlo resampling (with on-the-fly interpolation) (EXPERIMENTAL)")
+    group.add_argument("--samples", type=int, default=1000, help="Number of samples with --vectorize is set")
+    group.add_argument("--seed", type=int, help='random seed')
     # group.add_argument("--method", default="ensemble", choices=["ensemble", "table"])
 
     group = parser.add_argument_group('Result')
@@ -186,7 +189,16 @@ If this behavior is not desired, input --average several times""")
     logger.debug(f"Impact data prior binning via warming_level / year:\n{FastIamDataFrame(pd.DataFrame(impact_data_records), index=check_index)}")
 
     # Recombine GMT ensemble with binned ISIMIP data
-    quantiles = recombine_gmt_ensemble(impact_data_records, gmt_ensemble, o.quantiles, match_year=o.match_year_population)
+    if o.vectorize:
+        results = recombine_gmt_vectorized(impact_data_records, gmt_ensemble, 
+            interp=True, match_year=o.match_year_population, samples=o.samples, seed=o.seed)
+
+        quantiles = results.quantile(o.quantiles, axis=1).T
+        # quantiles = np.percentile(results, np.array(quantile_levels)*100, axis=1).T
+        # return pd.DataFrame(quantiles, index=gmt_years, columns=quantile_levels)
+
+    else:
+        quantiles = recombine_gmt_ensemble(impact_data_records, gmt_ensemble, o.quantiles, match_year=o.match_year_population)
 
     # GMT result to disk
     logger.info(f"Write output to {o.output_file}")
