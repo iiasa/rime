@@ -112,6 +112,19 @@ And for plotting the results, e.g.:
 	results[(results.variable == variable) & (results.region == region)].pivot(index='year', values='value', columns=['gsat_scenario', 'gsat_model']).sort_index(axis=1).plot(ax=ax)
 
 
+## Data download
+
+A selection of datasets is made available for easy download:
+
+	$ rime-download --ls
+	Available datasets are:
+	  werning2024/table_output_avoided_impacts werning2024/table_output_climate_exposure werning2024/precipitation werning2024/temperature werning2024/air_pollution werning2024/energy werning2024/hydrology werning2024/land AR6-WG3-plots/spm-box1-fig1-warming-data.csv AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv
+
+Below a simple example using [ixmp4](https://docs.ece.iiasa.ac.at/projects/ixmp4/en/latest/data-model.html) input files from AR6 WG3 scenarios with [Werning et al 2024](https://zenodo.org/records/6496232) datasets:
+
+	$ rime-download --name AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv werning2024/table_output_climate_exposure
+
+
 ## Maps
 
 A map emulator is also available (see data download section below to obtain the data):
@@ -124,19 +137,6 @@ Here the input file is obtained via `rime-download --name werning2024/precipitat
 
 
 Note only the warming levels are considered for interpolation. It is up to the user to match the correct SSP scenario and year, if necessary, and possibly compute one year at a time if each year and impact map is mapped on a specific SSP scenario and population trajectory. No class is made available here as this can be realized with the xarray package, with the `DataArray.interp` method.
-
-
-## Data download
-
-A selection of datasets is made available for easy download:
-
-	$ rime-download --ls
-	Available datasets are:
-	  werning2024/table_output_avoided_impacts werning2024/table_output_climate_exposure werning2024/precipitation werning2024/temperature werning2024/air_pollution werning2024/energy werning2024/hydrology werning2024/land AR6-WG3-plots/spm-box1-fig1-warming-data.csv AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv
-
-Below a simple example using [ixmp4](https://docs.ece.iiasa.ac.at/projects/ixmp4/en/latest/data-model.html) input files from AR6 WG3 scenarios with [Werning et al 2024](https://zenodo.org/records/6496232) datasets:
-
-	$ rime-download --name AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv werning2024/table_output_climate_exposure
 
 
 ## Taking uncertainties into account
