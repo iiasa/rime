@@ -297,7 +297,7 @@ The time-step is normally set by the input GSAT data file, but it can be subsamp
 
 Vectorization uses `rimeX.emulator.recombine_gmt_vectorized`. This is a different method from the default `rimeX.emulator.recombine_gmt_ensembe` . The main is trick it does is to pack the impact records in a table form by resampling them, which involves quantile-interpolation and can be represented like this:
 
-![](notebooks/images/vectorized_imapcts.png)
+![](notebooks/images/vectorized_impacts.png)
 
 and then uses `RegularGridInterpolator` to combine with (also resampled) GMT.
 
