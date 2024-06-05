@@ -191,7 +191,7 @@ If this behavior is not desired, input --average several times""")
     # Recombine GMT ensemble with binned ISIMIP data
     if o.vectorize:
         results = recombine_gmt_vectorized(impact_data_records, gmt_ensemble, 
-            interp=True, match_year=o.match_year_population, samples=o.samples, seed=o.seed)
+            match_year=o.match_year_population, samples=o.samples, seed=o.seed)
 
         quantiles = results.quantile(o.quantiles, axis=1).T
         # quantiles = np.percentile(results, np.array(quantile_levels)*100, axis=1).T

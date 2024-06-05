@@ -146,7 +146,7 @@ def average_per_group(records, by, keep_meta=True):
         if keep_meta: 
             group = list(group)
             first_record = group[0]
-            meta = {k:v for k, v in first_record.items() if k not in ["value", "midyear", "weights"]}
+            meta = {k:','.join(sorted(set(str(r.get(k)) for r in group))) for k in first_record.keys() if k not in ["value", "midyear", "weights"]}
         else:
             meta = {k:v for k,v in zip(by, key)}
         years, values, weights = np.array([[r["midyear"], r["value"], r.get("weight", 1)] for r in group]).T

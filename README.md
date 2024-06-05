@@ -291,13 +291,23 @@ The time-step is normally set by the input GSAT data file, but it can be subsamp
 
 ### Vectorize
 
-Vectorization uses `rimeX.emulator.recombine_gmt_vectorized`. This is a different method from the default `rimeX.emulator.recombine_gmt_ensembe` . It first packs the impact records in a table form by resampling them, and then uses `RegularGridInterpolator` to combine with GMT, thus bypassing the need for preliminary interpolation. 
-Here a matrix of samples is returned, instead of quantiles, thus allowing probabilistic uses. 
-Note for some applications the result
-may need to be reshuffled, because the sample number is correlated to the impact, by construction.
+Vectorization uses `rimeX.emulator.recombine_gmt_vectorized`. This is a different method from the default `rimeX.emulator.recombine_gmt_ensembe` . The main is trick it does is to pack the impact records in a table form by resampling them, which involves quantile-interpolation and can be represented like this:
+
+![](notebooks/images/vectorized_imapcts.png)
+
+and then uses `RegularGridInterpolator` to combine with (also resampled) GMT.
+
+Here a matrix of samples is returned, instead of quantiles, thus allowing probabilistic uses (with 100 samples below):
+
+![](notebooks/images/probabilistic_forecast.png)
+
+Note for some applications the result may need to be reshuffled, because the sample number is correlated to the impact, by construction.
+
 I checked that with 1000 samples it is faster than first interpolating the records and then calling `recombine_gmt_ensemble`, and also smoother.
 
-Probably in the future the vectorized form will be used as default when interpolation is required.
+A hand-on example is provided in the readme notebook.
+
+Probably in the future the vectorized form will be used as default with `rime-run-timseries`.
 
 
 ### Python API
