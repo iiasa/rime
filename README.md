@@ -127,7 +127,7 @@ Below a simple example using [ixmp4](https://docs.ece.iiasa.ac.at/projects/ixmp4
 
 ## Maps
 
-A map emulator is also available (see data download section below to obtain the data):
+A map emulator is also available (see data download section to obtain the data):
 
 	$ rime-run-map --gsat-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --gsat-filter category_show_lhs=C8 quantile=0.5 -i "werning2024/*/cse_cdd_ssp2_*_abs.nc4" -v cdd --gwl-dim threshold -o maps.nc --year 2020 2050 2070 -O --bbox -10 20 35 50
 
