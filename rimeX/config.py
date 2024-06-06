@@ -17,13 +17,21 @@ DEFAULT_CONFIG_FILE = Path(__file__).parent/"config.toml"
 DEFAULT_CONFIG = load_config(DEFAULT_CONFIG_FILE)
 CONFIG = DEFAULT_CONFIG.copy()
 
+# Sources: 
+# https://stackoverflow.com/questions/305647/appropriate-location-for-my-applications-cache-on-windows
+# https://stackoverflow.com/questions/1325581/how-do-i-check-if-im-running-on-windows-in-python
+if os.name == 'nt':
+    APPDATA = Path(os.getenv("ALLUSERSPROFILE")) / rimeX.__name__
+    CACHE_FOLDER = APPDATA / "data_download"
+    GLOBAL_CONFIG_FILE = APPDATA / (rimeX.__name__ + ".toml")
+    
 # Source: https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
-_HOME = os.getenv("HOME")
-_CACHE_FOLDER_SYSTEM = os.getenv("XDG_CACHE_HOME", os.path.join(_HOME, ".cache"))
-CACHE_FOLDER = Path(_CACHE_FOLDER_SYSTEM) / rimeX.__name__
-
-_CONFIG_FOLDER_SYSTEM = os.getenv("XDG_CONFIG_HOME", os.path.join(_HOME, ".config"))
-GLOBAL_CONFIG_FILE = Path(_CONFIG_FOLDER_SYSTEM) / (rimeX.__name__ + ".toml")
+else:
+    _HOME = os.getenv("HOME")
+    _CACHE_FOLDER_SYSTEM = os.getenv("XDG_CACHE_HOME", os.path.join(_HOME, ".cache"))
+    CACHE_FOLDER = Path(_CACHE_FOLDER_SYSTEM) / rimeX.__name__
+    _CONFIG_FOLDER_SYSTEM = os.getenv("XDG_CONFIG_HOME", os.path.join(_HOME, ".config"))
+    GLOBAL_CONFIG_FILE = Path(_CONFIG_FOLDER_SYSTEM) / (rimeX.__name__ + ".toml")
 
 def search_default_config():
     # seach current working directory
