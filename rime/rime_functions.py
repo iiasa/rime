@@ -99,7 +99,8 @@ def loop_interpolate_gwl(df, yr_start, yr_end, interval=50, gmt_out_resolution=0
                     
                     df_ind = pd.concat([df_ind, dfs])
 
-    df_ind.drop(columns='gmt')
+    if 'gmt' in df_ind.columns:
+        df_ind.drop(columns='gmt')
     return df_ind
 
 
