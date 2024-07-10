@@ -804,6 +804,7 @@ def plot_maps_dashboard(
         Continuous colormap from matplotlib.pyplot. The default is 'magma_r'.
     shared_axes : boolean, optional
         Whether zoom control automatically controls all axes. The default is True.
+    clim : # not implemented yet!
     coastline : boolean, optional
         Show the coastlines on the map using Cartopy features. The default is True.
     crs : str, cartopy.Proj or pyproj.CRS, optional
@@ -873,26 +874,29 @@ def plot_maps_dashboard(
             coastline=coastline,
             crs=crs,
             features=features,
+            # check / add clim or vmin/vmax here
         )
         plot_list = plot_list + [new_plot]
 
     plot = hv.Layout(plot_list).cols(3)
 
+    # Mode 1 - one model-scenario, multiple indicators
     if ("model" in ds.attrs.keys()) and ("scenario" in ds.attrs.keys()):
         model = ds.attrs["model"]
         scenario = ds.attrs["scenario"]
         title_2 = f": {model}, {scenario}"
 
+    # Mode 2 - one indicator, multiple models/scenarios as the "variables"
     else:
-        title_2 = f": {i}"
+        title_2 = f" {i}" # not sure if this works.
 
         
     if isinstance(layout_title, type(str)) == False:
-        layout_title = f"Climate impacts in {year} {title_2}"
+        layout_title = f"Climate impacts in {year}: {title_2}"
 
     plot.opts(title=layout_title)
 
-    # Plot - check filename
+    # Plot - check filename - update below for mode 1/2
     if isinstance(filename, type(None)):
         filename = f"maps_dashboard_{model}_{scenario}.html"
 
