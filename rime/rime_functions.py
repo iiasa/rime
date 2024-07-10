@@ -881,13 +881,14 @@ def plot_maps_dashboard(
     if ("model" in ds.attrs.keys()) and ("scenario" in ds.attrs.keys()):
         model = ds.attrs["model"]
         scenario = ds.attrs["scenario"]
-        # layout title
+        title_2 = f": {model}, {scenario}"
 
     else:
-        model = "unknown"
-        scenario = "scenario"
+        title_2 = f": {i}"
+
+        
     if isinstance(layout_title, type(str)) == False:
-        layout_title = f"Climate impacts in {year} ({model}, {scenario})"
+        layout_title = f"Climate impacts in {year} {title_2}"
 
     plot.opts(title=layout_title)
 
