@@ -804,7 +804,9 @@ def plot_maps_dashboard(
         Continuous colormap from matplotlib.pyplot. The default is 'magma_r'.
     shared_axes : boolean, optional
         Whether zoom control automatically controls all axes. The default is True.
-    clim : # not implemented yet!
+    clim : list, optional
+        A list specifying the min and max value to be used for the plots. If not specified, min and max
+        values are calculated from the input data.
     coastline : boolean, optional
         Show the coastlines on the map using Cartopy features. The default is True.
     crs : str, cartopy.Proj or pyproj.CRS, optional
@@ -859,6 +861,10 @@ def plot_maps_dashboard(
             import cartopy
         except:
             print("Error importing Cartopy")
+    
+    # Set min and max for colour maps
+    clim_min = ds.where(ds != 999.0).to_array('scenario').min().round() if not clim else clim[0]
+    clim_max = ds.where(ds != 999.0).to_array('scenario').max().round() if not clim else clim[1]
 
     plot_list = []
 
@@ -874,6 +880,7 @@ def plot_maps_dashboard(
             coastline=coastline,
             crs=crs,
             features=features,
+            clim=(clim_min, clim_max),
             # check / add clim or vmin/vmax here
         )
         plot_list = plot_list + [new_plot]
