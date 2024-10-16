@@ -1,9 +1,10 @@
 import numpy as np
 import scipy.stats as stat
+from scipy.optimize import minimize
 
-def fit_dist(values, quants=None, dist_name=None, threshold=0.55):
-    if quants is not None:
-        assert quants == [50, 5, 95]
+def fit_dist(values, quantiles=None, dist_name=None, threshold=0.55):
+    if quantiles is not None:
+        assert quantiles == [.5, .05, .95]
     mid, lo, hi = values
 
     if dist_name == "auto":
@@ -44,6 +45,31 @@ def fit_dist(values, quants=None, dist_name=None, threshold=0.55):
 
     else:
         raise NotImplementedError(dist_name)
+
+
+def fit_dist_minimize(data_points, quantiles, dist):
+    # Define the objective function
+    def objective(params):
+        # dist_quantiles = dist.ppf(*params, np.array(quantiles))
+        dist_quantiles = dist(*params).ppf(quantiles)
+        if np.any(np.isnan(dist_quantiles)):
+            return np.inf
+        # print("params", params, "dist_quantiles", dist_quantiles)
+        return np.sum((dist_quantiles - data_points) ** 2)
+
+    # Initial guess for the parameters
+    initial_params = dist.fit(data_points)
+    # print("initial_params", initial_params)
+
+    # Optimize the parameters
+    # result = minimize(objective, initial_params, method='L-BFGS-B')
+    result = minimize(objective, initial_params)
+
+    if not result.success:
+        raise RuntimeError("Optimization failed")
+
+    # Return the fitted distribution
+    return dist(*result.x)
 
 
 def repr_dist(dist):
