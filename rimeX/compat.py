@@ -81,7 +81,9 @@ def print_list(x, n):
 
 
 def _simplify(name):
-    name = name.replace("_","").replace("-","").lower()
+    if type(name) is not str:
+        return str(name)
+    name = name.replace("_","").replace("-","").replace(".", "").lower()
     if name in ("warminglevel", "gwl", "gmt"):
         name = "warming_level"
     elif name in ("sspfamily", "ssp"):
@@ -157,10 +159,10 @@ def homogenize_table_names(df):
 
     names = df.columns
 
-    # ADD 'warming_level' threshold if absent. For now assume scenarios like ssp1_2p0 ==> warming level = 2.0 
+    # ADD 'warming_level' threshold if absent. For now assume scenarios like ssp1_2p0 ==> warming level = 2.0
     # ...also replace scenario with the ssp scenario only
     if "warming_level" not in names:
-        assert 'scenario' in names, "Input table must contain `warming_level` or a `scenario` column of the form `ssp1_2p0`"        
+        assert 'scenario' in names, "Input table must contain `warming_level` or a `scenario` column of the form `ssp1_2p0`"
         df['warming_level'], df['scenario'] = _parse_warming_level_and_ssp(df["scenario"].values)
 
     # # Also add missing fields that are not actually mandatory but expected in various subfunctions
@@ -175,7 +177,7 @@ class FastIamDataFrame:
     """Inspired by pyam's IamDataFrame but faster
 
     - accept a pandas DataFrame as input parameter
-    - read via FastIamDataFrame.load method 
+    - read via FastIamDataFrame.load method
     - keeps wide format in memory
     - convert to long with as_pandas()
 
@@ -332,7 +334,7 @@ class FastIamDataFrame:
         ----------
         n : int
             The maximum line length
-        
+
         Source
         ------
         This is adapted from pyam's IamDataFrame's info method
@@ -351,7 +353,7 @@ class FastIamDataFrame:
 
         if self.is_wide():
             info += "\nYear in columns:\n"
-            info += f" * {'year':{c1}}: {print_list(self.year, c2)}"          
+            info += f" * {'year':{c1}}: {print_list(self.year, c2)}"
 
         # concatenate list of index of _data (not in index.names)
         if len([i for i in self.dimensions if i not in self.index.names]):
@@ -404,7 +406,7 @@ def _get_custom_filters(groups, mapping=None):
 
 
 
-def load_file(file, and_filters={}, or_filters=[], index=None, 
+def load_file(file, and_filters={}, or_filters=[], index=None,
     choices=None, rename=True, pyam=False):
     """Load data files in table form (primarily for command-line use)
 
@@ -413,11 +415,11 @@ def load_file(file, and_filters={}, or_filters=[], index=None,
     file: path to an existing file (read directly)
 
     and_filter: dictionary of key-word arguments to filter the loaded dataframe
-        e.g. model, scenario or else. Both the key-word arguments and the loaded 
-        dataframe will have their variable names simplified before application 
+        e.g. model, scenario or else. Both the key-word arguments and the loaded
+        dataframe will have their variable names simplified before application
         (lower-case, hypthen, space and underscore removed; some fields renamed e.g. experiment -> scenario)
 
-    or_filter: list of dictionaries of key-word arguments that will be joined together 
+    or_filter: list of dictionaries of key-word arguments that will be joined together
 
     index: if provided, identify the fields from input dataset that identify a unique key
         otherwise, the keys in "choices" are tried
@@ -492,7 +494,7 @@ def load_files(files, pyam=False, **kwargs):
 
     Parameters for command-line
     ----------
-    files: list 
+    files: list
         each file can be either an existing file on disk, or a glob* pattern within the dataset folder (via get_datapath)
     **kwargs: key-word arguments (to load_file use)
 
