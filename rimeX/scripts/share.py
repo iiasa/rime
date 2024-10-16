@@ -18,6 +18,16 @@ from rimeX.datasets import get_datapath
 from rimeX.records import QUANTILES_MAP, _sort_out_quantiles
 from rimeX.stats import fit_dist, repr_dist
 
+def load_magicc_ensemble(file, projection_baseline=None, projection_baseline_offset=None):
+    df = pd.read_csv(file, sep="\s+")
+    if projection_baseline is not None:
+        y1, y2 = projection_baseline
+        df -= df.loc[y1:y2].mean()
+
+        if projection_baseline_offset is not None:
+            df += projection_baseline_offset
+
+    return df
 
 def validate_iam_filter(keyval):
     key, val = keyval.split("=")
@@ -72,7 +82,7 @@ def _get_gmt_parser(ensemble=False):
     if not ensemble:
         for action in group._actions:
             action.help = argparse.SUPPRESS
-        
+
     return parser
 
 
@@ -83,10 +93,10 @@ def _get_gmt_dataframe(o, parser):
     if not o.gsat_file:
         parser.error("Need to indicate MAGICC or IAM data file --gsat-file")
         parser.exit(1)
-            
+
     iamdf_filtered = load_files(o.gsat_file, and_filters={
-        "variable":o.gsat_variable, 
-        "model": o.gsat_model, 
+        "variable":o.gsat_variable,
+        "model": o.gsat_model,
         "scenario": o.gsat_scenario
         }, or_filters=o.gsat_filter,
         index=o.gsat_index)
@@ -137,7 +147,7 @@ def _get_gmt_ensemble(o, parser):
             if len(df) != len(df.year.unique())*3:
                 logger.error(f"Number of entries expected: 3 * years. Got {len(df)} entries and {len(df.year.unique())} years.")
                 logger.error(f"E.g. entries for first year:\n{str(iamdf_filtered.filter(year=df.year[0]).as_pandas())}")
-                parser.exit(1)                
+                parser.exit(1)
 
             try:
                 sat_quantiles = _sort_out_quantiles(df.variable.unique())
@@ -167,7 +177,7 @@ def _get_gmt_ensemble(o, parser):
         else:
             # By default returns a year x warming_level matrix
             gmt_ensemble = df.pivot(index='year', values='value', columns=[c for c in df.columns if c not in ['year', 'value']])
-        
+
 
     if o.year is not None:
         gmt_ensemble = gmt_ensemble.loc[o.year]
@@ -201,7 +211,7 @@ def _get_impact_parser():
     group.add_argument("-v", "--variable", nargs="*")
     group.add_argument("--region")
     # group.add_argument("--format", default="ixmp4", choices=["ixmp4", "cie"])
-    group.add_argument("--impact-file", nargs='+', default=[], 
+    group.add_argument("--impact-file", nargs='+', default=[],
         help=f'Files such as produced by Werning et al 2014 (.csv with ixmp4 standard). Also accepted is a glob * pattern to match downloaded datasets (see also rime-download-ls).')
     group.add_argument("--impact-filter", nargs='+', metavar="KEY=VALUE", type=validate_iam_filter, default=[],
         help="other fields e.g. --impact-filter scenario='ssp2*'", action="append")
@@ -218,12 +228,12 @@ def _get_impact_parser():
 
     group = parser.add_argument_group('Impact Data Index')
     # group = parser.add_argument_group(argparse.SUPPRESS)
-    group.add_argument("--index", type=_simplify, 
+    group.add_argument("--index", type=_simplify,
         help=f"The dimensions that describe a unique sample in the impact dataset, besides `warming_level` (and if `match_year_population` is True, `year`). The dimensions not specified in the index will be pooled and will contribute to the uncertainty estimate. If the index is not specified, all but the following dimensions will be used: {CONFIG['index.ignore']}.")
     # group.add_argument("--keep-dims", type=_simplify, nargs='+', help=argparse.SUPPRESS)
     # group.add_argument("--ignore-dims", type=_simplify, nargs='+', help=f"Dimensions to drop (meta data not useful for grouping). The following will never be considered: {CONFIG['index.ignore']}")
     # group.add_argument("--meta-dims", type=_simplify, nargs='+', help=argparse.SUPPRESS)
-    # group.add_argument("--pool-name", type=_simplify, nargs='+', 
+    # group.add_argument("--pool-name", type=_simplify, nargs='+',
     #     help=argparse.SUPPRESS)
         # help="name of new pooled dimension(s) (default is sample, sample2 etc)")
 
@@ -237,8 +247,8 @@ def _get_impact_data(o, parser):
         parser.exit(1)
 
     impact_data_table = load_files(o.impact_file, and_filters={
-        "variable":o.variable, 
-        "model": o.model, 
+        "variable":o.variable,
+        "model": o.model,
         "scenario": o.scenario,
         "region": o.region,
         "subregion": o.subregion,
