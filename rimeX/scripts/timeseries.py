@@ -11,8 +11,8 @@ from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 
 from rimeX.records import (
-    make_equiprobable_groups, interpolate_years, interpolate_warming_levels, 
-    fit_records, average_per_group, 
+    make_equiprobable_groups, interpolate_years, interpolate_warming_levels,
+    fit_records, average_per_group,
     pool_dims, drop_dims,
     )
 
@@ -20,10 +20,10 @@ from rimeX.emulator import recombine_gmt_ensemble, recombine_gmt_vectorized
 from rimeX.compat import _simplify, FastIamDataFrame
 
 from rimeX.scripts.share import (
-    _get_gmt_parser, 
-    _get_impact_parser, 
-    _get_impact_data, 
-    _get_gmt_ensemble, 
+    _get_gmt_parser,
+    _get_impact_parser,
+    _get_impact_data,
+    _get_gmt_ensemble,
     )
 
 
@@ -32,24 +32,24 @@ def main(cmd=None):
     gmt_parser = _get_gmt_parser(ensemble=True)
     impact_parser = _get_impact_parser()
 
-    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, 
+    parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter,
         parents=[log_parser, config_parser, gmt_parser, impact_parser])
-    
+
     group = parser.add_argument_group('Re-indexing, Interpolation & Resampling')
-    # group.add_argument("--pool", type=_simplify, nargs='+', action="append", 
+    # group.add_argument("--pool", type=_simplify, nargs='+', action="append",
     group.add_argument("--pool", type=_simplify, nargs='+', default=[],
         help=f"Pool dimensions (ignore them in all grouping operations, just like metadata). The following will always be included: {CONFIG['index.ignore']}")
     group.add_argument("--average", nargs='+', action="append",
         help="""Average dimension(s). By default the dimension(s) are pooled before averaging.
 If this behavior is not desired, input --average several times""")
-    group.add_argument("--impact-resample", action="store_true", 
-        help="""Fit a distribution to the impact data from which to resample. 
+    group.add_argument("--impact-resample", action="store_true",
+        help="""Fit a distribution to the impact data from which to resample.
         Assumes the quantile variables are named "{NAME}|5th percentile" and "{NAME}|95th percentile".""")
-    group.add_argument("--impact-dist", default="auto", 
-        choices=["auto", "norm", "lognorm"], 
+    group.add_argument("--impact-dist", default="auto",
+        choices=["auto", "norm", "lognorm"],
         help="In auto mode, a normal or log-normal distribution will be fitted if percentiles are provided")
     group.add_argument("--impact-samples", default=100, type=int, help="Number of samples to draw if --impact-fit is set")
-    group.add_argument("--interp-warming-levels", action="store_true", 
+    group.add_argument("--interp-warming-levels", action="store_true",
         help=f"interpolate warming levels (set default step via --warming-level-step)")
     group.add_argument("--warming-level-step", type=float,
         default=CONFIG.get("emulator.warming_level_step"),
@@ -86,6 +86,7 @@ If this behavior is not desired, input --average several times""")
     gmt_ensemble = _get_gmt_ensemble(o, parser)
     impact_data_frame = _get_impact_data(o, parser)
 
+
     # Now convert into a list of records
     impact_data_records = impact_data_frame.to_dict('records')
 
@@ -104,7 +105,7 @@ If this behavior is not desired, input --average several times""")
             all_impact_dims.append("warming_level")
         if o.match_year_population and "year" not in all_impact_dims:
             logger.info("add year to index")
-            all_impact_dims.append("year")    
+            all_impact_dims.append("year")
 
     if "warming_level" not in all_impact_dims:
         raise ValueError("warming_level not found")
@@ -159,7 +160,7 @@ If this behavior is not desired, input --average several times""")
     if o.interp_years:
         dims = [c for c in all_impact_dims if c not in "year"]
         logger.info(f"Impact data: interpolate years...(group by {dims})")
-        impact_data_records = interpolate_years(impact_data_records, gmt_ensemble.index, 
+        impact_data_records = interpolate_years(impact_data_records, gmt_ensemble.index,
             by=dims)
             # by=["variable", "region", "model", "scenario", "warming_level", "sample"])
         logger.info("Impact data: interpolate years...done")
@@ -179,7 +180,7 @@ If this behavior is not desired, input --average several times""")
 
 
     # Only use future values to avoid getting in trouble with the warming levels.
-    gmt_ensemble = gmt_ensemble.loc[2015:]  
+    gmt_ensemble = gmt_ensemble.loc[2015:]
 
     assert np.isfinite(gmt_ensemble.values).all(), 'some NaN in MAGICC run'
 
@@ -190,7 +191,7 @@ If this behavior is not desired, input --average several times""")
 
     # Recombine GMT ensemble with binned ISIMIP data
     if o.vectorize:
-        results = recombine_gmt_vectorized(impact_data_records, gmt_ensemble, 
+        results = recombine_gmt_vectorized(impact_data_records, gmt_ensemble,
             match_year=o.match_year_population, samples=o.samples, seed=o.seed)
 
         quantiles = results.quantile(o.quantiles, axis=1).T
