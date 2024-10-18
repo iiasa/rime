@@ -49,7 +49,7 @@ def load_annual_values(model, experiments, variable="tas", projection_baseline=N
     return df
 
 
-def get_matching_years_by_time_bucket(model, all_annual, warming_levels, running_mean_window, projection_baseline):
+def get_matching_years_by_time_bucket(model, all_annual, warming_levels, running_mean_window, projection_baseline, selection):
 
     all_smoothed = all_annual.rolling(running_mean_window, center=True).mean()
     records = []
@@ -60,27 +60,32 @@ def get_matching_years_by_time_bucket(model, all_annual, warming_levels, running
         warming_rate = all_smoothed[experiment].diff()
         accumulated_warming = all_annual[experiment].cumsum()
         y1, y2 = projection_baseline
-        accumulated_warming -= accumulated_warming.loc[y1:y2].mean()
-
-        sort = np.argsort(smoothed.values)
-        rank = np.searchsorted(smoothed.values, warming_levels, sorter=sort)
-        bad = rank == smoothed.size
-        matching_years_idx = sort[rank[~bad]]
+        accumulated_warming -= accumulated_warming.loc[y1:y2].mean() # TODO: check
 
         # matching_years_idx = np.searchsorted(smoothed, warming_levels)
-        for idx, wl in zip(matching_years_idx, warming_levels[~bad]):
+        for wl in warming_levels:
+            step = warming_levels[1] - warming_levels[0]
+            match = (wl - step / 2 <= smoothed.values) & (smoothed.values < wl + step/2)
+
             # never reached the warming level, do not record
-            found = smoothed.values[idx]
-            if found < wl:
+            if not match.any():
                 logger.warning(f"{model} | {experiment} never reached {wl} degrees")
                 break
 
-            # also calculate mean warming during that period, for diagnostic purposes
-            value = all_annual[experiment].reindex(smoothed.index).values[idx-running_mean_window//2:idx+running_mean_window//2+1].mean()
-            acc = accumulated_warming.reindex(smoothed.index).values[idx-running_mean_window//2:idx+running_mean_window//2+1].mean()
-            rate = warming_rate.reindex(smoothed.index).values[idx-running_mean_window//2:idx+running_mean_window//2+1].mean()
-            records.append({"model": model, "experiment": experiment, "warming_level":  wl, 
-                "year": smoothed.index[idx], "actual_warming": value, "accumulated_warming": acc, "warming_rate": rate})
+            for idx in np.where(match)[0]:
+                # also calculate mean warming during that period, for diagnostic purposes
+                # value = all_annual[experiment].reindex(smoothed.index).values[idx-running_mean_window//2:idx+running_mean_window//2+1].mean()
+                value = smoothed.values[idx]
+                acc = accumulated_warming.reindex(smoothed.index).values[idx-running_mean_window//2:idx+running_mean_window//2+1].mean()
+                rate = warming_rate.reindex(smoothed.index).values[idx-running_mean_window//2:idx+running_mean_window//2+1].mean()
+                records.append({"model": model, "experiment": experiment, "warming_level":  wl,
+                    "year": smoothed.index[idx], "actual_warming": value, "accumulated_warming": acc, "warming_rate": rate})
+
+                if selection == "first":
+                    continue
+
+        else:
+            raise ValueError(f"Unknown selection method: {selection}")
 
     return records
 
@@ -102,6 +107,8 @@ def main():
     egroup.add_argument("--warming-levels", nargs='*', type=float)
 
     parser.add_argument("--running-mean-window", type=int, default=CONFIG["preprocessing.running_mean_window"])
+    parser.add_argument("--selection", choices=['first', 'all'], default=CONFIG["preprocessing.selection"])
+
     parser.add_argument("--projection-baseline", nargs=2, type=int, default=CONFIG["emulator.projection_baseline"])
     parser.add_argument("--projection-baseline-offset", type=float, default=CONFIG["emulator.projection_baseline_offset"])
 
@@ -111,6 +118,7 @@ def main():
     # parser.add_argument("-o", "--output-file", default=CONFIG["emulator.warming_level_file"])
 
     o = parser.parse_args()
+
     setup_logger(o)
 
     if o.output_file is None:
@@ -130,7 +138,7 @@ def main():
     for model in o.model:
 
         all_annual = load_annual_values(model, o.experiment, projection_baseline=o.projection_baseline, projection_baseline_offset=o.projection_baseline_offset)
-        records.extend(get_matching_years_by_time_bucket(model, all_annual, warming_levels, o.running_mean_window, o.projection_baseline))
+        records.extend(get_matching_years_by_time_bucket(model, all_annual, warming_levels, o.running_mean_window, o.projection_baseline, o.selection))
 
     df = pd.DataFrame(records)
 

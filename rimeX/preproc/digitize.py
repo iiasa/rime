@@ -153,18 +153,19 @@ def _bin_isimip_records(indicator_data, warming_levels,
             years = [r['year'] for r in group2]
 
             # determine the year range to load
-            assert len(years) == 1, f"{wl}|{model}|{experiment} cannot have more than one year to load. Check that warming_level input file is correct."
-            year = years[0]
-            start, end = year - running_mean_window//2, year + running_mean_window//2
+            # assert len(years) == 1, f"{wl}|{model}|{experiment} cannot have more than one year to load. Check that warming_level input file is correct."
+            # year = years[0]
+            for year in years:
+                start, end = year - running_mean_window//2, year + running_mean_window//2
 
-            datasel = data.loc[start:end]
+                datasel = data.loc[start:end]
 
-            if np.isnan(datasel.values).any():
-                logger.warning(f"{model} | {experiment} | {start} to {end} => some NaNs were found")
-                if np.isnan(datasel.values).all():
-                    raise ValueErrror(f"{model} | {experiment} => all NaNs slide")
+                if np.isnan(datasel.values).any():
+                    logger.warning(f"{model} | {experiment} | {start} to {end} => some NaNs were found")
+                    if np.isnan(datasel.values).all():
+                        raise ValueErrror(f"{model} | {experiment} => all NaNs slide")
 
-            binned_isimip_data.append({"value":datasel.mean(axis=0), "model": model, "experiment": experiment, "year": year, "warming_level": wl, **(meta or {})})
+                binned_isimip_data.append({"value":datasel.mean(axis=0), "model": model, "experiment": experiment, "year": year, "warming_level": wl, **(meta or {})})
 
     return binned_isimip_data
 
