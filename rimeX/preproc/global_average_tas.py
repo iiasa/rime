@@ -18,11 +18,49 @@ def global_mean_file(variable, model, experiment, simulation_round=None, root=No
     return Path(root) / f"isimip_global_mean/{variable}/globalmean_{variable}_{model.lower()}_{experiment}.csv"
 
 
+def load_global_average_tas(variable, model, experiment, simulation_round=None, csv=True):
+
+    if csv:
+        ofile = global_mean_file(variable, model, experiment, simulation_round)
+
+        if os.path.exists(ofile):
+            logger.info(f"{model} | {experiment} :: {ofile} already exists")
+            import pandas as pd
+            return pd.read_csv(ofile, index_col=0)
+
+    input_files = get_files(variable, model, experiment, simulation_round=simulation_round)
+
+    if not input_files:
+        logger.warning(f"No files found for {model} | {experiment} ...")
+        return
+        # continue
+
+    logger.info(f"Process {model} | {experiment} ...")
+
+    files = []
+    for file in input_files:
+        ofiletmp = Path(file.replace("global", "globalmean"))
+        if not ofiletmp.exists():
+            ofiletmp.parent.mkdir(exist_ok=True, parents=True)
+            cdo(f"-O -fldmean -selname,{variable} {file} {ofiletmp}")
+        files.append(ofiletmp)
+
+    # with xa.open_mfdataset(files, concat_dim="time", combine="nested") as mfd:
+    #     tas = mfd[variable].load().squeeze()
+    tas = xa.concat([xa.open_dataset(f)[variable].load() for f in files], dim="time").squeeze() # 30% faster than the above
+
+    if csv:
+        logger.info(f"Write to {ofile}")
+        ofile.parent.mkdir(exist_ok=True, parents=True)
+        s = tas.to_pandas()
+        s.name = variable
+        s.to_csv(ofile)
+
+    return tas
+
 def main():
     parser = argparse.ArgumentParser(parents=[log_parser, config_parser, isimip_parser])
-    # parser.add_argument("--variable", nargs="+", default=["tas"], choices=["tas"])
-    # parser.add_argument("--model", nargs="+", default=get_models(), choices=get_models())
-    # parser.add_argument("--experiment", nargs="+", default=get_experiments(), choices=get_experiments())
+    parser.add_argument("--no-csv", dest="csv", action="store_false", help="save/load to csv for speed-up")
     o = parser.parse_args()
     setup_logger(o)
 
@@ -30,37 +68,7 @@ def main():
 
     for model in o.model:
         for experiment in o.experiment:
-
-            ofile = global_mean_file(variable, model, experiment, o.simulation_round)
-
-            if os.path.exists(ofile):
-                logger.info(f"{model} | {experiment} :: {ofile} already exists")
-                continue
-
-            input_files = get_files(variable, model, experiment)
-
-            if not input_files:
-                logger.warning(f"No files found for {model} | {experiment} ...")
-                continue
-
-            logger.info(f"Process {model} | {experiment} ...")
-
-            files = []
-            for file in input_files:
-                ofiletmp = Path(file.replace("global", "globalmean"))
-                if not ofiletmp.exists():
-                    ofiletmp.parent.mkdir(exist_ok=True, parents=True)
-                    cdo(f"-O -fldmean -selname,{variable} {file} {ofiletmp}")
-                files.append(ofiletmp)
-
-            with xa.open_mfdataset(files, concat_dim="time", combine="nested", cache=False) as mfd:
-                tas = mfd[variable].load()
-
-            logger.info(f"Write to {ofile}")
-            ofile.parent.mkdir(exist_ok=True, parents=True)
-            s = tas.squeeze().to_pandas()
-            s.name = variable
-            s.to_csv(ofile)
+            load_global_average_tas(variable, model, experiment, o.simulation_round, csv=o.csv)
 
 
 if __name__ == "__main__":
