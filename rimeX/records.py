@@ -62,7 +62,7 @@ def fit_records(impact_data_records, samples, by, dist_name=None, sample_dim="sa
     """Expand a set of percentile records with proper samples (experimental)
 
     [
-        {"variable": "...", "value": vmed, ...}, 
+        {"variable": "...", "value": vmed, ...},
         {"variable": "...| 5th ...", "value": v5th, ...},
         {"variable": "...| 95th ...", "value": v95th, ...},
         ...
@@ -71,7 +71,7 @@ def fit_records(impact_data_records, samples, by, dist_name=None, sample_dim="sa
     with n samples
 
     [
-        {"variable": "...", "value": v1}, 
+        {"variable": "...", "value": v1},
         {"variable": "...", "value": v2},
         ...
         {"variable": "...", "value": vn},
@@ -80,7 +80,7 @@ def fit_records(impact_data_records, samples, by, dist_name=None, sample_dim="sa
 
     by fitting a distribution `dist` to each group (grouped using `by` parameter).
 
-    This funciton is experimental because it works on somewhat subjective naming. 
+    This funciton is experimental because it works on somewhat subjective naming.
     TODO: use the "quantile" field instead.
     """
     from rimeX.stats import fit_dist, repr_dist
@@ -104,7 +104,7 @@ def fit_records(impact_data_records, samples, by, dist_name=None, sample_dim="sa
     key_fn = lambda r: tuple(r[f] for f in by)
     resampled_records = []
     # for tqdm... (distribution fitting takes time, not groupby, so OK)
-    groupby_length = len(list(groupby(sorted(impact_data_records, key=key_fn), key=key_fn))) 
+    groupby_length = len(list(groupby(sorted(impact_data_records, key=key_fn), key=key_fn)))
 
     for keys, group in tqdm.tqdm(groupby(sorted(impact_data_records, key=key_fn), key=key_fn), total=groupby_length):
         group = list(group)
@@ -129,7 +129,7 @@ def fit_records(impact_data_records, samples, by, dist_name=None, sample_dim="sa
 
 
 def average_per_group(records, by, keep_meta=True):
-    """(weighted) mean grouped by 
+    """(weighted) mean grouped by
 
     Parameters
     ----------
@@ -143,7 +143,7 @@ def average_per_group(records, by, keep_meta=True):
     average_records = []
     key_avg_year = lambda r: tuple(r.get(k, 0) for k in by)
     for key, group in groupby(sorted(records, key=key_avg_year), key=key_avg_year):
-        if keep_meta: 
+        if keep_meta:
             group = list(group)
             first_record = group[0]
             meta = {k:','.join(sorted(set(str(r.get(k)) for r in group))) for k in first_record.keys() if k not in ["value", "midyear", "weights"]}
@@ -153,7 +153,7 @@ def average_per_group(records, by, keep_meta=True):
         total_weight = weights.sum()
         mean_value = (values*weights).sum()/total_weight
         mean_year = (years*weights).sum()/total_weight
-        mean_weight = (weights*weights).sum()/total_weight  
+        mean_weight = (weights*weights).sum()/total_weight
 
         average_records.append({"value": mean_value, "midyear": mean_year, "weight": mean_weight, **meta})
 
@@ -212,7 +212,7 @@ def make_equiprobable_groups(records, by):
     Note
     ----
     This function ensure the sum of all weight per warming level is one.
-    Note the normalization per warming level group is redundant with `recombine_magicc`, but we 
+    Note the normalization per warming level group is redundant with `recombine_magicc`, but we
     do it anyway in case the functions are used independently, given the low computational cost of such an operation.
     """
     # key = lambda r: (r['warming_level'], r['model'])
