@@ -17,7 +17,7 @@ import pandas as pd
 
 from rimeX.logs import logger, setup_logger, log_parser
 from rimeX.config import CONFIG, config_parser
-from rimeX.preproc.warminglevels import get_warming_level_file
+from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory
 from rimeX.preproc.regional_average import get_regional_averages_file
 from rimeX.records import average_per_group, make_models_equiprobable
 
@@ -218,9 +218,10 @@ def get_binned_isimip_file(variable, region, subregion, weights, season,
     running_mean_window=None,
     average_scenarios=False,
     equiprobable_models=False,
-    root=None, backend="csv"):
+    root=None, backend="csv", **kw):
 
-    if root is None: root = CONFIG["isimip.climate_impact_explorer"]
+    if root is None:
+        root = get_root_directory(running_mean_window=running_mean_window, **kw)
     if running_mean_window is None: running_mean_window = CONFIG["preprocessing.running_mean_window"]
 
     extensions = {
@@ -236,6 +237,7 @@ def get_binned_isimip_file(variable, region, subregion, weights, season,
     if tuple(CONFIG['preprocessing.projection_baseline']) != (1995, 2014):
         y1, y2 = CONFIG['preprocessing.projection_baseline']
         othertags = othertags + f"_baseline-{y1}-{y2}"
+
     return Path(root) / f"isimip_binned_data/{variable}/{region}/{subregion}/{weights}/{variable}_{region.lower()}_{subregion.lower()}_{season}_{weights.lower()}_{running_mean_window}-yrs{scenarioavg}{othertags}{ext}"
 
 

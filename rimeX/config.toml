@@ -1,7 +1,7 @@
 [isimip]
 simulation_round = "ISIMIP3b"
 download_folder = "/mnt/PROVIDE/isimip"
-climate_impact_explorer = "/mnt/PROVIDE/climate_impact_explorer/isimip3"
+climate_impact_explorer = "/mnt/PROVIDE/climate_impact_explorer"
 historical_year_min = 1980
 variables = [ "tas", "pr", "tasmax", "tasmin", "sfcwind", "hurs", "huss", "ps", "prsn", "rlds", "rsds"]
 
@@ -17,7 +17,6 @@ experiments = [ "historical", "rcp26", "rcp60", "rcp85",]
 warming_level_step = 0.1  # used for pre-processing (input files for emulator)
 warming_level_min = 1
 running_mean_window = 21
-selection = "all"
 isimip_binned_backend = [ "csv", ]
 projection_baseline = [ 1995, 2014,] # this is used in rime-preproc-digitize
 

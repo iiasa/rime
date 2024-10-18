@@ -40,8 +40,10 @@ def get_files(variable, model, experiment, realm="*", domain="global", frequency
     return sorted(glob.glob(pattern))
 
 
-def get_regional_averages_file(variable, model, experiment, region, weights, root=None):
-    if root is None: root = CONFIG["isimip.climate_impact_explorer"]
+def get_regional_averages_file(variable, model, experiment, region, weights, simulation_round=None, root=None):
+    if simulation_round is None: simulation_round = CONFIG["isimip.simulation_round"]
+    # if root is None: root = Path(CONFIG["isimip.climate_impact_explorer"]) / simulation_round
+    if root is None: root = Path(CONFIG["isimip.climate_impact_explorer"]) / {"ISIMIP2b":"isimip2", "ISIMIP3b":"isimip3"}.get(simulation_round, simulation_round)
     return Path(root) / f"isimip_regional_data/{region}/{weights}/{model.lower()}_{experiment}_{variable}_{region.lower()}_{weights.lower()}.csv"
 
 

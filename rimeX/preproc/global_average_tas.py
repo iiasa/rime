@@ -6,22 +6,23 @@ from pathlib import Path
 import xarray as xa
 
 from rimeX.datasets.download_isimip import get_models, get_experiments
-from rimeX.preproc.regional_average import get_files
+from rimeX.preproc.regional_average import get_files, isimip_parser
 from rimeX.tools import cdo
 from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 
 
-def global_mean_file(variable, model, experiment, root=None):
-    if root is None: root = CONFIG["isimip.climate_impact_explorer"]
+def global_mean_file(variable, model, experiment, simulation_round=None, root=None):
+    if simulation_round is None: simulation_round = CONFIG["isimip.simulation_round"]
+    if root is None: root = Path(CONFIG["isimip.climate_impact_explorer"]) / {"ISIMIP2b":"isimip2", "ISIMIP3b":"isimip3"}.get(simulation_round, simulation_round)
     return Path(root) / f"isimip_global_mean/{variable}/globalmean_{variable}_{model.lower()}_{experiment}.csv"
 
 
 def main():
-    parser = argparse.ArgumentParser(parents=[log_parser, config_parser])
+    parser = argparse.ArgumentParser(parents=[log_parser, config_parser, isimip_parser])
     # parser.add_argument("--variable", nargs="+", default=["tas"], choices=["tas"])
-    parser.add_argument("--model", nargs="+", default=get_models(), choices=get_models())
-    parser.add_argument("--experiment", nargs="+", default=get_experiments(), choices=get_experiments())
+    # parser.add_argument("--model", nargs="+", default=get_models(), choices=get_models())
+    # parser.add_argument("--experiment", nargs="+", default=get_experiments(), choices=get_experiments())
     o = parser.parse_args()
     setup_logger(o)
 
@@ -30,7 +31,7 @@ def main():
     for model in o.model:
         for experiment in o.experiment:
 
-            ofile = global_mean_file(variable, model, experiment)
+            ofile = global_mean_file(variable, model, experiment, o.simulation_round)
 
             if os.path.exists(ofile):
                 logger.info(f"{model} | {experiment} :: {ofile} already exists")
