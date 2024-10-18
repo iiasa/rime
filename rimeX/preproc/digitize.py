@@ -13,50 +13,84 @@ import itertools
 from itertools import groupby, product
 import numpy as np
 import pandas as pd
-# import xarray as xa
+import xarray as xa
 
 from rimeX.logs import logger, setup_logger, log_parser
 from rimeX.config import CONFIG, config_parser
 from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory
-from rimeX.preproc.regional_average import get_regional_averages_file
+from rimeX.preproc.regional_average import get_regional_averages_file, get_files
 from rimeX.records import average_per_group, make_models_equiprobable
 
-def load_seasonal_means_per_region(variable, model, experiment, region, subregion, weights, seasons=['annual', 'winter', 'spring', 'summer', 'autumn']):
+def load_seasonal_means_per_region(variable, model, experiment, region, subregion, weights, seasons=['annual', 'winter', 'spring', 'summer', 'autumn'], **kw):
 
-    file = get_regional_averages_file(variable, model, experiment, region, weights)
+    file = get_regional_averages_file(variable, model, experiment, region, weights, **kw)
     monthly = pd.read_csv(file, index_col=0)[subregion or region]
-    ny = monthly.size // 12
-    assert monthly.size == ny*12, "not all years have 12 months"
-    matrix = monthly.values.reshape(ny, 12)
 
-    seasonal_means = {}
+    if CONFIG.get(f"indicator.{variable}.frequency", "monthly") == "yearly":
+        seasonal_means = {"annual": monthly.values}
+        years = monthly.index
 
-    for season in seasons:
-        month_indices = np.asarray(CONFIG["preprocessing.seasons"][season]) - 1
-        seasonal_means[season] = matrix[:, month_indices].mean(axis=1)
+    else:
 
-    return pd.DataFrame(seasonal_means, index=[datetime.datetime.fromisoformat(ts).year for ts in monthly.index.values[11::12]])
+        ny = monthly.size // 12
+        assert monthly.size == ny*12, "not all years have 12 months"
+        matrix = monthly.values.reshape(ny, 12)
+
+        seasonal_means = {}
+
+        for season in seasons:
+            month_indices = np.asarray(CONFIG["preprocessing.seasons"][season]) - 1
+            seasonal_means[season] = matrix[:, month_indices].mean(axis=1)
+
+        years = np.array([datetime.datetime.fromisoformat(ts).year for ts in monthly.index.values[11::12]])
+
+    return pd.DataFrame(seasonal_means, index=years)
+
+def transform_indicator(data, indicator, meta=None):
+
+    if meta is None:
+        meta = CONFIG.get(f"indicator.{indicator}", {})
+
+    y1, y2 = meta.get("projection_baseline", CONFIG["preprocessing.projection_baseline"])
+
+    if meta.get("transform") == "baseline_change":
+        data -= data.loc[y1:y2].mean()
+
+    elif meta.get("transform") == "baseline_change_percent":
+        data = (data / data.loc[y1:y2].mean() - 1) * 100
+
+    elif meta.get("transform"):
+        raise NotImplementedError(meta["transform"])
+
+    return data
 
 
-def load_regional_indicator_data(variable, region, subregion, weights, season, models, experiments):
+def load_regional_indicator_data(variable, region, subregion, weights, season, models, experiments, **kw):
     """higher level function than load_seasonal_means_per_region
 
     => add historical data
     => add variable-specific processing (e.g. retrieve projection baseline)
     """
+    meta = CONFIG.get(f"indicator.{variable}", {})
+
     all_data = {}
     for model in models:
 
-        try:
-            historical = load_seasonal_means_per_region(variable, model, "historical", region, subregion, weights, seasons=[season])[season]
-        except FileNotFoundError as error:
-            logger.warning(str(error))
-            logger.warning(f"=> Historical data file not found for {variable} | {model} | {region} | {subregion} | {weights} | {season}. Skip")
-            continue
+        if not meta.get("historical", True):
+            # this is concatenated in the future scenario files
+            historical = None
 
-        if np.isnan(historical).all():
-            logger.warning(f"Historical is NaN for {variable} | {model} | {region} | {subregion} | {weights} | {season}. Skip")
-            continue
+        else:
+            try:
+                historical = load_seasonal_means_per_region(variable, model, "historical", region, subregion, weights, seasons=[season], **kw)[season]
+            except FileNotFoundError as error:
+                logger.warning(str(error))
+                logger.warning(f"=> Historical data file not found for {variable} | {model} | {region} | {subregion} | {weights} | {season}. Skip")
+                continue
+
+            if np.isnan(historical).all():
+                logger.warning(f"Historical is NaN for {variable} | {model} | {region} | {subregion} | {weights} | {season}. Skip")
+                continue
 
         for experiment in experiments:
             if experiment == "historical":
@@ -65,13 +99,16 @@ def load_regional_indicator_data(variable, region, subregion, weights, season, m
             logger.info(f"load {variable} | {model} | {experiment} | {region} | {subregion} | {weights} | {season}")
 
             try:
-                future = load_seasonal_means_per_region(variable, model, experiment, region, subregion, weights, seasons=[season])[season]
+                future = load_seasonal_means_per_region(variable, model, experiment, region, subregion, weights, seasons=[season], **kw)[season]
 
             except FileNotFoundError:
                 logger.warning(f"=> file not Found")
                 continue
 
-            data = pd.concat([historical, future])
+            if historical is not None:
+                data = pd.concat([historical, future])
+            else:
+                data = future
 
             if np.isnan(data.values).all():
                 logger.warning(f"All NaNs: {variable} | {model} | {region} | {subregion} | {weights} | {season}. Skip")
@@ -83,13 +120,7 @@ def load_regional_indicator_data(variable, region, subregion, weights, season, m
                 # raise ValueError(f"{model} | {experiment} => some NaNs were found")
 
             # indicator-dependent treatment
-            if variable in ("tas", "tasmin", "tasmax"):
-                y1, y2 = CONFIG["preprocessing.projection_baseline"]
-                data -= data.loc[y1:y2].mean()
-
-            elif variable == "pr":
-                y1, y2 = CONFIG["preprocessing.projection_baseline"]
-                data = (data / data.loc[y1:y2].mean() - 1) * 100
+            data = transform_indicator(data, variable, meta=meta)
 
             all_data[(model, experiment)] = data
 
@@ -234,14 +265,45 @@ def get_binned_isimip_file(variable, region, subregion, weights, season,
     othertags = ""
     if equiprobable_models:
         othertags = othertags + "_models-equi"
-    if tuple(CONFIG['preprocessing.projection_baseline']) != (1995, 2014):
-        y1, y2 = CONFIG['preprocessing.projection_baseline']
+
+    # if tuple(CONFIG['preprocessing.projection_baseline']) != (1995, 2014):
+    # if "baseline" in CONFIG.get(f"indicator.{variable}.transform", "") and tuple(CONFIG['preprocessing.projection_baseline']) != (1995, 2014):
+    if "baseline" in CONFIG.get(f"indicator.{variable}.transform", ""):
+        y1, y2 = CONFIG.get(f"indicator.{variable}.projection_baseline", CONFIG['preprocessing.projection_baseline'])
         othertags = othertags + f"_baseline-{y1}-{y2}"
 
     return Path(root) / f"isimip_binned_data/{variable}/{region}/{subregion}/{weights}/{variable}_{region.lower()}_{subregion.lower()}_{season}_{weights.lower()}_{running_mean_window}-yrs{scenarioavg}{othertags}{ext}"
 
 
-def get_binned_isimip_records(warming_levels, variable, region, subregion, weights, season, overwrite=False, backends=["csv"], **kw):
+def get_indicator_units(variable, simulation_round=None):
+
+    units = CONFIG.get(f"indicator.{variable}.units", "")
+    if units:
+        return units
+
+    if CONFIG.get(f"indicator.{variable}.transform") == "baseline_change_percent":
+        units = "%"
+    else:
+        file = get_files(variable, "*", "*", simulation_round=simulation_round)[0]
+        logger.debug(f"Open {file} to find {variable} units")
+        with xa.open_dataset(file) as ds:
+            v = ds[variable]
+            if hasattr(v, "units"):
+                units = v.units
+                logger.debug(f"{variable} units found: {units}")
+
+            elif hasattr(v, "unit"):
+                units = v.unit
+                logger.debug(f"{variable} units found: {units}")
+
+            else:
+                logger.warning(f"Cannot find units for {variable}")
+                units = ""
+
+    return units
+
+
+def get_binned_isimip_records(warming_levels, variable, region, subregion, weights, season, overwrite=False, backends=["csv"], simulation_round=None, **kw):
     """ Same as bin_isimip_records but with cached I/O
     """
     supported_backend = ["csv", "feather", "parquet", "excel"]
@@ -249,7 +311,7 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
         if backend not in supported_backend:
             raise NotImplementedError(backend)
 
-    binned_records_files = [get_binned_isimip_file(variable, region, subregion, weights, season, **kw, backend=backend) for backend in backends]
+    binned_records_files = [get_binned_isimip_file(variable, region, subregion, weights, season, simulation_round=simulation_round, backend=backend, **kw) for backend in backends]
 
     for file, backend in zip(binned_records_files, backends):
         if not overwrite and file.exists():
@@ -269,11 +331,13 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
     models = warming_levels['model'].unique().tolist()
     experiments = warming_levels['experiment'].unique().tolist()
 
-    indicator_data = load_regional_indicator_data(variable, region, subregion, weights, season, models, experiments)
+    indicator_data = load_regional_indicator_data(variable, region, subregion, weights, season, models, experiments, simulation_round=simulation_round)
 
     if len(indicator_data) == 0:
         logger.warning(f"No indicator data for {variable} | {region} | {subregion} | {weights} | {season}.")
         return []
+
+    units = get_indicator_units(variable, simulation_round=simulation_round)
 
     all_data = bin_isimip_records(indicator_data, warming_levels, meta={
         "region": region,
@@ -281,7 +345,7 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
         "weights": weights,
         "season": season,
         "variable": variable,
-        "unit":"",
+        "unit": units,
         }, **kw)
 
     for file, backend in zip(binned_records_files, backends):
@@ -363,8 +427,10 @@ def main():
     if o.cpus is None or o.cpus < 2:
 
         for variable, region, subregion, weights, season in tqdm.tqdm(all_items):
+            if CONFIG.get(f"indicator.{variable}.frequency", "monthly") == "yearly" and season != "annual":
+                continue
             get_binned_isimip_records(warming_levels, variable, region, subregion, weights, season,
-                running_mean_window=o.running_mean_window, overwrite=o.overwrite, backends=o.backend)
+                running_mean_window=o.running_mean_window, overwrite=o.overwrite, backends=o.backend, simulation_round=o.simulation_round)
 
         parser.exit(0)
 
@@ -380,8 +446,10 @@ def main():
 
         logger.info(f"Digitize ISIMIP: Submit {len(all_items)} jobs.")
         for variable, region, subregion, weights, season in all_items:
+            if CONFIG.get(f"indicator.{variable}.frequency", "monthly") == "yearly" and season != "annual":
+                continue
             jobs.append((executor.submit(get_binned_isimip_records, warming_levels, variable, region, subregion, weights, season,
-                running_mean_window=o.running_mean_window, overwrite=o.overwrite, backends=o.backend), (variable, region, subregion, weights, season)))
+                running_mean_window=o.running_mean_window, overwrite=o.overwrite, backends=o.backend, simulation_round=o.simulation_round), (variable, region, subregion, weights, season)))
 
         # wait for the jobs to finish to exit this script
         for j, (job, ids) in enumerate(jobs):

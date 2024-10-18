@@ -25,14 +25,15 @@ from rimeX.config import CONFIG, config_parser
 from rimeX.datasets.download_isimip import get_models, get_experiments, get_variables, isimip_parser
 
 
-def get_files(variable, model, experiment, realm="*", domain="global", frequency="monthly", member="*", obs="*", year_start="*", year_end="*", root=None, simulation_round=None):
+def get_files(variable, model, experiment, realm="*", domain="global", frequency=None, member="*", obs="*", year_start="*", year_end="*", root=None, simulation_round=None):
     if root is None: root = CONFIG["isimip.download_folder"]
     if simulation_round is None: simulation_round = CONFIG["isimip.simulation_round"]
+    frequency = frequency or CONFIG.get(f"indicator.{variable}.frequency", "monthly")
     model_lower = model.lower()
-    model_upper = {m.lower():m for m in get_models()}[model_lower]
+    model_upper = {m.lower():m for m in get_models()}[model_lower] if (model_lower and model_lower != "*") else "*"
     input_data = "*"
     if "ISIMIP2" in simulation_round:
-        frequency2 = {"monthly":"month", "daily": "day"}.get(frequency, frequency)
+        frequency2 = {"yearly": "year", "monthly":"month", "daily": "day"}.get(frequency, frequency)
         member = "*"
         pattern = root + "/" + f"{simulation_round}/{input_data}/{realm}/biascorrected/{domain}/{experiment}/{model_upper}/{variable}_{frequency2}_{model_upper}_{experiment}_{member}_*_{year_start}0101-{year_end}1231.nc4"
     else:
@@ -104,6 +105,7 @@ def main():
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, isimip_parser])
     parser.add_argument("-v", "--variable", nargs='+', choices=get_variables(), required=True)
     parser.add_argument("--overwrite", action='store_true')
+    parser.add_argument("--frequency")
     group = parser.add_argument_group('mask')
     group.add_argument("--region", nargs='+', default=ALL_MASKS, choices=ALL_MASKS)
     group.add_argument("--weights", nargs='+', default=CONFIG["preprocessing.regional.weights"], choices=CONFIG["preprocessing.regional.weights"])
@@ -131,7 +133,7 @@ def main():
 
                 results = {}
 
-                for file in tqdm.tqdm(get_files(variable, model, experiment)):
+                for file in tqdm.tqdm(get_files(variable, model, experiment, frequency=o.frequency, simulation_round=o.simulation_round)):
                     with xa.open_dataset(file) as ds:
 
                         v = ds[variable].load()
