@@ -35,22 +35,22 @@ def iterate_model_experiment(simulation_round=None):
 def _preparse_isimip_protocol():
     """First parse isimip protocol so that defaults models and experiments are correct
     """
-    isimip_preparser = _get_isimip_parser()
+    isimip_preparser = _get_isimip_parser(choices=False)
     o, _ = isimip_preparser.parse_known_args()
     if o.simulation_round is not None:
         CONFIG["isimip.simulation_round"] = o.simulation_round
 
-def _get_isimip_parser():
-    """Determine if --simulation-round is provided in any script that relies on isimip, 
+def _get_isimip_parser(choices=True):
+    """Determine if --simulation-round is provided in any script that relies on isimip,
     so that get_models() and get_experiments() have the proper choices and default.
-    The isimip_parser can be used in any 
+    The isimip_parser can be used in any
     """
     isimip_parser = argparse.ArgumentParser(add_help=False)
     group = isimip_parser.add_argument_group('ISIMIP')
-    group.add_argument("--experiment", nargs='+', default=get_experiments(), choices=get_experiments())
+    group.add_argument("--experiment", nargs='+', default=get_experiments(), choices=get_experiments() if choices else None)
     _lower_to_upper = {m.lower():m for m in get_models()}
-    group.add_argument("--model", nargs='+', default=get_models(), choices=get_models(), type=lambda s: _lower_to_upper.get(s, s))
-    group.add_argument("--simulation-round", default=CONFIG["isimip.simulation_round"]) # already set in _prepare_isimip_protocol, but here for help
+    group.add_argument("--model", nargs='+', default=get_models(), choices=get_models() if choices else None, type=lambda s: _lower_to_upper.get(s, s))
+    group.add_argument("--simulation-round", default=CONFIG["isimip.simulation_round"], help="default %(default)s") # already set in _prepare_isimip_protocol, but here for help
 
     return isimip_parser
 

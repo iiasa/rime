@@ -11,7 +11,7 @@ experiments = [ "historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460", 
 
 [isimip.ISIMIP2b]
 models = ["IPSL-CM5A-LR", "GFDL-ESM2M", "MIROC5", "HadGEM2-ES"]
-experiments = [ "historical", "rcp26", "rcp60", "rcp85",]
+experiments = [ "historical", "rcp26", "rcp45", "rcp60", "rcp85",]
 
 [preprocessing]
 warming_level_step = 0.1  # used for pre-processing (input files for emulator)
