@@ -232,3 +232,45 @@ def make_equiprobable_groups(records, by):
 
 def make_models_equiprobable(records):
     make_equiprobable_groups(records, by=[ "model", "variable", "region", "warming_level" ])
+
+
+def filter_first_value(records, keys=["model", "experiment", "warming_level", "ensemble", "variable", "season", "region", "subregion"]):
+    """Filter records to keep only the first value for each warming level
+    """
+    key_fn = lambda r: tuple(r.get(k, 0) for k in keys)
+    return [next(group) for key, group in groupby(sorted(records, key=key_fn), key=key_fn)]
+
+
+def add_peaking_tag(warming_level_records,
+                       keys=["model", "experiment", "warming_level", "ensemble"]):
+    """Filter records to keep only the value before peaking, if any
+    """
+    # first check if there is a peak in the input experiment
+    key_fn = lambda r: tuple(r.get(k, 0) for k in keys)
+
+    for _, group in groupby(sorted(warming_level_records, key=key_fn), key=key_fn):
+        timeseries = list(group)
+        years, values = np.array([(r['year'], r['actual_warming']) for r in timeseries]).T
+        assert (years[1:] > years[:-1]).all(), "years are not sorted"
+        i = np.argmax(values)
+        for j, r in enumerate(timeseries):
+            r['post-peaking'] = j > i
+
+
+def filter_peaking(records, warming_level_records,
+                       keys=["model", "experiment", "warming_level", "ensemble"]):
+    """Split records into pre-peaking and post-peaking records
+
+    Returns
+    -------
+    records_pre, records_post
+    """
+    if "post-peaking" not in warming_level_records[0]:
+        add_peaking_tag(warming_level_records, keys=keys)
+
+    key_fn = lambda r: tuple(r.get(k, 0) for k in keys)
+
+    pre_keys = set(key_fn(r) for r in warming_level_records if not r['post-peaking'])
+    post_keys = set(key_fn(r) for r in warming_level_records if r['post-peaking'])
+
+    return [r for r in records if key_fn(r) in pre_keys], [r for r in records if key_fn(r) in post_keys]
