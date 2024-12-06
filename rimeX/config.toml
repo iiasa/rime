@@ -14,23 +14,7 @@ experiments = [ "historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460", 
 models = ["IPSL-CM5A-LR", "GFDL-ESM2M", "MIROC5", "HadGEM2-ES"]
 experiments = [ "historical", "rcp26", "rcp45", "rcp60", "rcp85",]
 
-# "indicators" field will be automatically computed from isimip.variables and any key below
-# [indicator.NAME]
-# variables = VARIABLES  # input ISIMIP variables
-# frequency = FREQUENCY  # frequency of the indicator
-# compute_frequency = COMPUTE_FREQUENCY  # frequency of the function call to compute the indicator (e.g. daily for wet_bulb_temperature)
-# historical = BOOL  # include the historical period ? (usually yes, especially if the baseline is to be used)
-# transform = TRANSFORM  # transformation to apply to the indicator, e.g. an anomaly or a percentage change compared to baseline
-# projection_baseline = [1995, 2014] # the projection baseline used in "transform"
-# processing = "package.module.function_name" # default to rimeX.indicators.NAME
-
-# [isimip.population]
-
-# [isimip.gdp]
-# population
-
 [indicators]
-# folder="/mnt/PROVIDE/climate_impact_explorer/indicators"
 folder="/mnt/ISIMIP/indicators"
 
 [indicator.maize_yield]
@@ -42,7 +26,6 @@ specifiers = ["variable", "crop"]
 variable = "yieldchange"
 crop = "mai"
 ensemble_specifiers = ["model"] # further specifiers to identify the ensemble member
-frequency = "annual"
 
 [indicator.tas]
 transform = "baseline_change"
