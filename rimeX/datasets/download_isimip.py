@@ -1,10 +1,11 @@
 import os
 import re
-from itertools import product
+import contextlib, io
+from itertools import product, groupby, chain
 from pathlib import Path
 import argparse
 
-from rimeX.tools import cdo
+from rimeX.tools import cdo, check_call
 from rimeX.config import CONFIG, config_parser
 from rimeX.logs import log_parser, setup_logger
 
@@ -59,11 +60,20 @@ isimip_parser = _get_isimip_parser()
 
 _YEARS_ISIMIP3_RE = re.compile(r'(\d{4})_(\d{4}).nc')
 _YEARS_ISIMIP2_RE = re.compile(r'(\d{4})\d{4}-(\d{4})\d{4}.nc')
+_YEARS_ISIMIP_RE = re.compile(r'((\d{4})_(\d{4})|(\d{4})\d{4}-(\d{4})\d{4}).nc')
 
 def parse_years(path, simulation_round=None):
-    if simulation_round is None: simulation_round = CONFIG['isimip.simulation_round']
-    _YEARS_RE = _YEARS_ISIMIP2_RE if simulation_round is None or "ISIMIP2" in simulation_round else _YEARS_ISIMIP3_RE
-    y1s, y2s = _YEARS_RE.search(Path(path).name).groups()
+    # if simulation_round is None: simulation_round = CONFIG['isimip.simulation_round']
+    simulation_round = None  # some files are different e.g... 'tasmax_gswp3-ewembi_1901_1910.nc4'
+    if simulation_round is None:
+        groups = _YEARS_ISIMIP_RE.search(Path(path).name).groups()
+        if groups[1] is not None:
+            y1s, y2s = groups[1], groups[2]
+        else:
+            y1s, y2s = groups[3], groups[4]
+    else:
+        _YEARS_RE = _YEARS_ISIMIP2_RE if simulation_round is None or "ISIMIP2" in simulation_round else _YEARS_ISIMIP3_RE
+        y1s, y2s = _YEARS_RE.search(Path(path).name).groups()
     y1, y2 = int(y1s), int(y2s)
     return y1, y2
 
@@ -71,14 +81,29 @@ def get_region_tag(bbox):
     l, b, r, t = bbox
     return f"lat{b}to{t}lon{l}to{r}"
 
+# Perhaps useful later on
+# def scan_files(variable="*", experiment="*", model="*", download_folder='downloads', year_min=None,
+#                simulation_round="*", ensemble="*", bias_adjustment="w5e5", frequency="daily", domain="global", year1="*", year2="*"):
+#     # glob_pattern=f"{download_folder}/{simulation_round.upper()}/InputData/climate/atmosphere/bias-adjusted/global/daily/ssp585/GFDL-ESM4/gfdl-esm4_r1i1p1f1_w5e5_ssp585_pr_global_daily_2051_2060.nc"
+#     glob_pattern=f"{download_folder}/{simulation_round.upper()}/*/*/*/*/*/{frequency}/{experiment}/{model.upper()}/{model}_{ensemble}_{bias_adjustment}_{experiment}_{variable}_{domain}_{frequency}_{year1}_{year2}.nc"
+#     files = sorted(glob.glob(glob_pattern))
 
-def request_dataset(variables, experiment=None, model=None, download_folder='downloads', year_min=None, simulation_round=None):
-    if year_min is None: year_min = CONFIG["isimip.historical_year_min"]
-    if simulation_round is None: simulation_round = CONFIG['isimip.simulation_round']
+def _update_results(results, year_min=None, local_folder=None):
+
+    for r in results:
+        for f in r['files']:
+            f['time_slice'] = parse_years(f['path'], r['specifiers']['simulation_round'])
+            f['local_path'] = get_filepath(r, f['path'], folder=local_folder)
+        r['files'] = [f for f in r['files'] if year_min is None or f["time_slice"][1] > year_min]
+
+def request_dataset(variables=[], experiment=None, model=None,
+                    download_folder='downloads', year_min=None, simulation_round=None, id=None):
+    # if year_min is None: year_min = CONFIG["isimip.historical_year_min"]
+    # if simulation_round is None: simulation_round = CONFIG['isimip.simulation_round']
     client = _init_client()
+
     results = []
     for v in variables:
-
         if model:
             iterable = ({"climate_variable": v, "climate_scenario":x, "climate_forcing":m.lower()} for m, x in product(model, experiment))
         elif experiment:
@@ -97,156 +122,446 @@ def request_dataset(variables, experiment=None, model=None, download_folder='dow
 
             results.extend(response['results'])
 
-    # filter historical files after 1980
-    for r in results:
-        r['files'] = [f for f in r['files'] if parse_years(f['path'], simulation_round)[0] >= year_min]
+    if id is not None:
+        results.extend(client.datasets(id=id)['results'])
+
+    _update_results(results, year_min)
 
     return results
+
+EXCLUDE_SCENARIOS = ["obsclim", "hist-nat", "picontrol", "counterclim"]
+
+def _request_isimip_meta(name, specifiers=None, id=None, climate_forcing=None, climate_scenario=None,
+                         year_min=None, simulation_round=None, page_size=1000,
+                         exclude_scenarios=EXCLUDE_SCENARIOS, **meta):
+    """called isimip_client.client.datasets with config.toml 's indicator metadata
+    """
+    if id is not None:
+        query = {"id": id}
+    elif specifiers:
+        query = {k: meta[k] for k in specifiers}
+    else:
+        query = {'climate_variable': name}
+
+    if climate_forcing:
+        query['climate_forcing'] = climate_forcing
+    else:
+        # keep some control in the config file
+        query['climate_forcing'] = [m.lower() for m in CONFIG["isimip"]["ISIMIP3b"]["models"] + CONFIG["isimip"]["ISIMIP2b"]["models"]]
+        # pass
+
+    if climate_scenario:
+        query['climate_scenario'] = climate_scenario
+    else:
+        # otherwise obsclim comes in
+        query['climate_scenario'] = CONFIG["isimip"]["ISIMIP3b"]["experiments"] + CONFIG["isimip"]["ISIMIP2b"]["experiments"]
+        # pass
+
+    if simulation_round:
+        query['simulation_round'] = simulation_round
+
+    if client is None:
+        _init_client()
+
+    response = client.datasets(**query, page_size=page_size)
+    results = response['results']
+    count = response['count']
+
+    if len(results) != count:
+        print("!!! Not all results could be fetched. Total count=", count, "fetched:", len(results), "query:", query, "Modify the page_size limit.")
+
+    # filters out obsclim
+    results = [r for r in results if r["specifiers"]["climate_scenario"] not in exclude_scenarios]
+
+    _update_results(results, year_min)
+
+    return results
+
+def run_pipeline(pipeline, input_file, output_file, frequency="monthly", dry_run=False):
+    """Run a pipeline on a file. At the moment, this is designed to
+    take a 10-year netcdf file with daily values, and output a monthly values
+    instead, with mean, max, min or cumulative values.
+    """
+    if frequency != "monthly":
+        raise NotImplementedError("Only monthly frequency is supported for now")
+
+    if pipeline in ("mean", "avg", "", None):
+        cdo(f'monavg {input_file} {output_file}', dry_run=dry_run)
+    elif pipeline in ("max", "min", "sum"):
+        cdo(f'mon{pipeline} {input_file} {output_file}', dry_run=dry_run)
+    else:
+        raise ValueError(f"Unknown pipeline {pipeline}")
+
+
+def download(path, folder=None, queue=False, overwrite=False, remove_zip=True, dry_run=False):
+
+    client = _init_client()
+
+    if folder is None:
+        folder = CONFIG["isimip.download_folder"]
+
+    target_file = Path(folder)/path
+
+    if not overwrite and Path(target_file).exists():
+        return target_file
+
+    file_url = 'https://files.isimip.org/'+path
+
+    kwargs = {} if queue else {'poll': 10}
+
+    # Here we can just download the file
+    print('download', file_url, 'to', target_file.parent)
+
+    if dry_run:
+        return target_file
+
+    client.download(file_url, path=target_file.parent, validate=False, extract=True)
+    assert target_file.exists(), f'something fishy happened: {target_file} does not exist'
+
+    if remove_zip:
+        zipfile = target_file.parent/Path(file_url).name
+        if zipfile.name.endswith('.zip'):
+            print("rm", zipfile)
+            os.remove(zipfile)
+        readme = target_file.parent/"README.txt"
+        if readme.exists():
+            print("rm", readme)
+            os.remove(readme)
+
+    return target_file
+
+def get_filepath(db_result, path, frequency=None, time_aggregation=None, region=None, folder=None):
+    """That's for basic ISIMIP files or for indicators that only undergone space or time aggregation
+    """
+    meta = db_result["specifiers"]
+
+    if frequency is not None:
+        orig_freq = meta["time_step"]
+        if meta['simulation_round'].startswith("ISIMIP2"):
+            rename_freqs = {"daily": "day", "monthly": "month", "yearly": "year"}
+            # "day" in file name for ISIMIP2
+            orig_freq = rename_freqs.get(orig_freq, orig_freq)
+            frequency = rename_freqs.get(frequency, frequency)
+
+        if time_aggregation is not None:
+            frequency = frequency+"-"+time_aggregation
+        path = path.replace(f"_{orig_freq}_", f"_{frequency}_")
+        path = path.replace(f"/{orig_freq}/", f"/{frequency}/")
+
+    if region is not None:
+        orig_region = meta["region"]
+        path = path.replace(f"_{orig_region}_", f"_{region}_")
+        path = path.replace(f"/{orig_region}/", f"/{region}/")
+
+    return Path(folder or CONFIG["isimip.download_folder"])/path
+
+def _matches(key1, key2):
+    if key1 in (None, "*") or key2 in (None, "*"):
+        return True
+    if type(key2) is list:
+        return any(_matches(key1, k) for k in key2)
+    return key1.lower() == key2.lower()
+
+
+# def get_indicator_path(name, model, experiment, ensemble, frequency, simulation_round=None, bias_correction=None, folder=None):
+#     if folder is None:
+#         folder = CONFIG["indicators.folder"]
+#     ensembletag = f"_{ensemble}" if ensemble else ""
+#     biascorrectiontag = f"_{bias_correction}" if bias_correction else ""
+#     isimiptag = f"_{simulation_round}" if simulation_round else ""
+#     return os.path.join(folder, name, experiment, model, f"{model.lower()}{ensembletag}{biascorrectiontag}{isimiptag}_{experiment}_{name}_{frequency}.nc")
+
+
+class ISIMIPDataBase:
+    def __init__(self, db=[], download_folder=None):
+        """
+        db: a list of results as returned by request_dataset
+        """
+        self.db = db
+        self.download_folder = download_folder or CONFIG["isimip.download_folder"]
+
+    def filter(self, **kwargs):
+        return [r for r in self.db if all(_matches(r['specifiers'][k], v) for k, v in kwargs.items() if v is not None)]
+
+    def __iter__(self):
+        for result in self.db:
+            yield result
+
+
+class Indicator:
+
+    def __init__(self, name, frequency="monthly", folder=None,
+                 spatial_aggregation=None, depends_on=None, expr=None, time_aggregation=None, isimip_meta=None, pipeline=None,
+                 db=None, isimip_folder=None, comment=None, transform=None, year_min=None, units="", **kwargs):
+
+        self.name = name
+        self.frequency = frequency
+        self.expr = expr
+        self.pipeline = pipeline
+        self.folder = Path(folder or CONFIG["indicators.folder"])
+        self.isimip_meta = isimip_meta or CONFIG.get(f"indicator.{name}", {}).get("isimip", {})
+        for k in kwargs:
+            if "." in k:
+                parts = k.split(".")
+                if parts[0] == "isimip_meta":
+                    self.isimip_meta[".".join(parts[1:])] = kwargs[k]
+                else:
+                    raise ValueError(f"Unknown argument {k}")
+            else:
+                raise ValueError(f"Unknown argument {k}")
+
+        self.isimip_meta.setdefault("year_min", year_min or CONFIG["isimip.historical_year_min"])
+
+        assert depends_on is None or isinstance(depends_on, list), "depends_on must be a list"
+        if isinstance(depends_on, list):
+            assert all(type(x) is str for x in depends_on), "depends_on must be a list of strings"
+        self.depends_on = depends_on
+        self.spatial_aggregation = spatial_aggregation or CONFIG["preprocessing.regional.weights"]
+        self.time_aggregation = time_aggregation
+        if isinstance(db, list):
+            db = ISIMIPDataBase(db)
+        self._db = db
+        self._isimip_folder = isimip_folder
+        self.comment = comment
+        self.transform = transform  # this refers to the baseline period and is only accounted for later on in the emulator (misnamed...)
+        self.units = units
+
+    @classmethod
+    def from_config(cls, name, **kw):
+        cfg = CONFIG.get(f"indicator.{name}", {})
+        copy = cfg.pop("_copy", None)
+        if copy:
+            cfg = {**CONFIG.get(f"indicator.{copy}", {}), **cfg}
+        return cls(name, **{**cfg, **kw})
+
+    @property
+    def db(self):
+        if self._db is None:
+            if self.depends_on:
+                self._db = ISIMIPDataBase(sum((_request_isimip_meta(v, **self.isimip_meta) for v in self.depends_on), []), self._isimip_folder)
+                # here perhaps do some filtering of the time period to make sure they are consistent across variables?
+            else:
+                self._db = ISIMIPDataBase(_request_isimip_meta(self.name, **self.isimip_meta), self._isimip_folder)
+        return self._db
+
+    @property
+    def simulation_keys(self):
+        return ['climate_scenario', 'climate_forcing'] + self.isimip_meta.get("ensemble_specifiers", [])
+
+    @property
+    def simulations_values(self):
+        # That can be non-unique in case the indicator depends on multiple variables
+        return sorted(set(tuple(r['specifiers'][k] for k in self.simulation_keys) for r in self.db))
+
+    @property
+    def simulations(self):
+        return [dict(zip(self.simulation_keys, values)) for values in self.simulations_values]
+
+    def _get_dataset_meta(self, climate_scenario, climate_forcing, **ensemble_specifiers):
+        request_dict = {"climate_forcing": climate_forcing, "climate_scenario": climate_scenario, **ensemble_specifiers}
+        for k in self.simulation_keys:
+            if k not in request_dict:
+                raise ValueError(f"Missing key required {self.name}: {k}")
+        results = self.db.filter(**request_dict)
+        if len(results) == 0:
+            raise ValueError(f"No results found for {self.name} {request_dict}")
+        if self.depends_on:
+            assert len(results) == len(self.depends_on), f"{self.name}: Expected {len(self.depends_on)} results, got {len(results)} : {[r['specifiers'] for r in results]}"
+        else:
+            assert len(results) == 1, f"{self.name}: Expected 1 result, got {len(results)} : {[r['specifiers'] for r in results]}"
+
+        # if len(results) > 1:
+        #     raise ValueError(f"{len(results)} results found for {self.name} {request_dict}")
+        return results[0]
+
+    def _get_paths(self, climate_scenario, climate_forcing, time_slice=None, frequency=None, **ensemble_specifiers):
+        """return a list of local files for time slices of this indicator
+        """
+        if not self.depends_on:
+            result = self._get_dataset_meta(climate_scenario, climate_forcing, **ensemble_specifiers)
+            meta = result['specifiers']
+            files = result['files']
+            if time_slice:
+                files = [f for f in files if f['time_slice'][1] >= time_slice[0] and f['time_slice'][0] <= time_slice[1]]
+
+            return [get_filepath(result, f['path'], frequency=frequency or self.frequency,
+                        time_aggregation=self.time_aggregation) for f in files]
+
+        # now for indicators that derive from other indicators, create a new path (and aggregate the time slices into one single file)
+        timeslice_tag = f"_{time_slice[0]}_{time_slice[1]}" if time_slice else ""
+        other_tags = "_".join(meta[k] for k in self.simulation_keys if k not in ["climate_scenario", "climate_forcing"])
+        ensemble_tag = f"_{other_tags}" if other_tags else ""
+        return [Path(self.folder, self.name, climate_scenario, climate_forcing, f"{climate_forcing.lower()}{ensemble_tag}_{climate_scenario}_{self.name}_{frequency or self.frequency}{timeslice_tag}.nc")]
+
+    def download(self, climate_scenario, climate_forcing, time_slice=None, overwrite=False, remove_daily=False, remove_daily_precursors=False, dry_run=False, **ensemble_specifiers):
+        """Download a set of files from the ISIMIP database and returns an iterator on the local file paths (normally over time slices)
+        """
+        # request_dict = {"climate_forcing": climate_forcing, "climate_scenario": climate_scenario, "time_slice": time_slice, **ensemble_specifiers}
+        request_dict = {"climate_forcing": climate_forcing, "climate_scenario": climate_scenario, **ensemble_specifiers}
+        for k in self.simulation_keys:
+            if k not in request_dict:
+                raise ValueError(f"Missing key required {self.name}: {k}")
+        results = self.db.filter(climate_variable=self.depends_on, **request_dict)
+        meta_ = [r['specifiers'] for r in results]
+        if self.depends_on:
+            assert len(results) == len(self.depends_on), f"Expected {len(self.depends_on)} results, got {len(results)} : {meta_}"
+        else:
+            assert len(results) == 1, f"Expected 1 result, got {len(results)} : {meta_}"
+
+        # Here we assume the time slices are the same for all precursors
+        # If this is not the case, the code need to be updated
+        time_slices = [f['time_slice'] for f in results[0]['files']]
+        if len(results) > 1:
+            for r in results[1:]:
+                time_slices_ = [f['time_slice'] for f in r['files']]
+                if time_slices != time_slices_:
+                    print(">>>>")
+                    print(results[0]['specifiers'], time_slices)
+                    print("====")
+                    print(r['specifiers'], time_slices_)
+                    print("<<<<")
+                    raise RuntimeError("Time slices are not the same for all precursors")
+
+        temporary_files = set()
+        assert self.pipeline is None, "pipeline is not supported yet"
+
+        for time_slice in time_slices:
+            output_files = self._get_paths(time_slice=time_slice, **request_dict)
+
+            assert len(output_files) == 1
+            output_file = output_files[0]
+
+            if not overwrite and output_file.exists():
+                yield output_file
+                continue
+
+            output_file_daily = self._get_paths(time_slice=time_slice, frequency=results[0]["specifiers"]["time_step"], **request_dict)[0]
+
+            if overwrite or not output_file_daily.exists():
+
+                local_files = []
+                for r in results:
+                    files = [f for f in r['files'] if f['time_slice'] == time_slice]
+                    assert len(files) == 1, f"Expected 1 file, got {len(files)}"
+                    f = files[0]
+                    local_file = download(f['path'], folder=self.db.download_folder, dry_run=dry_run)
+                    local_files.append(local_file)
+                    if remove_daily:
+                        temporary_files.add(str(local_file))
+
+                if self.expr:
+
+                    if len(local_files) > 1:
+                        input_file = f"-merge {' '.join(map(str, local_files))}"
+
+                    else:
+                        input_file = local_file
+
+                    if "=" not in self.expr:
+                        expr = f"{self.name}={self.expr}"
+                    else:
+                        expr = self.expr
+
+                    if not dry_run:
+                        Path(output_file_daily).parent.mkdir(parents=True, exist_ok=True)
+                    cdo(f"expr,'{expr}' {input_file} {output_file_daily}", dry_run=dry_run)
+
+                    if remove_daily or remove_daily_precursors:
+                        temporary_files.add(str(output_file_daily))
+
+
+                else:
+                    assert local_file == output_file_daily
+
+            # aggregate in time
+            if self.frequency != results[0]["specifiers"]["time_step"]:
+                run_pipeline(self.time_aggregation, output_file_daily, output_file, frequency=self.frequency, dry_run=dry_run)
+
+            # clean up the temporary files if any
+            while len(temporary_files) > 0:
+                tmp = temporary_files.pop()
+                if Path(tmp).exists() and str(tmp) != str(output_file):
+                    check_call(f"rm '{tmp}'", dry_run=dry_run)
+
+            yield output_file
+
+        return
+
+    def download_all(self, **kwargs):
+        for simu in self.simulations:
+            try:
+                yield from self.download(**simu, **kwargs)
+            except Exception as e:
+                continue
+
+    def get_paths(self, **kwargs):
+        # dry-run but don't print the output
+        with contextlib.redirect_stdout(io.StringIO()) as f:
+            yield from self.download(**kwargs, dry_run=True)
+
+    def get_all_paths(self, **kwargs):
+        for simu in self.simulations:
+            try:
+                yield from self.get_paths(**simu, **kwargs)
+            except Exception as e:
+                continue
 
 
 def main():
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, isimip_parser])
-    parser.add_argument("-v", "--variable", nargs='+', choices=CONFIG["isimip.variables"])
-        # default=['tas', 'pr', 'sfcwind', 'twet'])
-    # parser.add_argument("--country", nargs='+', default=[], help='alpha-3 code or custom name from countries.toml')
-    # parser.add_argument("--download-region", help='specify a region larger than --countries for the download')
-
-    # These arguments come from an earlier, more general version of the code. They are not supposed to be changed here.
-    # They are kept for back-compatibility but removed from the --help message to avoid confusion.
-    group = parser.add_argument_group('Unused')
-    group.add_argument("--country", nargs='+', default=[], help=argparse.SUPPRESS)
-    group.add_argument("--daily", action='store_true', dest='daily', help=argparse.SUPPRESS)
-    group.add_argument("--keep-daily", action='store_false', dest='remove_daily', help=argparse.SUPPRESS)
-    group.add_argument("--mirror", help=argparse.SUPPRESS)  # in case we have direct access to PIK cluster, say
-    group.add_argument("--download-folder", default=CONFIG["isimip.download_folder"], help=argparse.SUPPRESS)
+    parser.add_argument("-v", "--variable", nargs='+', choices=CONFIG["isimip.variables"], help='the original ISIMIP variables')
+    parser.add_argument("-i", "--indicator", nargs='+', choices=CONFIG["indicators"], help="includes additional, secondary indicator with specific monthly statistics")
+    parser.add_argument("--daily", action='store_true', dest='daily', help=argparse.SUPPRESS)
+    # parser.add_argument("--monthly-statistic", default=["mean"], nargs="*",
+    #                    help="""function(s) to process daily into monthly variables. Default is ["mean"].
+    #                    It includes predfined functions: ["mean", "std", "max", "min", "sum"]. TODO: user-defined functions via mdoule import""")
+    parser.add_argument("--keep-daily", action='store_false', dest='remove_daily', help=argparse.SUPPRESS)
+    parser.add_argument("--mirror", help=argparse.SUPPRESS)  # in case we have direct access to PIK cluster, say
+    parser.add_argument("--download-folder", default=CONFIG["isimip.download_folder"], help=argparse.SUPPRESS)
+    parser.add_argument("--overwrite", action='store_true')
 
     o = parser.parse_args()
     setup_logger(o)
 
-    if not o.variable:
-        print("At least one variable must be indicated. E.g. `--variable tas`")
+    CONFIG["isimip.download_folder"] = o.download_folder
+
+    if not (o.indicator or o.variable):
+        parser.error("Please provide either --variable or --indicator")
+        parser.print_help()
         parser.exit(1)
 
-    # import lower case to avoid any confusion in the outputs
-    o.country = [c.lower() for c in o.country]
+    if o.indicator or o.variable:
+        for name in o.variable + o.indicator:
+            indicator = Indicator.from_config(name)
+            for experiment, model in iterate_model_experiment():
+                print(f"Downloading {name} for {experiment} {model}")
+                for _ in indicator.download(experiment, model, overwrite=o.overwrite, remove_daily=o.remove_daily):
+                    pass
 
-    # A previous version of the script allowed downloading for individual countries
-    o.download_world = True
+    # if o.variable:
+    #     results = request_dataset(o.variable, experiment=o.experiment, model=o.model, download_folder=o.download_folder, year_min=CONFIG["isimip.historical_year_min"], simulation_round=o.simulation_round)
 
-    # Request file list
-    results = request_dataset(o.variable, experiment=o.experiment, model=o.model, download_folder='downloads', year_min=1980, simulation_round=o.simulation_round)
-
-
-    # Download the files
-    def get_file(path, country=None, bbox=None, monthly=not o.daily):
-
-        # special case of a read-only mirror (only unmodified global, daily file are taken from there)
-        if o.mirror and not monthly:
-            return Path(o.mirror)/path
-
-        target_file = Path(o.download_folder)/path
-
-        if country:
-            bbox = boxes[o.country.index(country)]
-
-        if o.download_world:
-            tag = "global"
-
-        elif bbox:
-            tag = get_region_tag(bbox)
-
-        elif country:
-            tag = country
-
-        else:
-            tag = "global"
+    #     key = lambda r: tuple(r['specifiers'][k] for k in specifiers)
+    #     for k, group in groupby(sorted(results, key=key), key=key):
+    #         group = list(group)
+    #         for r in group:
+    #             for f in r['files']:
+    #                 download([f['path']], download_folder=o.download_folder,
+    #                         monthly=o.daily, time_aggregation=o.time_aggregation,
+    #                         remove_daily=o.remove_daily, mirror=o.mirror,
+    #                         simulation_round=o.simulation_round,
+    #                         )
+    #             # download([f['path']], download_folder=o.download_folder,
+    #             #         monthly=False, time_aggregation=o.time_aggregation,
+    #             #         remove_daily=False, mirror=o.mirror,
+    #             #         simulation_round=o.simulation_round,
+    #             #         )
 
 
-        if "ISIMIP2" in o.simulation_round:
-            if monthly:
-                timetag = 'month'
-            else:
-                timetag = 'day'
-
-            return target_file.parent / target_file.name.replace("_global_", f"_{tag}_").replace("_day_", f"_{timetag}_")
-
-        else:
-            if monthly:
-                timetag = 'monthly'
-            else:
-                timetag = 'daily'
-
-            return (Path(str(target_file.parent).replace("/global/", f"/{tag}/").replace("/daily/", f"/{timetag}/"))
-                / target_file.name.replace("_global_", f"_{tag}_").replace("_daily_", f"_{timetag}_"))
-
-
-    def download(path, queue=False, country=None, bbox=None, monthly=not o.daily, remove_daily=o.remove_daily, remove_zip=True):
-        client = _init_client()
-        target_file = get_file(path, country, bbox, monthly=monthly)
-        if target_file.exists(): return target_file
-
-
-        # Monthly files required?
-        if monthly:
-            # download daily files
-            res = download(path, queue, country, bbox, monthly=False)
-            if queue and type(res) == dict: return res
-            # convert to monthly values
-            target_file_daily = res
-            os.makedirs(target_file.parent, exist_ok=True)
-            cdo(f'monavg {target_file_daily} {target_file}')
-            if remove_daily:
-                print("rm", target_file_daily)
-                os.remove(target_file_daily)
-                # remove any empty parent directory
-                # needs list of bug (in this Python 3.8.8) https://github.com/python/cpython/issues/79679
-                for folder in list(target_file_daily.relative_to(o.download_folder).parents)[:-1]:
-                    folder = Path(o.download_folder)/folder
-                    if any(folder.glob('*')):
-                        break
-                    else:
-                        print("rm -r", folder)
-                        os.rmdir(folder)
-
-            return target_file
-
-        file_url = 'https://files.isimip.org/'+path
-
-        # Convert country to bbox, so we can call cutout (faster processing time than mask)
-        if country:
-            bbox = boxes[o.country.index(country)]
-
-        kwargs = {} if queue else {'poll': 10}
-
-        if bbox:
-            l, b, r, t = bbox
-            # job = client.mask(path, bbox=[b, t, l, r], **kwargs) # same download speed, but slower processing (de-compression ?)
-            job = client.cutout(path, bbox=[b, t, l, r], **kwargs) # should be faster than mask
-            file_url = job['file_url']
-
-        if queue and (bbox or country) and job['status'] != 'finished':
-            print(f"Job submitted: {job['id']} ({job['status']})")
-            return job
-
-        # Here we can just download the file
-        print('download', file_url, 'to', target_file.parent)
-        client.download(file_url, path=target_file.parent, validate=False, extract=True)
-        assert target_file.exists(), f'something fishy happened: {target_file} does not exist'
-        if remove_zip:
-            zipfile = target_file.parent/Path(file_url).name
-            if zipfile.name.endswith('.zip'):
-                print("rm", zipfile)
-                os.remove(zipfile)
-            readme = target_file.parent/"README.txt"
-            if readme.exists():
-                print("rm", readme)
-                os.remove(readme)
-        return target_file
-
-
-    for r in results:
-        for f in r['files']:
-            download(f['path'])
+    # if o.remove_daily:
+    #     for r in results:
+    #         for f in r['files']:
+    #             check_call(f"rm {f}")
 
 
     # Now process the files

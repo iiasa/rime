@@ -17,14 +17,14 @@ DEFAULT_CONFIG_FILE = Path(__file__).parent/"config.toml"
 DEFAULT_CONFIG = load_config(DEFAULT_CONFIG_FILE)
 CONFIG = DEFAULT_CONFIG.copy()
 
-# Sources: 
+# Sources:
 # https://stackoverflow.com/questions/305647/appropriate-location-for-my-applications-cache-on-windows
 # https://stackoverflow.com/questions/1325581/how-do-i-check-if-im-running-on-windows-in-python
 if os.name == 'nt':
     APPDATA = Path(os.getenv("ALLUSERSPROFILE")) / rimeX.__name__
     CACHE_FOLDER = APPDATA / "data_download"
     GLOBAL_CONFIG_FILE = APPDATA / (rimeX.__name__ + ".toml")
-    
+
 # Source: https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
 else:
     _HOME = os.getenv("HOME")
@@ -65,8 +65,15 @@ def set_config(file_path):
     for field, default_value in DEFAULT_CONFIG.items():
         CONFIG.setdefault(field, default_value)
 
+    # also extend the indicators list the ISIMIP variables
+    CONFIG.setdefault("indicators", CONFIG["isimip.variables"] + sorted(CONFIG.get("indicator", {})))
+
 set_config(o.config_file)
 
+
+def reset_config():
+    file_path = search_default_config()
+    set_config(file_path)
 
 def get_outputpath(relpath):
     return Path(CONFIG.get("output_folder", "output")) / relpath
@@ -81,4 +88,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
+

@@ -33,7 +33,7 @@ def get_files(variable, model, experiment, realm="*", domain="global", frequency
     model_upper = {m.lower():m for m in get_models()}[model_lower] if (model_lower and model_lower != "*") else "*"
     input_data = "*"
     if "ISIMIP2" in simulation_round:
-        frequency2 = {"yearly": "year", "monthly":"month", "daily": "day"}.get(frequency, frequency)
+        frequency2 = {"annual": "year", "monthly":"month", "daily": "day"}.get(frequency, frequency)
         member = "*"
         pattern = root + "/" + f"{simulation_round}/{input_data}/{realm}/biascorrected/{domain}/{experiment}/{model_upper}/{variable}_{frequency2}_{model_upper}_{experiment}_{member}_*_{year_start}0101-{year_end}1231.nc4"
     else:

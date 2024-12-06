@@ -26,7 +26,7 @@ def load_seasonal_means_per_region(variable, model, experiment, region, subregio
     file = get_regional_averages_file(variable, model, experiment, region, weights, **kw)
     monthly = pd.read_csv(file, index_col=0)[subregion or region]
 
-    if CONFIG.get(f"indicator.{variable}.frequency", "monthly") == "yearly":
+    if CONFIG.get(f"indicator.{variable}.frequency", "monthly") == "annual":
         seasonal_means = {"annual": monthly.values}
         years = monthly.index
 
@@ -388,7 +388,7 @@ def main():
     group.add_argument("--warming-level-file", default=None)
 
     group = parser.add_argument_group('Indicator variable')
-    group.add_argument("-v", "--variable", nargs="+", choices=CONFIG["isimip.variables"], default=CONFIG["isimip.variables"])
+    group.add_argument("-v", "--variable", nargs="+", choices=CONFIG["indicators"], default=CONFIG["indicators"])
     group.add_argument("--region", nargs="+", default=all_regions, choices=all_regions)
     group.add_argument("--all-subregions", action='store_true', help='include subregions as defined in CIE mask files')
     # group.add_argument("--subregion", nargs="+", help="if not provided, will default to region average")
@@ -427,7 +427,7 @@ def main():
     if o.cpus is None or o.cpus < 2:
 
         for variable, region, subregion, weights, season in tqdm.tqdm(all_items):
-            if CONFIG.get(f"indicator.{variable}.frequency", "monthly") == "yearly" and season != "annual":
+            if CONFIG.get(f"indicator.{variable}.frequency", "monthly") == "annual" and season != "annual":
                 continue
             get_binned_isimip_records(warming_levels, variable, region, subregion, weights, season,
                 running_mean_window=o.running_mean_window, overwrite=o.overwrite, backends=o.backend, simulation_round=o.simulation_round)
@@ -446,7 +446,7 @@ def main():
 
         logger.info(f"Digitize ISIMIP: Submit {len(all_items)} jobs.")
         for variable, region, subregion, weights, season in all_items:
-            if CONFIG.get(f"indicator.{variable}.frequency", "monthly") == "yearly" and season != "annual":
+            if CONFIG.get(f"indicator.{variable}.frequency", "monthly") == "annual" and season != "annual":
                 continue
             jobs.append((executor.submit(get_binned_isimip_records, warming_levels, variable, region, subregion, weights, season,
                 running_mean_window=o.running_mean_window, overwrite=o.overwrite, backends=o.backend, simulation_round=o.simulation_round), (variable, region, subregion, weights, season)))

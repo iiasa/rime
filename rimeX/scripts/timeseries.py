@@ -156,7 +156,7 @@ If this behavior is not desired, input --average several times""")
         logger.info("Impact data: interpolate warming levels...done")
 
 
-    # For population dataset the year can be matched to temperatrure time-series. It must be interpolated to yearly values first.
+    # For population dataset the year can be matched to temperatrure time-series. It must be interpolated to annual values first.
     if o.interp_years:
         dims = [c for c in all_impact_dims if c not in "year"]
         logger.info(f"Impact data: interpolate years...(group by {dims})")

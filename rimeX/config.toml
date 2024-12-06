@@ -3,7 +3,7 @@ simulation_round = "ISIMIP3b"
 download_folder = "/mnt/ISIMIP"
 climate_impact_explorer = "/mnt/PROVIDE/climate_impact_explorer"
 historical_year_min = 1980
-variables = [ "tas", "pr", "tasmax", "tasmin", "sfcwind", "hurs", "huss", "ps", "prsn", "rlds", "rsds", "rx5day"]
+variables = [ "tas", "pr", "tasmax", "tasmin", "sfcwind", "hurs", "huss", "ps", "prsn", "rlds", "rsds"]
 
 [isimip.ISIMIP3b]
 models = [ "CanESM5", "CESM2-WACCM", "GFDL-ESM4", "CNRM-CM6-1", "CNRM-ESM2-1", "EC-Earth3", "KACE-1-0-G",
@@ -14,26 +14,80 @@ experiments = [ "historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460", 
 models = ["IPSL-CM5A-LR", "GFDL-ESM2M", "MIROC5", "HadGEM2-ES"]
 experiments = [ "historical", "rcp26", "rcp45", "rcp60", "rcp85",]
 
+# "indicators" field will be automatically computed from isimip.variables and any key below
+# [indicator.NAME]
+# variables = VARIABLES  # input ISIMIP variables
+# frequency = FREQUENCY  # frequency of the indicator
+# compute_frequency = COMPUTE_FREQUENCY  # frequency of the function call to compute the indicator (e.g. daily for wet_bulb_temperature)
+# historical = BOOL  # include the historical period ? (usually yes, especially if the baseline is to be used)
+# transform = TRANSFORM  # transformation to apply to the indicator, e.g. an anomaly or a percentage change compared to baseline
+# projection_baseline = [1995, 2014] # the projection baseline used in "transform"
+# processing = "package.module.function_name" # default to rimeX.indicators.NAME
+
+# [isimip.population]
+
+# [isimip.gdp]
+# population
+
+[indicators]
+# folder="/mnt/PROVIDE/climate_impact_explorer/indicators"
+folder="/mnt/ISIMIP/indicators"
+
+[indicator.maize_yield]
+frequency = "annual"
+spatial_aggregation = ["latWeight"]
+
+[indicator.maize_yield.isimip_meta]
+specifiers = ["variable", "crop"]
+variable = "yieldchange"
+crop = "mai"
+ensemble_specifiers = ["model"] # further specifiers to identify the ensemble member
+frequency = "annual"
+
 [indicator.tas]
 transform = "baseline_change"
 units = "°C"
+# monstat = ["mean"]
 
 [indicator.tasmin]
 transform = "baseline_change"
 units = "°C"
+# monstats = ["mean", "min"]
 
 [indicator.tasmax]
 transform = "baseline_change"
 units = "°C"
+# monstats = ["mean", "max"]
 
 [indicator.pr]
 transform = "baseline_change_percent"
+# monstats = ["mean", "max", "max5day"]
 
 [indicator.rx5day]
-frequency = "yearly"
+depends_on = ["pr"]
+frequency = "annual"
 historical = false
 transform = "baseline_change_percent"
 projection_baseline = [1995, 2014] # this also apply to ISIMIP2b
+
+[indicator.wet_bulb_temperature]
+depends_on = ["tasmax", "hurs"]
+frequency = "monthly"
+# compute_frequency = "daily"
+# compute_method = "cdoexpr"
+expr = "(tasmax-273.15)*atan(0.151977*(hurs+8.313659)^0.5) + atan((tasmax-273.15)+hurs) - atan(hurs-1.676331) + 0.00391838*hurs^1.5*atan(0.023101*hurs) - 4.686035"
+comment = """
+Method: empirical formula for a pressure 101.325 kPa
+source: https://journals.ametsoc.org/view/journals/apme/50/11/jamc-d-11-0143.1.xml
+"""
+transform = "baseline_change"
+spatial_aggregation = ["latWeight", "pop2015"]
+
+
+[indicator.wet_bulb_temperature_max]
+_copy = "wet_bulb_temperature"
+time_aggregation = "max"
+
 
 [preprocessing]
 warming_level_step = 0.1  # used for pre-processing (input files for emulator)
@@ -43,7 +97,7 @@ isimip_binned_backend = [ "csv", ]
 projection_baseline = [ 1995, 2014,] # this is used in rime-preproc-digitize
 
 [preprocessing.regional]
-weights = [ "latWeight", "gdp2005", "pop2005",]
+weights = [ "latWeight", "gdp2015", "pop2015",]
 masks_folder = "/mnt/PROVIDE/climate_impact_explorer/data/masks"
 # isimip_binned_backend = [ "csv", "feather", "parquet"]
 
