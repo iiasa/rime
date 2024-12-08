@@ -7,7 +7,7 @@ import argparse
 
 from rimeX.tools import cdo, check_call
 from rimeX.config import CONFIG, config_parser
-from rimeX.logs import log_parser, setup_logger
+from rimeX.logs import log_parser, setup_logger, logger
 
 
 client = None
@@ -117,7 +117,7 @@ def request_dataset(variables=[], experiment=None, model=None,
             # response = client.datasets(simulation_round='ISIMIP3b', **kwargs)
 
             if response['count'] == 0:
-                print(f"!!! No results found for {kwargs}")
+                logger.warning(f"No results found for {kwargs}")
             assert len(response["results"]) == response["count"]
 
             results.extend(response['results'])
@@ -168,7 +168,7 @@ def _request_isimip_meta(name, specifiers=None, id=None, climate_forcing=None, c
     count = response['count']
 
     if len(results) != count:
-        print("!!! Not all results could be fetched. Total count=", count, "fetched:", len(results), "query:", query, "Modify the page_size limit.")
+        logger.warning(f"Not all results could be fetched. Total count: {count}, fetched: {len(results)}, query: {query}. Modify the page_size limit.")
 
     # filters out obsclim
     results = [r for r in results if r["specifiers"]["climate_scenario"] not in exclude_scenarios]
@@ -492,6 +492,7 @@ class Indicator:
             try:
                 yield from self.download(**simu, **kwargs)
             except Exception as e:
+                logger.warning(str(e))
                 continue
 
     def get_paths(self, **kwargs):
@@ -504,6 +505,7 @@ class Indicator:
             try:
                 yield from self.get_paths(**simu, **kwargs)
             except Exception as e:
+                logger.warning(str(e))
                 continue
 
 
