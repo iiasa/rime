@@ -338,8 +338,21 @@ class Indicator:
     def db(self):
         if self._db is None:
             if self.depends_on:
-                self._db = ISIMIPDataBase(sum((_request_isimip_meta(v, **self.isimip_meta) for v in self.depends_on), []), self._isimip_folder)
-                # here perhaps do some filtering of the time period to make sure they are consistent across variables?
+                # self._db = ISIMIPDataBase(sum((_request_isimip_meta(v, **self.isimip_meta) for v in self.depends_on), []), self._isimip_folder)
+                dbs = sum((_request_isimip_meta(v, **self.isimip_meta) for v in self.depends_on), [])
+                # make sure every (experiment, simulation) combination contains data for all dependencies
+                key = lambda r: tuple(r['specifiers'][k] for k in self.simulation_keys)
+                results = []
+                for k, group in groupby(sorted(dbs, key=key), key=key):
+                    group = list(group)
+                    if len(group) > len(self.depends_on):
+                        raise ValueError(f"Something fishy happened. More results found for {self.name} {k} than depends_on {self.depends_on}")
+                    if len(group) < len(self.depends_on):
+                        logger.debug(f"{[r['specifiers'] for r in group]}")
+                        logger.debug(f"{self.name} {k} : at least one dependency missing. Drop.")
+                        continue
+                    results.extend(group)
+                self._db = ISIMIPDataBase(results, self._isimip_folder)
             else:
                 self._db = ISIMIPDataBase(_request_isimip_meta(self.name, **self.isimip_meta), self._isimip_folder)
         return self._db
