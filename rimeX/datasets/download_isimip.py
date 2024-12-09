@@ -1,6 +1,5 @@
 import os
 import re
-import copy
 import contextlib, io
 from itertools import product, groupby, chain
 from pathlib import Path
@@ -288,14 +287,12 @@ class ISIMIPDataBase:
         for result in self.db:
             yield result
 
-def _are_consecutive_time_slices(time_slices):
-    return all(t2[0] == t1[1]+1 for t1, t2 in zip(time_slices[:-1], time_slices[1:]))
 
 class Indicator:
 
     def __init__(self, name, frequency="monthly", folder=None,
                  spatial_aggregation=None, depends_on=None, expr=None, time_aggregation=None, isimip_meta=None, pipeline=None,
-                 db=None, isimip_folder=None, comment=None, transform=None, year_min=None, units="", includes_historical=True, **kwargs):
+                 db=None, isimip_folder=None, comment=None, transform=None, year_min=None, units="", **kwargs):
 
         self.name = name
         self.frequency = frequency
@@ -328,7 +325,6 @@ class Indicator:
         self.comment = comment
         self.transform = transform  # this refers to the baseline period and is only accounted for later on in the emulator (misnamed...)
         self.units = units
-        self.includes_historical = includes_historical
 
     @classmethod
     def from_config(cls, name, **kw):
@@ -356,22 +352,9 @@ class Indicator:
                         logger.debug(f"{self.name} {k} : at least one dependency missing. Drop.")
                         continue
                     results.extend(group)
+                self._db = ISIMIPDataBase(results, self._isimip_folder)
             else:
-                results = _request_isimip_meta(self.name, **self.isimip_meta)
-
-            # make sure all models have the "historical" scenario attached
-            key = lambda r: tuple(r['specifiers'][k] for k in self.simulation_keys if k not in ["climate_scenario"])
-            results_filtered = []
-            for k, group in groupby(sorted(results, key=key), key=key):
-                group = list(group)
-                all_scenarios = set(r['specifiers']['climate_scenario'] for r in group)
-                if "historical" not in all_scenarios:
-                    logger.warning(f"{self.name} {k} : historical scenario missing. Drop.")
-                    continue
-                results_filtered.extend(group)
-
-            self._db = ISIMIPDataBase(results_filtered, self._isimip_folder)
-
+                self._db = ISIMIPDataBase(_request_isimip_meta(self.name, **self.isimip_meta), self._isimip_folder)
         return self._db
 
     @property
@@ -381,16 +364,13 @@ class Indicator:
     @property
     def simulations_values(self):
         # That can be non-unique in case the indicator depends on multiple variables
-        if self.includes_historical:
-            return sorted(set(tuple(r['specifiers'][k] for k in self.simulation_keys) for r in self.db if r['specifiers']['climate_scenario'] != "historical"))
-        else:
-            return sorted(set(tuple(r['specifiers'][k] for k in self.simulation_keys) for r in self.db))
+        return sorted(set(tuple(r['specifiers'][k] for k in self.simulation_keys) for r in self.db))
 
     @property
     def simulations(self):
         return [dict(zip(self.simulation_keys, values)) for values in self.simulations_values]
 
-    def _get_dataset_meta(self, climate_scenario, climate_forcing, include_historical=None, **ensemble_specifiers):
+    def _get_dataset_meta(self, climate_scenario, climate_forcing, **ensemble_specifiers):
         request_dict = {"climate_forcing": climate_forcing, "climate_scenario": climate_scenario, **ensemble_specifiers}
         for k in self.simulation_keys:
             if k not in request_dict:
@@ -417,17 +397,6 @@ class Indicator:
                     print(r['specifiers'], time_slices_)
                     print("<<<<")
                     raise RuntimeError("Time slices are not the same for all precursors")
-
-        if include_historical is None:
-            include_historical = self.includes_historical
-
-        if include_historical:
-            results_hist = self._get_dataset_meta("historical", climate_forcing, include_historical=False, **ensemble_specifiers)
-            results_future = results
-            results = copy.deepcopy(results_future)
-            for r0, r1, r in zip(results_hist, results_future, results):
-                assert all(r1['specifiers'][k] == r0['specifiers'][k] for k in r1["specifiers"] if k != "climate_scenario"), f"Historical experiment for {r1['specifiers']} does not match: {r0['specifiers']}"
-                r['files'] = r0['files'] + r1['files']
 
         return results
 
@@ -472,7 +441,6 @@ class Indicator:
         temporary_files = set()
 
         time_slices = [f['time_slice'] for f in results[0]['files']]
-        assert _are_consecutive_time_slices(time_slices), f"Time slices are not consecutive: {time_slices}"
 
         time_slice_files = []
 
@@ -553,7 +521,6 @@ class Indicator:
 
         if len(time_slice_files) == 1:
             check_call(f"mv '{time_slice_files[0]}' '{final_output_file}'", dry_run=dry_run)
-
         else:
             cdo(f"cat {' '.join(map(str, time_slice_files))} {final_output_file}", dry_run=dry_run)
 
