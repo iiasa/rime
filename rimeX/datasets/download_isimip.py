@@ -375,7 +375,9 @@ class Indicator:
         for k in self.simulation_keys:
             if k not in request_dict:
                 raise ValueError(f"Missing key required {self.name}: {k}")
+
         results = self.db.filter(**request_dict)
+
         if len(results) == 0:
             raise ValueError(f"No results found for {self.name} {request_dict}")
         if self.depends_on:
@@ -383,46 +385,7 @@ class Indicator:
         else:
             assert len(results) == 1, f"{self.name}: Expected 1 result, got {len(results)} : {[r['specifiers'] for r in results]}"
 
-        # if len(results) > 1:
-        #     raise ValueError(f"{len(results)} results found for {self.name} {request_dict}")
-        return results[0]
-
-    def _get_paths(self, climate_scenario, climate_forcing, time_slice=None, frequency=None, **ensemble_specifiers):
-        """return a list of local files for time slices of this indicator
-        """
-        if not self.depends_on:
-            result = self._get_dataset_meta(climate_scenario, climate_forcing, **ensemble_specifiers)
-            meta = result['specifiers']
-            files = result['files']
-            if time_slice:
-                files = [f for f in files if f['time_slice'][1] >= time_slice[0] and f['time_slice'][0] <= time_slice[1]]
-
-            return [get_filepath(result, f['path'], frequency=frequency or self.frequency,
-                        time_aggregation=self.time_aggregation) for f in files]
-
-        # now for indicators that derive from other indicators, create a new path (and aggregate the time slices into one single file)
-        timeslice_tag = f"_{time_slice[0]}_{time_slice[1]}" if time_slice else ""
-        other_tags = "_".join(meta[k] for k in self.simulation_keys if k not in ["climate_scenario", "climate_forcing"])
-        ensemble_tag = f"_{other_tags}" if other_tags else ""
-        return [Path(self.folder, self.name, climate_scenario, climate_forcing, f"{climate_forcing.lower()}{ensemble_tag}_{climate_scenario}_{self.name}_{frequency or self.frequency}{timeslice_tag}.nc")]
-
-    def download(self, climate_scenario, climate_forcing, time_slice=None, overwrite=False, remove_daily=False, remove_daily_precursors=False, dry_run=False, **ensemble_specifiers):
-        """Download a set of files from the ISIMIP database and returns an iterator on the local file paths (normally over time slices)
-        """
-        # request_dict = {"climate_forcing": climate_forcing, "climate_scenario": climate_scenario, "time_slice": time_slice, **ensemble_specifiers}
-        request_dict = {"climate_forcing": climate_forcing, "climate_scenario": climate_scenario, **ensemble_specifiers}
-        for k in self.simulation_keys:
-            if k not in request_dict:
-                raise ValueError(f"Missing key required {self.name}: {k}")
-        results = self.db.filter(climate_variable=self.depends_on, **request_dict)
-        meta_ = [r['specifiers'] for r in results]
-        if self.depends_on:
-            assert len(results) == len(self.depends_on), f"Expected {len(self.depends_on)} results, got {len(results)} : {meta_}"
-        else:
-            assert len(results) == 1, f"Expected 1 result, got {len(results)} : {meta_}"
-
-        # Here we assume the time slices are the same for all precursors
-        # If this is not the case, the code need to be updated
+        # Check the time slices are consistent
         time_slices = [f['time_slice'] for f in results[0]['files']]
         if len(results) > 1:
             for r in results[1:]:
@@ -435,40 +398,96 @@ class Indicator:
                     print("<<<<")
                     raise RuntimeError("Time slices are not the same for all precursors")
 
-        temporary_files = set()
+        return results
+
+
+    def get_path(self, climate_scenario, climate_forcing, ext=".nc", region=None, **ensemble_specifiers):
+        """returns the local file path for this indicator
+        """
+        result = self._get_dataset_meta(climate_scenario, climate_forcing, **ensemble_specifiers)[0]
+        meta = result['specifiers']
+        time_slices = [f['time_slice'] for f in result['files']]
+        time_slice = (min(t[0] for t in time_slices), max(t[1] for t in time_slices))
+        timeslice_tag = f"_{time_slice[0]}_{time_slice[1]}"
+        other_tags = "_".join(meta[k] for k in self.simulation_keys if k not in ["climate_scenario", "climate_forcing"])
+        ensemble_tag = f"_{other_tags}" if other_tags else ""
+        region_tag = f"_{region}" if region else ""
+        if region:
+            regionfolders = ["spatial_averages", region]
+        else:
+            regionfolders = []
+
+        # special case where the indicator is exactly the same as the ISIMIP variable
+        if self.frequency == meta["time_step"] and self.depends_on is None and self.expr is None and len(time_slices) == 1 and region is None and ext == ".nc":
+            with contextlib.redirect_stdout(io.StringIO()):
+                return download(result['files'][0]['path'], folder=self.db.download_folder, dry_run=True)
+
+        # otherwise create a new path separate from the ISIMIP database
+        return Path(self.folder, self.name, climate_scenario, climate_forcing, *regionfolders, f"{climate_forcing.lower()}{ensemble_tag}_{climate_scenario}_{self.name}{region_tag}_{self.frequency}{timeslice_tag}"+ext)
+
+
+    def download(self, climate_scenario, climate_forcing, time_slice=None, overwrite=False, remove_daily=False, remove_daily_expr=True, dry_run=False, **ensemble_specifiers):
+        """Download a set of files from the ISIMIP database and returns an iterator on the local file paths (normally over time slices)
+        """
+        final_output_file = self.get_path(climate_scenario, climate_forcing, **ensemble_specifiers)
+        if not overwrite and final_output_file.exists():
+            return final_output_file
+
+        results = self._get_dataset_meta(climate_scenario, climate_forcing, **ensemble_specifiers)
+        meta_ = results[0]['specifiers']
+
         assert self.pipeline is None, "pipeline is not supported yet"
 
+        temporary_files = set()
+
+        time_slices = [f['time_slice'] for f in results[0]['files']]
+
+        time_slice_files = []
+
         for time_slice in time_slices:
-            output_files = self._get_paths(time_slice=time_slice, **request_dict)
 
-            assert len(output_files) == 1
-            output_file = output_files[0]
+            # temporary monthly (or else time-aggregated) file
+            if not (self.expr or self.depends_on):
+                # for the classical ISI-MIP variables, use the same file pattern as downloaded file for temporary files
+                # this is for legacy reasons, to re-use the files that are already downloaded and created this way
+                files = [f for f in results[0]['files'] if f['time_slice'] == time_slice]
+                assert len(files) == 1, f"Expected 1 file, got {len(files)}"
+                time_slice_file = get_filepath(results[0], files[0]['path'], frequency=self.frequency, time_aggregation=self.time_aggregation, folder=self.db.download_folder)
 
-            if not overwrite and output_file.exists():
-                yield output_file
+            else:
+                time_slice_file = Path(str(final_output_file) + ".slice{0}-{1}".format(*time_slice))
+
+            if not overwrite and time_slice_file.exists():
+                time_slice_files.append(time_slice_file)
                 continue
 
-            output_file_daily = self._get_paths(time_slice=time_slice, frequency=results[0]["specifiers"]["time_step"], **request_dict)[0]
+            time_slice_file.parent.mkdir(parents=True, exist_ok=True)
 
-            if overwrite or not output_file_daily.exists():
+            # this file only exists at some point if the indicator is computed from expr, otherwise it is renamed later
+            time_slice_file_daily = Path(str(time_slice_file) + ".daily")
 
-                local_files = []
-                for r in results:
-                    files = [f for f in r['files'] if f['time_slice'] == time_slice]
+            if not time_slice_file_daily.exists():
+
+                # download input (generally daily) files
+                # as many results as input variables (1 if depends_on is None)
+                input_daily_files = []
+                for result in results:
+                    files = [f for f in result['files'] if f['time_slice'] == time_slice]
                     assert len(files) == 1, f"Expected 1 file, got {len(files)}"
                     f = files[0]
-                    local_file = download(f['path'], folder=self.db.download_folder, dry_run=dry_run)
-                    local_files.append(local_file)
+                    local_file = download(f['path'], folder=self.db.download_folder, dry_run=dry_run, overwrite=overwrite)
+                    input_daily_files.append(local_file)
                     if remove_daily:
                         temporary_files.add(str(local_file))
 
+                # Calculate any expression
                 if self.expr:
 
-                    if len(local_files) > 1:
-                        input_file = f"-merge {' '.join(map(str, local_files))}"
+                    if len(input_daily_files) > 1:
+                        input_file = f"-merge {' '.join(map(str, input_daily_files))}"
 
                     else:
-                        input_file = local_file
+                        input_file = input_daily_files[0]
 
                     if "=" not in self.expr:
                         expr = f"{self.name}={self.expr}"
@@ -476,50 +495,49 @@ class Indicator:
                         expr = self.expr
 
                     if not dry_run:
-                        Path(output_file_daily).parent.mkdir(parents=True, exist_ok=True)
-                    cdo(f"expr,'{expr}' {input_file} {output_file_daily}", dry_run=dry_run)
+                        Path(time_slice_file_daily).parent.mkdir(parents=True, exist_ok=True)
+                    cdo(f"expr,'{expr}' {input_file} {time_slice_file_daily}", dry_run=dry_run)
 
-                    if remove_daily or remove_daily_precursors:
-                        temporary_files.add(str(output_file_daily))
-
+                    if remove_daily or remove_daily_expr:
+                        temporary_files.add(str(time_slice_file_daily))
 
                 else:
-                    assert local_file == output_file_daily
+                    assert len(input_daily_files) == 1, "Expected 1 input file when no expr exists"
+                    time_slice_file_daily = input_daily_files[0]
 
             # aggregate in time
-            if self.frequency != results[0]["specifiers"]["time_step"]:
-                run_pipeline(self.time_aggregation, output_file_daily, output_file, frequency=self.frequency, dry_run=dry_run)
+            if self.frequency != meta_["time_step"]:
+                run_pipeline(self.time_aggregation, time_slice_file_daily, time_slice_file, frequency=self.frequency, dry_run=dry_run)
+            else:
+                time_slice_file = time_slice_file_daily
 
-            # clean up the temporary files if any
+            # clean up the temporary files if any, to save disk space
             while len(temporary_files) > 0:
                 tmp = temporary_files.pop()
-                if Path(tmp).exists() and str(tmp) != str(output_file):
+                if Path(tmp).exists() and str(tmp) != str(time_slice_file):
                     check_call(f"rm '{tmp}'", dry_run=dry_run)
 
-            yield output_file
+            time_slice_files.append(time_slice_file)
 
-        return
+        if len(time_slice_files) == 1:
+            check_call(f"mv '{time_slice_files[0]}' '{final_output_file}'", dry_run=dry_run)
+        else:
+            cdo(f"cat {' '.join(map(str, time_slice_files))} {final_output_file}", dry_run=dry_run)
+
+            # remove the monthly time slices
+            for f in time_slice_files:
+                check_call(f"rm -f '{f}'", dry_run=dry_run)
+
+        return final_output_file
+
 
     def download_all(self, **kwargs):
         for simu in self.simulations:
-            try:
-                yield from self.download(**simu, **kwargs)
-            except Exception as e:
-                logger.warning(str(e))
-                continue
-
-    def get_paths(self, **kwargs):
-        # dry-run but don't print the output
-        with contextlib.redirect_stdout(io.StringIO()) as f:
-            yield from self.download(**kwargs, dry_run=True)
+            yield self.download(**simu, **kwargs)
 
     def get_all_paths(self, **kwargs):
         for simu in self.simulations:
-            try:
-                yield from self.get_paths(**simu, **kwargs)
-            except Exception as e:
-                logger.warning(str(e))
-                continue
+            yield from self.get_paths(**simu, **kwargs)
 
 
 def main():
