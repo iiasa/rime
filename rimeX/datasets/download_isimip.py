@@ -288,6 +288,10 @@ class ISIMIPDataBase:
             yield result
 
 
+def _are_consecutive_time_slices(time_slices):
+    return all(t2[0] == t1[1]+1 for t1, t2 in zip(time_slices[:-1], time_slices[1:]))
+
+
 class Indicator:
 
     def __init__(self, name, frequency="monthly", folder=None,
@@ -441,6 +445,7 @@ class Indicator:
         temporary_files = set()
 
         time_slices = [f['time_slice'] for f in results[0]['files']]
+        assert _are_consecutive_time_slices(time_slices), f"Time slices are not consecutive: {time_slices}"
 
         time_slice_files = []
 
