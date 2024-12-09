@@ -8,7 +8,8 @@ variables = [ "tas", "pr", "tasmax", "tasmin", "sfcwind", "hurs", "huss", "ps", 
 [isimip.ISIMIP3b]
 models = [ "CanESM5", "CESM2-WACCM", "GFDL-ESM4", "CNRM-CM6-1", "CNRM-ESM2-1", "EC-Earth3", "KACE-1-0-G",
             "IPSL-CM6A-LR", "IITM-ESM", "MIROC6", "MPI-ESM1-2-HR", "MRI-ESM2-0", "TaiESM1", "UKESM1-0-LL",]
-experiments = [ "historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460",  "ssp534-over", "ssp585",]
+# experiments = [ "historical", "ssp119", "ssp126", "ssp245", "ssp370", "ssp460",  "ssp534-over", "ssp585",]
+experiments = [ "historical", "ssp126", "ssp245", "ssp370", "ssp460", "ssp585",]
 
 [isimip.ISIMIP2b]
 models = ["IPSL-CM5A-LR", "GFDL-ESM2M", "MIROC5", "HadGEM2-ES"]
