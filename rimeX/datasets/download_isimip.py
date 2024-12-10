@@ -4,6 +4,7 @@ import contextlib, io
 from itertools import product, groupby, chain
 from pathlib import Path
 import argparse
+from typing import Optional, List, Union
 
 from rimeX.tools import cdo, check_call
 from rimeX.config import CONFIG, config_parser
@@ -19,13 +20,20 @@ def _init_client():
         client = ISIMIPClient()
     return client
 
+def _get_simulation_rounds(simulation_round: Optional[Union[str, List[str]]] = None):
+    if simulation_round is None:
+        simulation_round = CONFIG["isimip.simulation_round"]
+    if type(simulation_round) is str:
+        simulation_round = [simulation_round]
+    return simulation_round
+
 def get_models(simulation_round=None):
-    if simulation_round is None: simulation_round = CONFIG['isimip.simulation_round']
-    return CONFIG["isimip"][simulation_round]["models"]
+    simulation_round = _get_simulation_rounds(simulation_round)
+    return list(chain(*(CONFIG["isimip"][simulation_round_]["models"] for simulation_round_ in simulation_round)))
 
 def get_experiments(simulation_round=None):
-    if simulation_round is None: simulation_round = CONFIG['isimip.simulation_round']
-    return CONFIG["isimip"][simulation_round]["experiments"]
+    simulation_round = _get_simulation_rounds(simulation_round)
+    return list(chain(*(CONFIG["isimip"][simulation_round_]["experiments"] for simulation_round_ in simulation_round)))
 
 def get_variables(simulation_round=None):
     return CONFIG["isimip.variables"]
@@ -51,7 +59,7 @@ def _get_isimip_parser(choices=True):
     group.add_argument("--experiment", nargs='+', default=get_experiments(), choices=get_experiments() if choices else None)
     _lower_to_upper = {m.lower():m for m in get_models()}
     group.add_argument("--model", nargs='+', default=get_models(), choices=get_models() if choices else None, type=lambda s: _lower_to_upper.get(s, s))
-    group.add_argument("--simulation-round", default=CONFIG["isimip.simulation_round"], help="default %(default)s") # already set in _prepare_isimip_protocol, but here for help
+    group.add_argument("--simulation-round", nargs="+", default=CONFIG["isimip.simulation_round"], help="default %(default)s") # already set in _prepare_isimip_protocol, but here for help
 
     return isimip_parser
 
@@ -62,7 +70,7 @@ _YEARS_ISIMIP3_RE = re.compile(r'(\d{4})_(\d{4}).nc')
 _YEARS_ISIMIP2_RE = re.compile(r'(\d{4})\d{4}-(\d{4})\d{4}.nc')
 _YEARS_ISIMIP_RE = re.compile(r'((\d{4})_(\d{4})|(\d{4})\d{4}-(\d{4})\d{4}).nc')
 
-def parse_years(path, simulation_round=None):
+def parse_years(path, simulation_round: Optional[str] = None):
     # if simulation_round is None: simulation_round = CONFIG['isimip.simulation_round']
     simulation_round = None  # some files are different e.g... 'tasmax_gswp3-ewembi_1901_1910.nc4'
     if simulation_round is None:
@@ -98,6 +106,7 @@ def _update_results(results, year_min=None, local_folder=None):
 
 EXCLUDE_SCENARIOS = ["obsclim", "hist-nat", "picontrol", "counterclim"]
 
+
 def request_dataset(name, specifiers=None, id=None, climate_forcing=None, climate_scenario=None,
                          year_min=None, simulation_round=None, page_size=1000,
                          exclude_scenarios=EXCLUDE_SCENARIOS, **meta):
@@ -114,14 +123,14 @@ def request_dataset(name, specifiers=None, id=None, climate_forcing=None, climat
         query['climate_forcing'] = climate_forcing
     else:
         # keep some control in the config file
-        query['climate_forcing'] = [m.lower() for m in CONFIG["isimip"]["ISIMIP3b"]["models"] + CONFIG["isimip"]["ISIMIP2b"]["models"]]
+        query['climate_forcing'] = [m.lower() for m in get_models(simulation_round)]
         # pass
 
     if climate_scenario:
         query['climate_scenario'] = climate_scenario
     else:
         # otherwise obsclim comes in
-        query['climate_scenario'] = CONFIG["isimip"]["ISIMIP3b"]["experiments"] + CONFIG["isimip"]["ISIMIP2b"]["experiments"]
+        query['climate_scenario'] = get_experiments(simulation_round)
         # pass
 
     if simulation_round:

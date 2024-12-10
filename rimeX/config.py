@@ -68,6 +68,12 @@ def set_config(file_path):
     # also extend the indicators list the ISIMIP variables
     CONFIG.setdefault("indicators", CONFIG["isimip.variables"] + sorted(CONFIG.get("indicator", {})))
 
+    # update some variables
+    if type(CONFIG["isimip.simulation_round"]) is str:
+        CONFIG["isimip.simulation_round"] = [CONFIG["isimip.simulation_round"]]
+
+    # type check here?
+
 set_config(o.config_file)
 
 

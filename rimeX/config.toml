@@ -1,5 +1,5 @@
 [isimip]
-simulation_round = "ISIMIP3b"
+simulation_round = ["ISIMIP3b"]
 download_folder = "/mnt/ISIMIP"
 climate_impact_explorer = "/mnt/PROVIDE/climate_impact_explorer"
 historical_year_min = 1980
