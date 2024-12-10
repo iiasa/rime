@@ -384,13 +384,14 @@ class Indicator:
         return results
 
 
-    def get_path(self, climate_scenario, climate_forcing, ext=".nc", region=None, **ensemble_specifiers):
+    def get_path(self, climate_scenario, climate_forcing, ext=".nc", region=None, time_slice=None, **ensemble_specifiers):
         """returns the local file path for this indicator
         """
         result = self._get_dataset_meta(climate_scenario, climate_forcing, **ensemble_specifiers)[0]
         meta = result['specifiers']
-        time_slices = [f['time_slice'] for f in result['files']]
-        time_slice = (min(t[0] for t in time_slices), max(t[1] for t in time_slices))
+        if time_slice is None:
+            time_slices = [f['time_slice'] for f in result['files']]
+            time_slice = (min(t[0] for t in time_slices), max(t[1] for t in time_slices))
         timeslice_tag = f"_{time_slice[0]}_{time_slice[1]}"
         other_tags = "_".join(meta[k] for k in self.simulation_keys if k not in ["climate_scenario", "climate_forcing"])
         ensemble_tag = f"_{other_tags}" if other_tags else ""
@@ -446,12 +447,13 @@ class Indicator:
             if not self.depends_on:
                 # for the classical ISI-MIP variables, use the same file pattern as downloaded file for temporary files
                 # this is for legacy reasons, to re-use the files that are already downloaded and created this way
+                # we may rename that later on and only keep the simpler form below
                 files = [f for f in results[0]['files'] if f['time_slice'] == time_slice]
                 assert len(files) == 1, f"Expected 1 file, got {len(files)}"
                 time_slice_file = get_filepath(results[0], files[0]['path'], frequency=self.frequency, time_aggregation=self.time_aggregation, folder=self.db.download_folder)
 
             else:
-                time_slice_file = Path(str(final_output_file) + ".slice{0}-{1}".format(*time_slice))
+                time_slice_file = self.get_path(climate_scenario, climate_forcing, time_slice=time_slice, **ensemble_specifiers)
 
             if not overwrite and time_slice_file.exists():
                 time_slice_files.append(time_slice_file)
