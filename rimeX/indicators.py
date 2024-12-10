@@ -62,7 +62,7 @@ def number_of_wet_days(input_files, output_file, dry_run=False, **kw):
 
     threshold = 1 / 86400  # 1 mm/day in mm/s
 
-    cdo(f"yearcount -gtc,{threshold} {input_files[0]} {output_file}", dry_run=dry_run)
+    cdo(f"yearsum -gtc,{threshold} {input_files[0]} {output_file}", dry_run=dry_run)
 
     name = "number_of_wet_days"
     check_call(f"ncrename -v pr,{name} {output_file}", dry_run=dry_run)
