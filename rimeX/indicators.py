@@ -53,3 +53,20 @@ def daily_temperature_variability(input_files, climatology_files, output_file, p
     check_call(f"ncatted -O -a units,{name},o,c,'degrees_celsius' {output_file}", **kw)
     check_call(f"ncatted -O -a standard_name,{name},o,c,'daily_temperature_variability' {output_file}", **kw)
     check_call(f"ncatted -O -a long_name,{name},o,c,'Daily temperature variability' {output_file}", **kw)
+
+def number_of_wet_days(input_files, output_file, dry_run=False, **kw):
+    """ Number of wet days after Kotz et al. (2024) (Eq. 2)
+    """
+    assert len(input_files) == 1
+
+    threshold = 1 * 86400  # 1 mm/day in seconds
+
+    cdo(f"yearsum -eca_su,{threshold} {input_files[0]} {output_file}", dry_run=dry_run)
+
+    # Rename the variable 'tas' to 'number_of_wet_days'
+    name = "number_of_wet_days"
+    check_call(f"ncrename -v su,{name} {output_file}", dry_run=dry_run)
+    check_call(f"ncatted -O -a units,{name},o,c,'days' {output_file}", dry_run=dry_run)
+    check_call(f"ncatted -O -a standard_name,{name},o,c,'number_of_wet_days' {output_file}", dry_run=dry_run)
+    check_call(f"ncatted -O -a long_name,{name},o,c,'Number of wet days' {output_file}", dry_run=dry_run)
+
