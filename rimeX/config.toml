@@ -64,7 +64,15 @@ source: https://journals.ametsoc.org/view/journals/apme/50/11/jamc-d-11-0143.1.x
 """
 transform = "baseline_change"
 spatial_aggregation = ["latWeight", "pop2015"]
+units = "°C"
 
+[indicator.daily_temperature_variability]
+depends_on = ["tas"]
+depends_on_climatology = true
+frequency = "annual"
+custom = "rimeX.indicators:daily_temperature_variability"
+transform = "baseline_change_percent"
+units = "°C"
 
 [indicator.wet_bulb_temperature_q95]
 _copy = "wet_bulb_temperature"

@@ -273,7 +273,8 @@ class Indicator:
     def __init__(self, name, frequency="monthly", folder=None,
                  spatial_aggregation=None, depends_on=None, expr=None, time_aggregation=None, isimip_meta=None,
                  shell=None, custom=None,
-                 db=None, isimip_folder=None, comment=None, transform=None, year_min=None, units="", projection_baseline=None, **kwargs):
+                 db=None, isimip_folder=None, comment=None, transform=None, year_min=None, units="", projection_baseline=None,
+                 depends_on_climatology=False, **kwargs):
 
         self.name = name
         self.frequency = frequency
@@ -298,6 +299,7 @@ class Indicator:
         if isinstance(depends_on, list):
             assert all(type(x) is str for x in depends_on), "depends_on must be a list of strings"
         self.depends_on = depends_on
+        self.depends_on_climatology = depends_on_climatology
         self.spatial_aggregation = spatial_aggregation or CONFIG["preprocessing.regional.weights"]
         self.time_aggregation = time_aggregation
         if isinstance(db, list):
@@ -315,6 +317,8 @@ class Indicator:
         copy = cfg.pop("_copy", None)
         if copy:
             cfg = {**CONFIG.get(f"indicator.{copy}", {}), **cfg}
+        if name not in CONFIG["indicator"] and name not in CONFIG["isimip.variables"]:
+            raise ValueError(f"Unknown indicator {name}")
         return cls(name, **{**cfg, **kw})
 
     @property
@@ -409,10 +413,26 @@ class Indicator:
         # otherwise create a new path separate from the ISIMIP database
         return Path(self.folder, self.name, climate_scenario, climate_forcing, *regionfolders, f"{climate_forcing.lower()}{ensemble_tag}_{climate_scenario}_{self.name}{region_tag}_{self.frequency}{timeslice_tag}"+ext)
 
+    def download_climatology(self, climate_forcing, dry_run=False, **ensemble_specifiers):
+        """compute the climatology of the base variables the indicator depends on
+        """
+        for name in self.depends_on:
+            indicator = Indicator.from_config(name)
+            filepath_base = indicator.get_path("historical", climate_forcing, **ensemble_specifiers)
+            filepath = Path(str(filepath_base) + ".climatology")
+            if not filepath.exists():
+                output = indicator.download("historical", climate_forcing, dry_run=dry_run, **ensemble_specifiers)
+                if not dry_run:
+                    filepath.parent.mkdir(parents=True, exist_ok=True)
+                cdo(f"ymonmean {output} {filepath}", dry_run=dry_run)
+            yield filepath
 
     def download(self, climate_scenario, climate_forcing, time_slice=None, overwrite=False, remove_daily=False, remove_daily_expr=True, dry_run=False, **ensemble_specifiers):
         """Download a set of files from the ISIMIP database and returns an iterator on the local file paths (normally over time slices)
         """
+        if self.depends_on_climatology:
+            clim_files = list(self.download_climatology(climate_forcing, dry_run=dry_run, **ensemble_specifiers))
+
         final_output_file = self.get_path(climate_scenario, climate_forcing, **ensemble_specifiers)
         if not overwrite and final_output_file.exists():
             return final_output_file
@@ -510,10 +530,12 @@ class Indicator:
                 module, function = self.custom.split(":")
                 custom_module = importlib.import_module(module)
                 func = getattr(custom_module, function)
-                func(input_daily_files, time_slice_file, previous_input_files, previous_output_file, dry_run=dry_run)
+                if self.depends_on_climatology:
+                    func(input_daily_files, clim_files, time_slice_file, previous_input_files, previous_output_file, dry_run=dry_run)
+                else:
+                    func(input_daily_files, time_slice_file, previous_input_files, previous_output_file, dry_run=dry_run)
                 if not dry_run:
                     assert Path(time_slice_file).exists(), f"Custom function {self.custom} did not create {time_slice_file}"
-
 
             else:
 
@@ -563,6 +585,8 @@ class Indicator:
         if len(time_slice_files) == 1:
             check_call(f"mv '{time_slice_files[0]}' '{final_output_file}'", dry_run=dry_run)
         else:
+            if not dry_run:
+                final_output_file.parent.mkdir(parents=True, exist_ok=True)
             cdo(f"cat {' '.join(map(str, time_slice_files))} {final_output_file}", dry_run=dry_run)
             _mark_for_cleanup(time_slice_files)
 

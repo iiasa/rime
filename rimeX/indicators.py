@@ -28,10 +28,28 @@ def rx5day(input_files, output_file, previous_input_files=None, previous_output_
 
     cdo(f"-mulc,{seconds_per_day} -yearmax -shifttime,+2days -runsum,5 {input} {output_file}", **kw)
 
-    # Rename the variable 'pr' to 'rx5day' and overwrite the file
+    # Rename the variable 'pr' to 'rx5day'
     check_call(f"ncrename -v pr,rx5day {output_file}", **kw)
 
-    # Update the units and standard_name and long_name attributes for 'rx5day' and overwrite the file
+    # Update the units and standard_name and long_name attributes for 'rx5day'
     check_call(f"ncatted -O -a units,rx5day,o,c,'mm' {output_file}", **kw)
     check_call(f"ncatted -O -a standard_name,rx5day,o,c,'maximum_5_day_precipitation_amount' {output_file}", **kw)
     check_call(f"ncatted -O -a long_name,rx5day,o,c,'Maximum 5-day precipitation amount' {output_file}", **kw)
+
+
+def daily_temperature_variability(input_files, climatology_files, output_file, previous_input_files=None, previous_output_file=None, **kw):
+    """ daily temperature variability (in deg. C) after Kotz et al. (2024) (Eq. 1)
+    """
+    assert len(input_files) == 1
+    assert len(climatology_files) == 1
+
+    cdo(f"yearmean -sqrt -monmean -pow,2 -ymonsub {input_files[0]} {climatology_files[0]} {output_file}", **kw)
+
+    # Rename the variable 'tas' to 'daily_temperature_variability'
+    name = "daily_temperature_variability"
+    check_call(f"ncrename -v tas,{name} {output_file}", **kw)
+
+    # Update the units and standard_name and long_name attributes for 'daily_temperature_variability'
+    check_call(f"ncatted -O -a units,{name},o,c,'degrees_celsius' {output_file}", **kw)
+    check_call(f"ncatted -O -a standard_name,{name},o,c,'daily_temperature_variability' {output_file}", **kw)
+    check_call(f"ncatted -O -a long_name,{name},o,c,'Daily temperature variability' {output_file}", **kw)
