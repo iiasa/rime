@@ -274,7 +274,8 @@ class Indicator:
                  spatial_aggregation=None, depends_on=None, expr=None, time_aggregation=None, isimip_meta=None,
                  shell=None, custom=None,
                  db=None, isimip_folder=None, comment=None, transform=None, year_min=None, units="", projection_baseline=None,
-                 depends_on_climatology=False, **kwargs):
+                 depends_on_climatology=False, climatology_quantile=False,
+                 **kwargs):
 
         self.name = name
         self.frequency = frequency
@@ -300,6 +301,7 @@ class Indicator:
             assert all(type(x) is str for x in depends_on), "depends_on must be a list of strings"
         self.depends_on = depends_on
         self.depends_on_climatology = depends_on_climatology
+        self.climatology_quantile = climatology_quantile
         self.spatial_aggregation = spatial_aggregation or CONFIG["preprocessing.regional.weights"]
         self.time_aggregation = time_aggregation
         if isinstance(db, list):
@@ -417,25 +419,34 @@ class Indicator:
         """compute the climatology of the base variables the indicator depends on
         """
         for name in self.depends_on:
-            indicator = Indicator.from_config(name)
+            indicator = Indicator.from_config(name, frequency="daily") # don't do monthly aggregation
             filepath_base = indicator.get_path("historical", climate_forcing, **ensemble_specifiers)
-            filepath = Path(str(filepath_base) + ".climatology")
+            if self.climatology_quantile:
+                filepath = Path(str(filepath_base) + f".climatology_p{self.climatology_quantile*100}")
+                cat = f"timquantile,{self.climatology_quantile} -cat "
+            else:
+                filepath = Path(str(filepath_base) + ".climatology")
+                cat = f"ymonmean -cat "
             if not filepath.exists():
-                output = indicator.download("historical", climate_forcing, dry_run=dry_run, **ensemble_specifiers)
-                if not dry_run:
-                    filepath.parent.mkdir(parents=True, exist_ok=True)
-                cdo(f"ymonmean {output} {filepath}", dry_run=dry_run)
+                output = indicator.download("historical", climate_forcing, dry_run=dry_run, cat=cat, output_file=filepath, **ensemble_specifiers)
+                assert str(output) == str(filepath), f"Expected {filepath}, got {output}"
             yield filepath
 
-    def download(self, climate_scenario, climate_forcing, time_slice=None, overwrite=False, remove_daily=False, remove_daily_expr=True, dry_run=False, **ensemble_specifiers):
+    def download(self, climate_scenario, climate_forcing, time_slice=None, overwrite=False, remove_daily=False, remove_daily_expr=True,
+                 cat=None, output_file=None,
+                 dry_run=False, **ensemble_specifiers):
         """Download a set of files from the ISIMIP database and returns an iterator on the local file paths (normally over time slices)
         """
         if self.depends_on_climatology:
             clim_files = list(self.download_climatology(climate_forcing, dry_run=dry_run, **ensemble_specifiers))
 
-        final_output_file = self.get_path(climate_scenario, climate_forcing, **ensemble_specifiers)
-        if not overwrite and final_output_file.exists():
-            return final_output_file
+        if output_file is None:
+            output_file = self.get_path(climate_scenario, climate_forcing, **ensemble_specifiers)
+        else:
+            output_file = Path(output_file)
+
+        if not overwrite and output_file.exists():
+            return output_file
 
         results = self._get_dataset_meta(climate_scenario, climate_forcing, **ensemble_specifiers)
         meta_ = results[0]['specifiers']
@@ -530,10 +541,16 @@ class Indicator:
                 module, function = self.custom.split(":")
                 custom_module = importlib.import_module(module)
                 func = getattr(custom_module, function)
+                kwargs = dict(
+                    previous_input_files=previous_input_files,
+                    previous_output_file=previous_output_file,
+                    dry_run=dry_run,
+                    )
                 if self.depends_on_climatology:
-                    func(input_daily_files, clim_files, time_slice_file, previous_input_files, previous_output_file, dry_run=dry_run)
+                    func(input_daily_files, clim_files, time_slice_file, **kwargs)
                 else:
-                    func(input_daily_files, time_slice_file, previous_input_files, previous_output_file, dry_run=dry_run)
+                    func(input_daily_files, time_slice_file, **kwargs)
+
                 if not dry_run:
                     assert Path(time_slice_file).exists(), f"Custom function {self.custom} did not create {time_slice_file}"
 
@@ -582,17 +599,27 @@ class Indicator:
                 _mark_for_cleanup(input_daily_files)
 
 
-        if len(time_slice_files) == 1:
-            check_call(f"mv '{time_slice_files[0]}' '{final_output_file}'", dry_run=dry_run)
+        # custom concatenation of time slice files (e.g. for quantiles)
+        if cat is not None:
+            if not dry_run:
+                output_file.parent.mkdir(parents=True, exist_ok=True)
+            cdo(f"{cat} {' '.join(map(str, time_slice_files))} {output_file}", dry_run=dry_run)
+            if self.frequency != "daily" or remove_daily:
+                _mark_for_cleanup(time_slice_files)
+
+        elif len(time_slice_files) == 1:
+            check_call(f"mv '{time_slice_files[0]}' '{output_file}'", dry_run=dry_run)
+
         else:
             if not dry_run:
-                final_output_file.parent.mkdir(parents=True, exist_ok=True)
-            cdo(f"cat {' '.join(map(str, time_slice_files))} {final_output_file}", dry_run=dry_run)
-            _mark_for_cleanup(time_slice_files)
+                output_file.parent.mkdir(parents=True, exist_ok=True)
+            cdo(f"cat {' '.join(map(str, time_slice_files))} {output_file}", dry_run=dry_run)
+            if self.frequency != "daily" or remove_daily:
+                _mark_for_cleanup(time_slice_files)
 
-        _cleanup(excludes=[final_output_file])
+        _cleanup(excludes=[output_file])
 
-        return final_output_file
+        return output_file
 
 
     def download_all(self, **kwargs):

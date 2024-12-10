@@ -70,3 +70,19 @@ def number_of_wet_days(input_files, output_file, dry_run=False, **kw):
     check_call(f"ncatted -O -a standard_name,{name},o,c,'number_of_wet_days' {output_file}", dry_run=dry_run)
     check_call(f"ncatted -O -a long_name,{name},o,c,'Number of wet days' {output_file}", dry_run=dry_run)
 
+
+def extreme_daily_rainfall(input_files, climatology_files, output_file, dry_run=False, **kw):
+    """ Extreme daily rainfall (in mm) after Kotz et al. (2024) (Eq. 3)
+    """
+    assert len(input_files) == 1
+    assert len(climatology_files) == 1
+
+    cdo(f"yearsum -mul {input_files[0]} -gt {input_files[0]} {climatology_files[0]} {output_file}", dry_run=dry_run)
+
+    # Rename the variable 'tas' to 'extreme_daily_rainfall'
+    name = "extreme_daily_rainfall"
+    check_call(f"ncrename -v pr,{name} {output_file}", **kw)
+    check_call(f"ncatted -O -a units,{name},o,c,'mm' {output_file}", dry_run=dry_run)
+    check_call(f"ncatted -O -a standard_name,{name},o,c,'extreme_daily_rainfall' {output_file}", dry_run=dry_run)
+    check_call(f"ncatted -O -a long_name,{name},o,c,'Extreme daily rainfall' {output_file}", dry_run=dry_run)
+    check_call(f"ncatted -O -a desc,{name},o,c,'Annual precipitation above the historical 99.9th percentile' {output_file}", dry_run=dry_run)
