@@ -28,6 +28,36 @@ variable = "yieldchange"
 crop = "mai"
 ensemble_specifiers = ["model"] # further specifiers to identify the ensemble member
 
+[indicator.rice_yield]
+frequency = "annual"
+spatial_aggregation = ["latWeight"]
+
+[indicator.rice_yield.isimip_meta]
+specifiers = ["variable", "crop"]
+variable = "yieldchange"
+crop = "ric"
+ensemble_specifiers = ["model"] # further specifiers to identify the ensemble member
+
+[indicator.wheat_yield]
+frequency = "annual"
+spatial_aggregation = ["latWeight"]
+
+[indicator.wheat_yield.isimip_meta]
+specifiers = ["variable", "crop"]
+variable = "yieldchange"
+crop = "whe"
+ensemble_specifiers = ["model"] # further specifiers to identify the ensemble member
+
+[indicator.soy_yield]
+frequency = "annual"
+spatial_aggregation = ["latWeight"]
+
+[indicator.soy_yield.isimip_meta]
+specifiers = ["variable", "crop"]
+variable = "yieldchange"
+crop = "soy"
+ensemble_specifiers = ["model"] # further specifiers to identify the ensemble member
+
 [indicator.tas]
 transform = "baseline_change"
 units = "°C"
@@ -88,7 +118,6 @@ frequency = "annual"
 custom = "rimeX.indicators:extreme_daily_rainfall"
 transform = "baseline_change_percent"
 units = "mm"
-
 
 [indicator.wet_bulb_temperature_q95]
 _copy = "wet_bulb_temperature"
