@@ -369,10 +369,14 @@ class Indicator:
 
         if len(results) == 0:
             raise ValueError(f"No results found for {self.name} {request_dict}")
+
+        checks = [r['specifiers'] for r in results]
+        check_str = "\n".join(f"{k}, {[c[k] for c in checks]}" for k in set(checks[0].keys()))
+
         if self.depends_on:
-            assert len(results) == len(self.depends_on), f"{self.name}: Expected {len(self.depends_on)} results, got {len(results)} : {[r['specifiers'] for r in results]}"
+            assert len(results) == len(self.depends_on), f"{self.name}: Expected {len(self.depends_on)} results, got {len(results)} : \n\n{check_str}"
         else:
-            assert len(results) == 1, f"{self.name}: Expected 1 result, got {len(results)} : {[r['specifiers'] for r in results]}"
+            assert len(results) == 1, f"{self.name}: Expected 1 result, got {len(results)} :\n\n{check_str}"
 
         # Check the time slices are consistent
         time_slices = [f['time_slice'] for f in results[0]['files']]
