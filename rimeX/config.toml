@@ -50,15 +50,13 @@ transform = "baseline_change_percent"
 [indicator.rx5day]
 depends_on = ["pr"]
 frequency = "annual"
-historical = false
+custom = "rimeX.indicators:rx5day"
 transform = "baseline_change_percent"
 projection_baseline = [1995, 2014] # this also apply to ISIMIP2b
+units = "mm"
 
 [indicator.wet_bulb_temperature]
 depends_on = ["tasmax", "hurs"]
-frequency = "monthly"
-# compute_frequency = "daily"
-# compute_method = "cdoexpr"
 expr = "(tasmax-273.15)*atan(0.151977*(hurs+8.313659)^0.5) + atan((tasmax-273.15)+hurs) - atan(hurs-1.676331) + 0.00391838*hurs^1.5*atan(0.023101*hurs) - 4.686035"
 comment = """
 Method: empirical formula for a pressure 101.325 kPa
@@ -68,9 +66,11 @@ transform = "baseline_change"
 spatial_aggregation = ["latWeight", "pop2015"]
 
 
-[indicator.wet_bulb_temperature_max]
+[indicator.wet_bulb_temperature_q95]
 _copy = "wet_bulb_temperature"
 time_aggregation = "max"
+running_window_statistic = "gev"  # gev or empirical or *mean*
+running_window_quantile = 0.95
 
 
 [preprocessing]

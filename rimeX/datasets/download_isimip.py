@@ -177,20 +177,20 @@ def _request_isimip_meta(name, specifiers=None, id=None, climate_forcing=None, c
 
     return results
 
-def run_pipeline(pipeline, input_file, output_file, frequency="monthly", dry_run=False):
-    """Run a pipeline on a file. At the moment, this is designed to
+def aggregate_time(time_aggregation, input_file, output_file, frequency="monthly", dry_run=False):
+    """Time aggregation. At the moment, this is designed to
     take a 10-year netcdf file with daily values, and output a monthly values
     instead, with mean, max, min or cumulative values.
     """
     if frequency != "monthly":
         raise NotImplementedError("Only monthly frequency is supported for now")
 
-    if pipeline in ("mean", "avg", "", None):
+    if time_aggregation in ("mean", "avg", "", None):
         cdo(f'monavg {input_file} {output_file}', dry_run=dry_run)
-    elif pipeline in ("max", "min", "sum"):
-        cdo(f'mon{pipeline} {input_file} {output_file}', dry_run=dry_run)
+    elif time_aggregation in ("max", "min", "sum"):
+        cdo(f'mon{time_aggregation} {input_file} {output_file}', dry_run=dry_run)
     else:
-        raise ValueError(f"Unknown pipeline {pipeline}")
+        raise ValueError(f"Unknown time aggregation {time_aggregation}")
 
 
 def download(path, folder=None, queue=False, overwrite=False, remove_zip=True, dry_run=False):
@@ -295,13 +295,15 @@ def _are_consecutive_time_slices(time_slices):
 class Indicator:
 
     def __init__(self, name, frequency="monthly", folder=None,
-                 spatial_aggregation=None, depends_on=None, expr=None, time_aggregation=None, isimip_meta=None, pipeline=None,
-                 db=None, isimip_folder=None, comment=None, transform=None, year_min=None, units="", **kwargs):
+                 spatial_aggregation=None, depends_on=None, expr=None, time_aggregation=None, isimip_meta=None,
+                 shell=None, custom=None,
+                 db=None, isimip_folder=None, comment=None, transform=None, year_min=None, units="", projection_baseline=None, **kwargs):
 
         self.name = name
         self.frequency = frequency
         self.expr = expr
-        self.pipeline = pipeline
+        self.shell = shell
+        self.custom = custom
         self.folder = Path(folder or CONFIG["indicators.folder"])
         self.isimip_meta = isimip_meta or CONFIG.get(f"indicator.{name}", {}).get("isimip", {})
         for k in kwargs:
@@ -329,6 +331,7 @@ class Indicator:
         self.comment = comment
         self.transform = transform  # this refers to the baseline period and is only accounted for later on in the emulator (misnamed...)
         self.units = units
+        self.projection_baseline = projection_baseline
 
     @classmethod
     def from_config(cls, name, **kw):
@@ -422,7 +425,7 @@ class Indicator:
             regionfolders = []
 
         # special case where the indicator is exactly the same as the ISIMIP variable
-        if self.frequency == meta["time_step"] and self.depends_on is None and self.expr is None and len(time_slices) == 1 and region is None and ext == ".nc":
+        if self.frequency == meta["time_step"] and self.depends_on is None and len(time_slices) == 1 and region is None and ext == ".nc":
             with contextlib.redirect_stdout(io.StringIO()):
                 return download(result['files'][0]['path'], folder=self.db.download_folder, dry_run=True)
 
@@ -440,19 +443,31 @@ class Indicator:
         results = self._get_dataset_meta(climate_scenario, climate_forcing, **ensemble_specifiers)
         meta_ = results[0]['specifiers']
 
-        assert self.pipeline is None, "pipeline is not supported yet"
-
         temporary_files = set()
+
+        def _mark_for_cleanup(files):
+            for f in files:
+                temporary_files.add(str(f))
+
+        def _cleanup(excludes=[]):
+            # clean up the temporary files if any, to save disk space
+            while len(temporary_files) > 0:
+                tmp = temporary_files.pop()
+                if Path(tmp).exists() and str(tmp) not in map(str, excludes):
+                    check_call(f"rm '{tmp}'", dry_run=dry_run)
+
 
         time_slices = [f['time_slice'] for f in results[0]['files']]
         assert _are_consecutive_time_slices(time_slices), f"Time slices are not consecutive: {time_slices}"
 
         time_slice_files = []
+        previous_input_files = None
+        previous_output_file = None
 
-        for time_slice in time_slices:
+        for t, time_slice in enumerate(time_slices):
 
             # temporary monthly (or else time-aggregated) file
-            if not (self.expr or self.depends_on):
+            if not self.depends_on:
                 # for the classical ISI-MIP variables, use the same file pattern as downloaded file for temporary files
                 # this is for legacy reasons, to re-use the files that are already downloaded and created this way
                 files = [f for f in results[0]['files'] if f['time_slice'] == time_slice]
@@ -468,70 +483,111 @@ class Indicator:
 
             time_slice_file.parent.mkdir(parents=True, exist_ok=True)
 
-            # this file only exists at some point if the indicator is computed from expr, otherwise it is renamed later
-            time_slice_file_daily = Path(str(time_slice_file) + ".daily")
+            # download input (generally daily) files
+            # as many results as input variables (1 if depends_on is None)
+            input_daily_files = []
 
-            if not time_slice_file_daily.exists():
+            for result in results:
+                files = [f for f in result['files'] if f['time_slice'] == time_slice]
+                assert len(files) == 1, f"Expected 1 file, got {len(files)}"
+                f = files[0]
+                local_file = download(f['path'], folder=self.db.download_folder, dry_run=dry_run, overwrite=overwrite)
+                input_daily_files.append(local_file)
 
-                # download input (generally daily) files
-                # as many results as input variables (1 if depends_on is None)
-                input_daily_files = []
-                for result in results:
-                    files = [f for f in result['files'] if f['time_slice'] == time_slice]
-                    assert len(files) == 1, f"Expected 1 file, got {len(files)}"
-                    f = files[0]
-                    local_file = download(f['path'], folder=self.db.download_folder, dry_run=dry_run, overwrite=overwrite)
-                    input_daily_files.append(local_file)
-                    if remove_daily:
-                        temporary_files.add(str(local_file))
+            # for `expr` and for convenience as a `shell` command placeholder we define the input file
+            # via -merge in case the indicator depends on multiple variables
+            if len(input_daily_files) > 1:
+                input_file = f"-merge {' '.join(map(str, input_daily_files))}"
 
-                # Calculate any expression
+            else:
+                input_file = input_daily_files[0]
+
+            # Any shell command (this can also be cdo)
+            if self.shell:
+                # a command with placeholders:
+                # {inputs} : a list of input files
+                # {input} : joined inputs with " " separator
+                # {output} : the output file
+                # {previous_inputs} : {inputs} from the previous time slice
+                # {previous_input} : joined {previous_inputs} with " " separator
+                # {previous_output} : the first element of {previous_outputs}
+                # {name}
+                cmd = self.shell.format(
+                                        inputs=input_daily_files,
+                                        input=" ".join(input_daily_files),
+                                        output=time_slice_file,
+                                        previous_inputs=previous_input_files,
+                                        previous_input=" ".join(previous_input_files) if previous_input_files else "",
+                                        previous_output=previous_output_file,
+                                        name=self.name)
+
+                check_call(cmd, dry_run=dry_run)
+                if not dry_run:
+                    assert Path(time_slice_file).exists(), f"Shell command {cmd} did not create {time_slice_file}"
+
+            # custom function
+            elif self.custom:
+                import importlib
+                module, function = self.custom.split(":")
+                custom_module = importlib.import_module(module)
+                func = getattr(custom_module, function)
+                func(input_daily_files, time_slice_file, previous_input_files, previous_output_file, dry_run=dry_run)
+                if not dry_run:
+                    assert Path(time_slice_file).exists(), f"Custom function {self.custom} did not create {time_slice_file}"
+
+
+            else:
+
+                # Calculate any expression into another daily file
                 if self.expr:
+                    # this file only exists at some point if the indicator is computed from expr, otherwise it is renamed later
+                    time_slice_file_daily = Path(str(time_slice_file) + ".daily")
 
-                    if len(input_daily_files) > 1:
-                        input_file = f"-merge {' '.join(map(str, input_daily_files))}"
+                    if not time_slice_file_daily.exists():
 
-                    else:
-                        input_file = input_daily_files[0]
+                        if "=" not in self.expr:
+                            expr = f"{self.name}={self.expr}"
+                        else:
+                            expr = self.expr
 
-                    if "=" not in self.expr:
-                        expr = f"{self.name}={self.expr}"
-                    else:
-                        expr = self.expr
+                        cdo(f"expr,'{expr}' {input_file} {time_slice_file_daily}", dry_run=dry_run)
 
-                    if not dry_run:
-                        Path(time_slice_file_daily).parent.mkdir(parents=True, exist_ok=True)
-                    cdo(f"expr,'{expr}' {input_file} {time_slice_file_daily}", dry_run=dry_run)
+                        if remove_daily or remove_daily_expr:
+                            _mark_for_cleanup([time_slice_file_daily])
 
-                    if remove_daily or remove_daily_expr:
-                        temporary_files.add(str(time_slice_file_daily))
-
+                # standard variables e.g. tas, tasmax that come straight from ISIMIP
                 else:
                     assert len(input_daily_files) == 1, "Expected 1 input file when no expr exists"
                     time_slice_file_daily = input_daily_files[0]
 
-            # aggregate in time
-            if self.frequency != meta_["time_step"]:
-                run_pipeline(self.time_aggregation, time_slice_file_daily, time_slice_file, frequency=self.frequency, dry_run=dry_run)
-            else:
-                time_slice_file = time_slice_file_daily
 
-            # clean up the temporary files if any, to save disk space
-            while len(temporary_files) > 0:
-                tmp = temporary_files.pop()
-                if Path(tmp).exists() and str(tmp) != str(time_slice_file):
-                    check_call(f"rm '{tmp}'", dry_run=dry_run)
+                # time aggregation
+                if self.frequency != meta_["time_step"]:
+                    aggregate_time(self.time_aggregation, time_slice_file_daily, time_slice_file, frequency=self.frequency, dry_run=dry_run)
+
+                else:
+                    # e.g. crop yield has an annual time_step
+                    assert time_slice_file == time_slice_file_daily, (time_slice_file, time_slice_file_daily)
+
+            _cleanup(excludes=[time_slice_file])
 
             time_slice_files.append(time_slice_file)
+
+            previous_input_files = input_daily_files
+            previous_output_file = time_slice_file
+
+            if remove_daily:
+                # this will be removed after the next pass because some functions need the previous_input_files
+                _mark_for_cleanup(input_daily_files)
+
 
         if len(time_slice_files) == 1:
             check_call(f"mv '{time_slice_files[0]}' '{final_output_file}'", dry_run=dry_run)
         else:
             cdo(f"cat {' '.join(map(str, time_slice_files))} {final_output_file}", dry_run=dry_run)
+            _mark_for_cleanup(time_slice_files)
 
-            # remove the monthly time slices
-            for f in time_slice_files:
-                check_call(f"rm -f '{f}'", dry_run=dry_run)
+        _cleanup(excludes=[final_output_file])
 
         return final_output_file
 
