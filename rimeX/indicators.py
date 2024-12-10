@@ -60,13 +60,12 @@ def number_of_wet_days(input_files, output_file, dry_run=False, **kw):
     """
     assert len(input_files) == 1
 
-    threshold = 1 * 86400  # 1 mm/day in seconds
+    threshold = 1 / 86400  # 1 mm/day in mm/s
 
-    cdo(f"yearsum -eca_su,{threshold} {input_files[0]} {output_file}", dry_run=dry_run)
+    cdo(f"yearcount -gtc,{threshold} {input_files[0]} {output_file}", dry_run=dry_run)
 
-    # Rename the variable 'tas' to 'number_of_wet_days'
     name = "number_of_wet_days"
-    check_call(f"ncrename -v su,{name} {output_file}", dry_run=dry_run)
+    check_call(f"ncrename -v pr,{name} {output_file}", dry_run=dry_run)
     check_call(f"ncatted -O -a units,{name},o,c,'days' {output_file}", dry_run=dry_run)
     check_call(f"ncatted -O -a standard_name,{name},o,c,'number_of_wet_days' {output_file}", dry_run=dry_run)
     check_call(f"ncatted -O -a long_name,{name},o,c,'Number of wet days' {output_file}", dry_run=dry_run)
