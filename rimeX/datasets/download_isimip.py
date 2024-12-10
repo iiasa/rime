@@ -618,7 +618,8 @@ class Indicator:
                 _mark_for_cleanup(time_slice_files)
 
         elif len(time_slice_files) == 1:
-            check_call(f"mv '{time_slice_files[0]}' '{output_file}'", dry_run=dry_run)
+            if time_slice_files[0] != output_file:
+                check_call(f"mv '{time_slice_files[0]}' '{output_file}'", dry_run=dry_run)
 
         else:
             if not dry_run:
