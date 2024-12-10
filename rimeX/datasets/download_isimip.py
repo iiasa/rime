@@ -96,42 +96,9 @@ def _update_results(results, year_min=None, local_folder=None):
             f['local_path'] = get_filepath(r, f['path'], folder=local_folder)
         r['files'] = [f for f in r['files'] if year_min is None or f["time_slice"][1] > year_min]
 
-def request_dataset(variables=[], experiment=None, model=None,
-                    download_folder='downloads', year_min=None, simulation_round=None, id=None):
-    # if year_min is None: year_min = CONFIG["isimip.historical_year_min"]
-    # if simulation_round is None: simulation_round = CONFIG['isimip.simulation_round']
-    client = _init_client()
-
-    results = []
-    for v in variables:
-        if model:
-            iterable = ({"climate_variable": v, "climate_scenario":x, "climate_forcing":m.lower()} for m, x in product(model, experiment))
-        elif experiment:
-            iterable = ({"climate_variable": v, "climate_scenario":x} for x in experiment)
-        else:
-            iterable = ({"climate_variable": v}, )
-
-        for kwargs in iterable:
-            # response = client.datasets(simulation_round=simulation_round, bias_adjustment='w5e5', **kwargs)
-            response = client.datasets(simulation_round=simulation_round, **kwargs)
-            # response = client.datasets(simulation_round='ISIMIP3b', **kwargs)
-
-            if response['count'] == 0:
-                logger.warning(f"No results found for {kwargs}")
-            assert len(response["results"]) == response["count"]
-
-            results.extend(response['results'])
-
-    if id is not None:
-        results.extend(client.datasets(id=id)['results'])
-
-    _update_results(results, year_min)
-
-    return results
-
 EXCLUDE_SCENARIOS = ["obsclim", "hist-nat", "picontrol", "counterclim"]
 
-def _request_isimip_meta(name, specifiers=None, id=None, climate_forcing=None, climate_scenario=None,
+def request_dataset(name, specifiers=None, id=None, climate_forcing=None, climate_scenario=None,
                          year_min=None, simulation_round=None, page_size=1000,
                          exclude_scenarios=EXCLUDE_SCENARIOS, **meta):
     """called isimip_client.client.datasets with config.toml 's indicator metadata
@@ -275,7 +242,7 @@ def _matches(key1, key2):
 class ISIMIPDataBase:
     def __init__(self, db=[], download_folder=None):
         """
-        db: a list of results as returned by request_dataset
+        db: a list of results as returned by _request_isimip_meta
         """
         self.db = db
         self.download_folder = download_folder or CONFIG["isimip.download_folder"]
@@ -346,7 +313,7 @@ class Indicator:
         if self._db is None:
             if self.depends_on:
                 # self._db = ISIMIPDataBase(sum((_request_isimip_meta(v, **self.isimip_meta) for v in self.depends_on), []), self._isimip_folder)
-                dbs = sum((_request_isimip_meta(v, **self.isimip_meta) for v in self.depends_on), [])
+                dbs = sum((request_dataset(v, **self.isimip_meta) for v in self.depends_on), [])
                 # make sure every (experiment, simulation) combination contains data for all dependencies
                 key = lambda r: tuple(r['specifiers'][k] for k in self.simulation_keys)
                 results = []
@@ -361,7 +328,7 @@ class Indicator:
                     results.extend(group)
                 self._db = ISIMIPDataBase(results, self._isimip_folder)
             else:
-                self._db = ISIMIPDataBase(_request_isimip_meta(self.name, **self.isimip_meta), self._isimip_folder)
+                self._db = ISIMIPDataBase(request_dataset(self.name, **self.isimip_meta), self._isimip_folder)
         return self._db
 
     @property
@@ -481,7 +448,8 @@ class Indicator:
                 time_slice_files.append(time_slice_file)
                 continue
 
-            time_slice_file.parent.mkdir(parents=True, exist_ok=True)
+            if not dry_run:
+                time_slice_file.parent.mkdir(parents=True, exist_ok=True)
 
             # download input (generally daily) files
             # as many results as input variables (1 if depends_on is None)
@@ -631,32 +599,6 @@ def main():
                 print(f"Downloading {name} for {experiment} {model}")
                 for _ in indicator.download(experiment, model, overwrite=o.overwrite, remove_daily=o.remove_daily):
                     pass
-
-    # if o.variable:
-    #     results = request_dataset(o.variable, experiment=o.experiment, model=o.model, download_folder=o.download_folder, year_min=CONFIG["isimip.historical_year_min"], simulation_round=o.simulation_round)
-
-    #     key = lambda r: tuple(r['specifiers'][k] for k in specifiers)
-    #     for k, group in groupby(sorted(results, key=key), key=key):
-    #         group = list(group)
-    #         for r in group:
-    #             for f in r['files']:
-    #                 download([f['path']], download_folder=o.download_folder,
-    #                         monthly=o.daily, time_aggregation=o.time_aggregation,
-    #                         remove_daily=o.remove_daily, mirror=o.mirror,
-    #                         simulation_round=o.simulation_round,
-    #                         )
-    #             # download([f['path']], download_folder=o.download_folder,
-    #             #         monthly=False, time_aggregation=o.time_aggregation,
-    #             #         remove_daily=False, mirror=o.mirror,
-    #             #         simulation_round=o.simulation_round,
-    #             #         )
-
-
-    # if o.remove_daily:
-    #     for r in results:
-    #         for f in r['files']:
-    #             check_call(f"rm {f}")
-
 
     # Now process the files
     print(f"Download and processing to {'daily' if o.daily else 'monthly'} data is done.")
