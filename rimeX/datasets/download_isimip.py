@@ -214,7 +214,7 @@ def get_filepath(db_result, path, frequency=None, time_aggregation=None, region=
     if frequency is not None:
         orig_freq = meta["time_step"]
         if meta['simulation_round'].startswith("ISIMIP2"):
-            rename_freqs = {"daily": "day", "monthly": "month", "yearly": "year"}
+            rename_freqs = {"daily": "day", "monthly": "month", "annual": "year"}
             # "day" in file name for ISIMIP2
             orig_freq = rename_freqs.get(orig_freq, orig_freq)
             frequency = rename_freqs.get(frequency, frequency)
