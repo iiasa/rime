@@ -14,11 +14,12 @@ where:
 """
 from rimeX.tools import check_call, cdo
 
+SECONDS_PER_DAY = 86400
+
 def rx5day(input_files, output_file, previous_input_files=None, dry_run=False, **kw):
     """ annual maximum of 5-day precipitation (in mm)
     """
     assert len(input_files) == 1
-    seconds_per_day = 86400
 
     if previous_input_files is None:
         input = input_files[0]
@@ -26,7 +27,7 @@ def rx5day(input_files, output_file, previous_input_files=None, dry_run=False, *
         assert len(previous_input_files) == 1
         input = f"-cat -seltimestep,-4/-1 {previous_input_files[0]} {input_files[0]}"
 
-    cdo(f"-mulc,{seconds_per_day} -yearmax -shifttime,+2days -runsum,5 {input} {output_file}", dry_run=dry_run)
+    cdo(f"-mulc,{SECONDS_PER_DAY} -yearmax -shifttime,+2days -runsum,5 {input} {output_file}", dry_run=dry_run)
 
     # Rename the variable 'pr' to 'rx5day'
     check_call(f"ncrename -v pr,rx5day {output_file}", dry_run=dry_run)
@@ -60,7 +61,7 @@ def number_of_wet_days(input_files, output_file, dry_run=False, **kw):
     """
     assert len(input_files) == 1
 
-    threshold = 1 / 86400  # 1 mm/day in mm/s
+    threshold = 1 / SECONDS_PER_DAY  # 1 mm/day in mm/s
 
     cdo(f"yearsum -gtc,{threshold} {input_files[0]} {output_file}", dry_run=dry_run)
 
@@ -77,11 +78,11 @@ def extreme_daily_rainfall(input_files, climatology_files, output_file, dry_run=
     assert len(input_files) == 1
     assert len(climatology_files) == 1
 
-    cdo(f"yearsum -mul {input_files[0]} -gt {input_files[0]} {climatology_files[0]} {output_file}", dry_run=dry_run)
+    cdo(f"-mulc,{SECONDS_PER_DAY} yearsum -mul {input_files[0]} -gt {input_files[0]} {climatology_files[0]} {output_file}", dry_run=dry_run)
 
     # Rename the variable 'tas' to 'extreme_daily_rainfall'
     name = "extreme_daily_rainfall"
-    check_call(f"ncrename -v pr,{name} {output_file}", **kw)
+    check_call(f"ncrename -v pr,{name} {output_file}", dry_run=dry_run)
     check_call(f"ncatted -O -a units,{name},o,c,'mm' {output_file}", dry_run=dry_run)
     check_call(f"ncatted -O -a standard_name,{name},o,c,'extreme_daily_rainfall' {output_file}", dry_run=dry_run)
     check_call(f"ncatted -O -a long_name,{name},o,c,'Extreme daily rainfall' {output_file}", dry_run=dry_run)

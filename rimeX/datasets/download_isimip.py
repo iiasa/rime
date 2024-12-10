@@ -421,15 +421,23 @@ class Indicator:
         for name in self.depends_on:
             indicator = Indicator.from_config(name, frequency="daily") # don't do monthly aggregation
             filepath_base = indicator.get_path("historical", climate_forcing, **ensemble_specifiers)
+            # below we use the "lazy" download behaviour of self.download, that checks whether a file exists
             if self.climatology_quantile:
-                filepath = Path(str(filepath_base) + f".climatology_p{self.climatology_quantile*100}")
-                cat = f"timquantile,{self.climatology_quantile} -cat "
+                cattedinput = "-cat [ {input} ]"
+                filepath_min = Path(str(filepath_base) + f".timmin")
+                cat = f"cdo timmin {cattedinput} {filepath_min}"
+                indicator.download("historical", climate_forcing, dry_run=dry_run, cat=cat, output_file=filepath_min, **ensemble_specifiers)
+                filepath_max = Path(str(filepath_base) + f".timmax")
+                cat = f"cdo timmax {cattedinput} {filepath_max}"
+                indicator.download("historical", climate_forcing, dry_run=dry_run, cat=cat, output_file=filepath_max, **ensemble_specifiers)
+                filepath = Path(str(filepath_base) + f".p{self.climatology_quantile*100}")
+                cat = f"cdo timpctl,{self.climatology_quantile*100} {cattedinput} {filepath_min} {filepath_max} {filepath}"
+                # cat = f"cdo timpctl,{self.climatology_quantile*100} {cattedinput} -timmin {cattedinput} -timmax {cattedinput} {{output}}"
+                indicator.download("historical", climate_forcing, dry_run=dry_run, cat=cat, output_file=filepath, **ensemble_specifiers)
             else:
                 filepath = Path(str(filepath_base) + ".climatology")
-                cat = f"ymonmean -cat "
-            if not filepath.exists():
-                output = indicator.download("historical", climate_forcing, dry_run=dry_run, cat=cat, output_file=filepath, **ensemble_specifiers)
-                assert str(output) == str(filepath), f"Expected {filepath}, got {output}"
+                cat = f"cdo ymonmean -cat {{input}} {{output}}"
+                indicator.download("historical", climate_forcing, dry_run=dry_run, cat=cat, output_file=filepath, **ensemble_specifiers)
             yield filepath
 
     def download(self, climate_scenario, climate_forcing, time_slice=None, overwrite=False, remove_daily=False, remove_daily_expr=True,
@@ -603,7 +611,9 @@ class Indicator:
         if cat is not None:
             if not dry_run:
                 output_file.parent.mkdir(parents=True, exist_ok=True)
-            cdo(f"{cat} {' '.join(map(str, time_slice_files))} {output_file}", dry_run=dry_run)
+            input_files = " ".join(map(str, time_slice_files))
+            catcmd = cat.format(input=input_files, output=output_file) # {input} and {output} are placeholders
+            check_call(catcmd, dry_run=dry_run)
             if self.frequency != "daily" or remove_daily:
                 _mark_for_cleanup(time_slice_files)
 
