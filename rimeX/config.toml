@@ -58,6 +58,30 @@ variable = "yieldchange"
 crop = "soy"
 ensemble_specifiers = ["model"] # further specifiers to identify the ensemble member
 
+[indicator.river_discharge]
+frequency = "monthly"
+spatial_aggregation = ["latWeight", "pop2015"]
+
+[indicator.river_discharge.isimip_meta]
+specifiers = ["variable", "time_step", "soc_scenario", "sens_scenario"]
+variable = "dis"
+time_step = "monthly"
+soc_scenario = "2015soc-from-histsoc"
+sens_scenario = "default"
+ensemble_specifiers = ["model"] # further specifiers to identify the ensemble member
+
+[indicator.runoff]
+frequency = "monthly"
+spatial_aggregation = ["latWeight", "pop2015"]
+
+[indicator.runoff.isimip_meta]
+specifiers = ["variable", "time_step", "soc_scenario", "sens_scenario"]
+variable = "qtot"
+time_step = "monthly"
+soc_scenario = "2015soc-from-histsoc"
+sens_scenario = "default"
+ensemble_specifiers = ["model"] # further specifiers to identify the ensemble member
+
 [indicator.tas]
 transform = "baseline_change"
 units = "°C"
