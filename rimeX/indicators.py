@@ -78,7 +78,7 @@ def extreme_daily_rainfall(input_files, climatology_files, output_file, dry_run=
     assert len(input_files) == 1
     assert len(climatology_files) == 1
 
-    cdo(f"-mulc,{SECONDS_PER_DAY} yearsum -mul {input_files[0]} -gt {input_files[0]} {climatology_files[0]} {output_file}", dry_run=dry_run)
+    cdo(f"-mulc,{SECONDS_PER_DAY} -yearsum -mul {input_files[0]} -gt {input_files[0]} {climatology_files[0]} {output_file}", dry_run=dry_run)
 
     # Rename the variable 'tas' to 'extreme_daily_rainfall'
     name = "extreme_daily_rainfall"
