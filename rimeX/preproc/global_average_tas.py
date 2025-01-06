@@ -14,7 +14,8 @@ from rimeX.config import CONFIG, config_parser
 
 def global_mean_file(variable, model, experiment, simulation_round=None, root=None):
     if simulation_round is None: simulation_round = CONFIG["isimip.simulation_round"]
-    if root is None: root = Path(CONFIG["isimip.climate_impact_explorer"]) / {"ISIMIP2b":"isimip2", "ISIMIP3b":"isimip3"}.get(simulation_round, simulation_round)
+    simulation_round = "-".join([{"isimip2b": "isimip2", "isimip3b": "isimip3"}.get(s.lower(), s.lower()) for s in simulation_round])
+    if root is None: root = Path(CONFIG["isimip.climate_impact_explorer"]) / simulation_round
     return Path(root) / f"isimip_global_mean/{variable}/globalmean_{variable}_{model.lower()}_{experiment}.csv"
 
 
@@ -31,15 +32,20 @@ def load_global_average_tas(variable, model, experiment, simulation_round=None, 
     input_files = get_files(variable, model, experiment, simulation_round=simulation_round)
 
     if not input_files:
-        logger.warning(f"No files found for {model} | {experiment} ...")
+        logger.info(f"No files exist for {model} | {experiment} ...")
         return
         # continue
 
     logger.info(f"Process {model} | {experiment} ...")
 
+    if any(not file.exists() for file in input_files):
+        logger.warning(f"Missing files for {model} | {experiment} ...")
+        return
+
     files = []
     for file in input_files:
-        ofiletmp = Path(file.replace("global", "globalmean"))
+        # ofiletmp = Path(str(file).replace("global", "globalmean"))
+        ofiletmp = Path(str(file) + ".globalmean")
         if not ofiletmp.exists():
             ofiletmp.parent.mkdir(exist_ok=True, parents=True)
             cdo(f"-O -fldmean -selname,{variable} {file} {ofiletmp}")
@@ -55,6 +61,10 @@ def load_global_average_tas(variable, model, experiment, simulation_round=None, 
         s = tas.to_pandas()
         s.name = variable
         s.to_csv(ofile)
+
+    for file in files:
+        logger.debug(f"Remove {file}")
+        file.unlink()
 
     return tas
 

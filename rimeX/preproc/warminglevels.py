@@ -32,6 +32,9 @@ def load_annual_values(model, experiments, variable="tas", projection_baseline=N
             logger.warning(f"{model} | {experiment} ==> not found")
             continue
 
+    if not all_annual:
+        raise ValueError(f"No experiments found for {model} :: {variable} ({experiments})")
+
     df = pd.DataFrame(all_annual)
     df.index = [datetime.datetime.fromisoformat(dt).year for dt in df.index]
 
@@ -99,8 +102,9 @@ def get_root_directory(running_mean_window=None, config_name=None, tag=None, sim
     if tag is None: tag = CONFIG.get("preprocessing.tag")
     if running_mean_window is None: running_mean_window = CONFIG["preprocessing.running_mean_window"]
     if simulation_round is None: simulation_round = CONFIG.get("isimip.simulation_round")
+    simulation_round = "-".join([{"isimip2b": "isimip2", "isimip3b": "isimip3"}.get(s.lower(), s.lower()) for s in simulation_round])
     tags = [f"running-{running_mean_window}-years", tag]
-    return Path(CONFIG["isimip.climate_impact_explorer"]) / {"ISIMIP2b": "isimip2", "ISIMIP3b": "isimip3"}.get(simulation_round, simulation_round) / "_".join(str(tag) for tag in tags if tag)
+    return Path(CONFIG["isimip.climate_impact_explorer"]) / simulation_round / "_".join(str(tag) for tag in tags if tag)
 
 def get_warming_level_file(warming_level_path=None, **kw):
     if warming_level_path is None:
@@ -150,7 +154,12 @@ def main():
 
     for model in o.model:
 
-        all_annual = load_annual_values(model, o.experiment, projection_baseline=o.projection_baseline, projection_baseline_offset=o.projection_baseline_offset)
+        try:
+            all_annual = load_annual_values(model, o.experiment, projection_baseline=o.projection_baseline, projection_baseline_offset=o.projection_baseline_offset)
+        except ValueError as e:
+            logger.warning(e)
+            logger.warning(f"Skip {model}")
+            continue
         records.extend(get_matching_years_by_time_bucket(model, all_annual, warming_levels, o.running_mean_window, o.projection_baseline))
 
     df = pd.DataFrame(records)

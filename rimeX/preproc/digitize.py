@@ -328,8 +328,8 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
                 raise NotImplementedError(backend)
             return df.rename({"scenario":"experiment", "midyear": "year"}).to_dict("records")
 
-    models = warming_levels['model'].unique().tolist()
-    experiments = warming_levels['experiment'].unique().tolist()
+    models = sorted(warming_levels['model'].unique().tolist())
+    experiments = sorted(warming_levels['experiment'].unique().tolist())
 
     indicator_data = load_regional_indicator_data(variable, region, subregion, weights, season, models, experiments, simulation_round=simulation_round)
 
@@ -388,14 +388,15 @@ def main():
     group.add_argument("--warming-level-file", default=None)
 
     group = parser.add_argument_group('Indicator variable')
-    group.add_argument("-v", "--variable", nargs="+", choices=CONFIG["indicators"], default=CONFIG["indicators"])
+    parser.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"])
+    parser.add_argument("-i", "--indicator", nargs='+', default=[], choices=CONFIG["indicator"], help="includes additional, secondary indicator with specific monthly statistics")
     group.add_argument("--region", nargs="+", default=all_regions, choices=all_regions)
     group.add_argument("--all-subregions", action='store_true', help='include subregions as defined in CIE mask files')
     # group.add_argument("--subregion", nargs="+", help="if not provided, will default to region average")
     # group.add_argument("--list-subregions", action='store_true', help="print all subregions and exit")
     group.add_argument("--weights", nargs="+", default=CONFIG["preprocessing.regional.weights"], choices=CONFIG["preprocessing.regional.weights"])
     group.add_argument("--season", nargs="+", default=list(CONFIG["preprocessing.seasons"]), choices=list(CONFIG["preprocessing.seasons"]))
-    group.add_argument("--simulation-round", default=CONFIG["isimip.simulation_round"], help="default: %(default)s")
+    group.add_argument("--simulation-round", nargs="+", default=CONFIG["isimip.simulation_round"], help="default: %(default)s")
     group.add_argument("--projection-baseline", default=CONFIG["preprocessing.projection_baseline"], type=int, nargs=2, help="default: %(default)s")
 
     group = parser.add_argument_group('Result')
@@ -421,7 +422,7 @@ def main():
     logger.info(f"Load warming level file {o.warming_level_file}")
     warming_levels = pd.read_csv(o.warming_level_file)
 
-    all_items = [(variable, region, subregion, weights, season) for variable, region, weights, season in product(o.variable, o.region, o.weights, o.season) for subregion in [region]+(get_subregions(region) if o.all_subregions else [])]
+    all_items = [(variable, region, subregion, weights, season) for variable, region, weights, season in product(o.variable+o.indicator, o.region, o.weights, o.season) for subregion in [region]+(get_subregions(region) if o.all_subregions else [])]
     logger.info(f"Number of jobs (variables x region x subregion x weights x season): {len(all_items)}")
 
     if o.cpus is None or o.cpus < 2:

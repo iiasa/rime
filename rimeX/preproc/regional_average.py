@@ -42,17 +42,16 @@ from rimeX.datasets.download_isimip import Indicator, _matches
 #     return sorted(glob.glob(pattern))
 def get_files(variable, model, experiment, **kwargs):
     indicator = Indicator.from_config(variable)
-    return [indicator.get_path(experiment, model, **kwargs)]
+    try:
+        return [indicator.get_path(experiment, model, **kwargs)]
+    except ValueError:
+        return []
 
 def get_regional_averages_file(variable, model, experiment, region, weights, simulation_round=None, root=None):
     if simulation_round is None: simulation_round = CONFIG["isimip.simulation_round"]
-    assert type(simulation_round) is list
-    simulation_round = "-".join(sorted(simulation_round)).lower()
-    assert type(simulation_round) is str
-    # if root is None: root = Path(CONFIG["isimip.climate_impact_explorer"]) / simulation_round
-    if root is None: root = Path(CONFIG["isimip.climate_impact_explorer"]) / {"isimip2b":"isimip2", "isimip3b":"isimip3"}.get(simulation_round, simulation_round)
+    simulation_round = "-".join([{"isimip2b": "isimip2", "isimip3b": "isimip3"}.get(s.lower(), s.lower()) for s in simulation_round])
+    if root is None: root = Path(CONFIG["isimip.climate_impact_explorer"]) / simulation_round
     return Path(root) / f"isimip_regional_data/{region}/{weights}/{model.lower()}_{experiment}_{variable}_{region.lower()}_{weights.lower()}.csv"
-
 
 def get_coords(res=0.5):
     lon = np.arange(-180 + res/2, 180, res)
@@ -207,7 +206,7 @@ def main():
 
                 for file in tempfiles:
                     if file.exists():
-                        print(f"remove {file}")
+                        logger.debug(f"Remove {file}")
                         file.unlink()
 
 if __name__ == "__main__":
