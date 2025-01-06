@@ -643,7 +643,7 @@ class Indicator:
 
     def get_all_paths(self, **kwargs):
         for simu in self.simulations:
-            yield from self.get_paths(**simu, **kwargs)
+            yield self.get_path(**simu, **kwargs)
 
 
 def main():

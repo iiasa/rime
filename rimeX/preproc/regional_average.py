@@ -23,28 +23,34 @@ import xarray as xa
 from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 from rimeX.datasets.download_isimip import get_models, get_experiments, get_variables, isimip_parser
+from rimeX.datasets.download_isimip import Indicator, _matches
 
 
-def get_files(variable, model, experiment, realm="*", domain="global", frequency=None, member="*", obs="*", year_start="*", year_end="*", root=None, simulation_round=None):
-    if root is None: root = CONFIG["isimip.download_folder"]
-    if simulation_round is None: simulation_round = CONFIG["isimip.simulation_round"]
-    frequency = frequency or CONFIG.get(f"indicator.{variable}.frequency", "monthly")
-    model_lower = model.lower()
-    model_upper = {m.lower():m for m in get_models()}[model_lower] if (model_lower and model_lower != "*") else "*"
-    input_data = "*"
-    if "ISIMIP2" in simulation_round:
-        frequency2 = {"annual": "year", "monthly":"month", "daily": "day"}.get(frequency, frequency)
-        member = "*"
-        pattern = root + "/" + f"{simulation_round}/{input_data}/{realm}/biascorrected/{domain}/{experiment}/{model_upper}/{variable}_{frequency2}_{model_upper}_{experiment}_{member}_*_{year_start}0101-{year_end}1231.nc4"
-    else:
-        pattern = root + "/" + f"{simulation_round}/{input_data}/climate/{realm}/bias-adjusted/{domain}/{frequency}/{experiment}/{model_upper}/{model_lower}_{member}_{obs}_{experiment}_{variable}_{domain}_{frequency}_{year_start}_{year_end}.nc"
-    return sorted(glob.glob(pattern))
-
+# def get_files(variable, model, experiment, realm="*", domain="global", frequency=None, member="*", obs="*", year_start="*", year_end="*", root=None, simulation_round=None):
+#     if root is None: root = CONFIG["isimip.download_folder"]
+#     if simulation_round is None: simulation_round = CONFIG["isimip.simulation_round"]
+#     frequency = frequency or CONFIG.get(f"indicator.{variable}.frequency", "monthly")
+#     model_lower = model.lower()
+#     model_upper = {m.lower():m for m in get_models()}[model_lower] if (model_lower and model_lower != "*") else "*"
+#     input_data = "*"
+#     if "ISIMIP2" in simulation_round:
+#         frequency2 = {"annual": "year", "monthly":"month", "daily": "day"}.get(frequency, frequency)
+#         member = "*"
+#         pattern = root + "/" + f"{simulation_round}/{input_data}/{realm}/biascorrected/{domain}/{experiment}/{model_upper}/{variable}_{frequency2}_{model_upper}_{experiment}_{member}_*_{year_start}0101-{year_end}1231.nc4"
+#     else:
+#         pattern = root + "/" + f"{simulation_round}/{input_data}/climate/{realm}/bias-adjusted/{domain}/{frequency}/{experiment}/{model_upper}/{model_lower}_{member}_{obs}_{experiment}_{variable}_{domain}_{frequency}_{year_start}_{year_end}.nc"
+#     return sorted(glob.glob(pattern))
+def get_files(variable, model, experiment, **kwargs):
+    indicator = Indicator.from_config(variable)
+    return [indicator.get_path(experiment, model, **kwargs)]
 
 def get_regional_averages_file(variable, model, experiment, region, weights, simulation_round=None, root=None):
     if simulation_round is None: simulation_round = CONFIG["isimip.simulation_round"]
+    assert type(simulation_round) is list
+    simulation_round = "-".join(sorted(simulation_round)).lower()
+    assert type(simulation_round) is str
     # if root is None: root = Path(CONFIG["isimip.climate_impact_explorer"]) / simulation_round
-    if root is None: root = Path(CONFIG["isimip.climate_impact_explorer"]) / {"ISIMIP2b":"isimip2", "ISIMIP3b":"isimip3"}.get(simulation_round, simulation_round)
+    if root is None: root = Path(CONFIG["isimip.climate_impact_explorer"]) / {"isimip2b":"isimip2", "isimip3b":"isimip3"}.get(simulation_round, simulation_round)
     return Path(root) / f"isimip_regional_data/{region}/{weights}/{model.lower()}_{experiment}_{variable}_{region.lower()}_{weights.lower()}.csv"
 
 
@@ -103,7 +109,8 @@ def main():
     ALL_MASKS = sorted([o.name for o in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
 
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, isimip_parser])
-    parser.add_argument("-v", "--variable", nargs='+', choices=get_variables(), required=True)
+    parser.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"])
+    parser.add_argument("-i", "--indicator", nargs='+', default=[], choices=CONFIG["indicator"], help="includes additional, secondary indicator with specific monthly statistics")
     parser.add_argument("--overwrite", action='store_true')
     parser.add_argument("--frequency")
     group = parser.add_argument_group('mask')
@@ -115,9 +122,16 @@ def main():
 
     masks = preload_masks(o.region, o.weights)
 
-    for variable in o.variable:
-        for model in o.model:
-            for experiment in o.experiment:
+    for variable in o.variable+o.indicator:
+        indicator = Indicator.from_config(variable)
+        simus = [simu for simu in indicator.simulations
+                 if _matches(simu["climate_forcing"], o.model)
+                 and _matches(simu["climate_scenario"], o.experiment)]
+
+        for model, group_ in groupby(sorted(simus, key=lambda x: x["climate_forcing"]), key=lambda x: x["climate_forcing"]):
+            for experiment, group in groupby(sorted(group_, key=lambda x: x["climate_scenario"]), key=lambda x: x["climate_scenario"]):
+                group = list(group)
+                logger.info(f"{variable}, {model}, {experiment}:: {len(group)} simulations")
 
                 todo = [(region, weights) for region in o.region for weights in o.weights if o.overwrite or not get_regional_averages_file(variable, model, experiment, region, weights).exists()]
 
@@ -132,8 +146,10 @@ def main():
                     logger.info(f"{variable}, {model}, {experiment}:: process {len(todo)} region-mask")
 
                 results = {}
+                tempfiles = set()
 
-                for file in tqdm.tqdm(get_files(variable, model, experiment, frequency=o.frequency, simulation_round=o.simulation_round)):
+                for file in tqdm.tqdm([indicator.get_path(**simu) for simu in group]):
+                # for file in tqdm.tqdm(get_files(variable, model, experiment, frequency=o.frequency, simulation_round=o.simulation_round)):
                     with xa.open_dataset(file) as ds:
 
                         v = ds[variable].load()
@@ -148,7 +164,9 @@ def main():
 
                                 # save intermediary file in the ISIMIP tree structure (useful if time-slices are added later, e.g. historical back in time)
                                 tag = f"region-{region}-{weights}"
-                                filetmp = Path(file.replace("global", tag))
+                                # filetmp = Path(str(file).replace("global", tag))
+                                filetmp = Path(str(file)+f".{tag}")
+                                tempfiles.add(filetmp)
 
                                 if filetmp.exists():
                                 # if filetmp.exists() and not o.overwrite: # uncomment if the region itself if redefined
@@ -187,6 +205,10 @@ def main():
                     # result.to_dataset(name=o.variable).to_netcdf(ofile)
                     result.to_pandas().to_csv(ofile)
 
+                for file in tempfiles:
+                    if file.exists():
+                        print(f"remove {file}")
+                        file.unlink()
 
 if __name__ == "__main__":
     main()
