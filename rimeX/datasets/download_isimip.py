@@ -417,7 +417,7 @@ class Indicator:
                 return download(result['files'][0]['path'], folder=self.db.download_folder, dry_run=True)
 
         # otherwise create a new path separate from the ISIMIP database
-        return Path(self.folder, self.name, climate_scenario, climate_forcing, *regionfolders, f"{climate_forcing.lower()}{ensemble_tag}_{climate_scenario}_{self.name}{region_tag}_{self.frequency}{timeslice_tag}"+ext)
+        return Path(self.folder, self.name, climate_scenario, climate_forcing.lower(), *regionfolders, f"{climate_forcing.lower()}{ensemble_tag}_{climate_scenario}_{self.name}{region_tag}_{self.frequency}{timeslice_tag}"+ext)
 
     def download_climatology(self, climate_forcing, dry_run=False, **ensemble_specifiers):
         """compute the climatology of the base variables the indicator depends on
@@ -648,8 +648,8 @@ class Indicator:
 
 def main():
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, isimip_parser])
-    parser.add_argument("-v", "--variable", nargs='+', choices=CONFIG["isimip.variables"], help='the original ISIMIP variables')
-    parser.add_argument("-i", "--indicator", nargs='+', choices=CONFIG["indicators"], help="includes additional, secondary indicator with specific monthly statistics")
+    parser.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"], help='the original ISIMIP variables')
+    parser.add_argument("-i", "--indicator", nargs='+', default=[], choices=CONFIG["indicator"], help="includes additional, secondary indicator with specific monthly statistics")
     parser.add_argument("--daily", action='store_true', dest='daily', help=argparse.SUPPRESS)
     # parser.add_argument("--monthly-statistic", default=["mean"], nargs="*",
     #                    help="""function(s) to process daily into monthly variables. Default is ["mean"].
@@ -669,17 +669,21 @@ def main():
         parser.print_help()
         parser.exit(1)
 
+    print("model", o.model)
+    print("experiment", o.experiment)
+
     if o.indicator or o.variable:
         for name in o.variable + o.indicator:
             indicator = Indicator.from_config(name)
-            for experiment, model in iterate_model_experiment():
-                if o.model and model not in o.model:
+            for model, experiment in iterate_model_experiment():
+                if o.model and model.lower() not in (m.lower() for m in o.model):
+                    print(f"Skipping {model}")
                     continue
-                if o.experiment and experiment not in o.experiment:
+                if o.experiment and experiment.lower() not in (x.lower() for x in o.experiment):
+                    print(f"Skipping {experiment}")
                     continue
                 print(f"Downloading {name} for {experiment} {model}")
-                for _ in indicator.download(experiment, model, overwrite=o.overwrite, remove_daily=o.remove_daily):
-                    pass
+                indicator.download(experiment, model, overwrite=o.overwrite, remove_daily=o.remove_daily)
 
 
 if __name__ == "__main__":

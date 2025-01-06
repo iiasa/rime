@@ -23,8 +23,8 @@ A development install can be done after cloning the repo, in pip-editable `-e` m
 	cd rime
 	pip install -e .
 
-For the end-user (we're not at this stage yet) or one-off testing, 
-it's also possible to do it in one go with pip, but the whole repo is cloned in the background so it's slower. 
+For the end-user (we're not at this stage yet) or one-off testing,
+it's also possible to do it in one go with pip, but the whole repo is cloned in the background so it's slower.
 The command is shown below for completeness, but it is not recommended (slower and no edits possible):
 
  	pip install git+https://github.com/iiasa/rime.git@rimeX
@@ -49,7 +49,7 @@ The following scripts are made available, for which inline help is available wit
 	- `rime-pre-digitize` : pre-compute digitized regional average based on warming levels (optional)
 
 - Actually use the emulator (works anywhere as long as the data is available)
-	
+
 	- `rime-run-timeseries` : run the main emulator with proper uncertainty calculations (time-series)
 	- `rime-run-table` : vectorized version of `rime-run-timeseries` with on-the-fly interpolation, without uncertainties recombination
 	- `rime-run-map` : run the map emulator
@@ -58,7 +58,7 @@ The following scripts are made available, for which inline help is available wit
 
 	- `rime-config` : print the config to screen (toml format)
 
-Of course, any of the functions can be called directly. Inline documentation is available. 
+Of course, any of the functions can be called directly. Inline documentation is available.
 
 See the associated [notebook](notebooks/readme.ipynb) to find the code to produce some of the figures below.
 
@@ -73,14 +73,14 @@ And the output is in CSV format by default:
 
 	year,ssp_family,warming_level,gsat_model,gsat_scenario,variable,region,value
 	2015,1.0,1.115556885487447,IMAGE 3.0.1,SSP1-26,cdd|Exposure|Land area,Countries of Latin America and the Caribbean,
-	2015,1.0,1.115556885487447,IMAGE 3.0.1,SSP1-26,cdd|Exposure|Land area,Countries of South Asia; primarily India,	
+	2015,1.0,1.115556885487447,IMAGE 3.0.1,SSP1-26,cdd|Exposure|Land area,Countries of South Asia; primarily India,
 	...
 
 In the example above, we make use of advanced filtering, where each occurrence of `--gsat-filter` acts as a join between groups of data. The figure below show the results for the `pr_r10|Exposure|Population|%` variable and `Countries of South Asia; primarily India` area.
 
 ![](notebooks/images/table-interp-linear-join.png)
 
-Internally, the impact data is transformed into a multi-dimensional `xarray.DataArray` with main dimensions `(warming_level, [year,])`, and broadcast dimensions `(scenario, variable, region, model)` and interpolated along the temperature pathway with `scipy.interpolate.RegularGridInterpolator`. By default, if the `year` and `ssp_family` (or `scenario`) are present in the impact data and in the temperature data, these will be matched with the temperature forcing as well. See also `--ignore-ssp` and `--ignore-year`. 
+Internally, the impact data is transformed into a multi-dimensional `xarray.DataArray` with main dimensions `(warming_level, [year,])`, and broadcast dimensions `(scenario, variable, region, model)` and interpolated along the temperature pathway with `scipy.interpolate.RegularGridInterpolator`. By default, if the `year` and `ssp_family` (or `scenario`) are present in the impact data and in the temperature data, these will be matched with the temperature forcing as well. See also `--ignore-ssp` and `--ignore-year`.
 
 For more advanced usage, the underlying `rimeX.emulator.ImpactDataInterpolator` class is made available. The above would be achieved as follow:
 
@@ -93,11 +93,11 @@ For more advanced usage, the underlying `rimeX.emulator.ImpactDataInterpolator` 
 
 	gsat = pyam.concat([
 		gsat.filter(scenarios=["SSP1-26", "SSP1-45"], model="IMAGE*"),
-		gsat.filter(IMP_markers=["ModAct", "SP", "GS", "Neg"]) 
+		gsat.filter(IMP_markers=["ModAct", "SP", "GS", "Neg"])
 		])
 
-	impacts = xa.open_mfdataset([ 
-		get_datapath("test_data/cdd_R10.nc"), 
+	impacts = xa.open_mfdataset([
+		get_datapath("test_data/cdd_R10.nc"),
 		get_datapath("test_data/pr_r10_R10.nc") ])
 
 	idi = ImpactDataInterpolator(impacts)
@@ -141,9 +141,9 @@ Note only the warming levels are considered for interpolation. It is up to the u
 
 ## Taking uncertainties into account
 
-The `rime-run-timeseries` script is similar to but more general than `rime-run-table`, and it is designed to account for the full uncertainty. 
+The `rime-run-timeseries` script is similar to but more general than `rime-run-table`, and it is designed to account for the full uncertainty.
 It operates on list of records that are grouped in various ways, rather than on pandas DataFrames or multi-dimensional arrays.
-At the moment it accepts a single impact indicator and temperature pathway. Any remaining dimension will contribute to the uncertainty 
+At the moment it accepts a single impact indicator and temperature pathway. Any remaining dimension will contribute to the uncertainty
 estimate. More in-depth description of the underlying assumption will be provided in Schwind et al (2024, in prep).
 
 In essence, the main difference between `run-timeseries` and `run-table` is that the latter is structured (DataFrame -> DataArray -> ND numpy index) and the former is unstructured (list of records with `groupby`). The structured version can lead to speed for certain data forms, and allows on-the-fly interpolation without any preliminary data transformation (this is the main speed-up gain). See also the `--vectorize` option with [vectorize][#vectorize].
@@ -155,6 +155,18 @@ A few practical differences, that will be examplified below:
 - no assumption is made about which specific dimension should be used for indexing. Some fields have a specific meaning attached, such as `value`, `warming_level`, `year`, `scenario`, but by default all fields besides `value` are used for indexing (for grouping operation such as interpolation across warming levels). If some secondary dimensions vary along with values, such as `year` (or `midyear`), it is necessary to explicitly exclude then from the index via the `--pool` command, e.g. `--pool midyear`, or pass the index directly `--index model scenario`, say. Note that `warming_level` will always be added to the index.
 
 - the binning and recombination method does not (yet?) allow for on-the-fly interpolation, so to interpolate across warming levels it is necessary to pass explicit parameters `--interp-warming-levels`, and in case `--match-year` is also specified, `--interp-year`.
+
+### Download ISIMIP indicators `rime-download-isimip`
+
+The code has been recently extended to handle a larger number of extended indicators.
+In additional ISIMIP variables, a number of indicators are now available which are defined in [config.toml](rime/config.toml).
+The new indicators have been downloaded from the python interactive prompt, such as
+```python
+from rime.download_isimip import Indicator
+indicator = Indicator.from_config("wet_bulb_temperature")
+list(indicator.download_all())
+```
+The command `rime-download-isimip --indictor wet_bulb_temperarure` should also work.
 
 
 ### Comparison with `rime-run-table`
@@ -175,19 +187,19 @@ First let's define the common part to all commands below:
 - Median GSAT and all impact models and scenarios:
 
 		rime-run-timeseries $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_ts.csv
-	
+
 		rime-run-table $COMMON --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_median_all_table.csv  --ignore-ssp
 
 - Resampled GSAT and single impact model and scenario:
 
 		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_resampled_one_ts.csv
-	
+
 		rime-run-table $COMMON --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 --impact-filter model=CNRM-CM6-1 scenario=ssp585 -o rimeX_ITA_quantile_one_table.csv --ignore-ssp
 
 - Resampled GSAT and all impact model and scenario:
 
 		rime-run-timeseries $COMMON --gsat-variable "*GSAT*" --gsat-resample --gsat-filter category_show_lhs=C6 -o rimeX_ITA_resampled_all_ts.csv
-	
+
 		rime-run-table $COMMON --gsat-variable "*GSAT*" --gsat-filter category_show_lhs=C6 -o rimeX_ITA_quantile_all_table.csv --ignore-ssp
 
 
@@ -242,7 +254,7 @@ Let's come back to the Werning et al dataset:
 
 	$ rime-run-timeseries --gsat-file AR6-WG3-plots/spm-box1-fig1-warming-data-lhs.csv --gsat-variable "*GSAT*median*" --gsat-filter category_show_lhs=C6 --impact-file werning2024/table_output_climate_exposure/table_output_heatwave_COUNTRIES.csv --region MEX --variable "hw_95_10|Exposure|Population" --match-year-population --interp-years -o output.csv
 
-Note that by default, the years and ssp family are considered an "uncertainty" and they show up as quantiles in the output file (in this example they are the only contributor). To match the year according to the GSAT time-series year, we add the `--match-year-population` option, 
+Note that by default, the years and ssp family are considered an "uncertainty" and they show up as quantiles in the output file (in this example they are the only contributor). To match the year according to the GSAT time-series year, we add the `--match-year-population` option,
 and this requires prior interpolation of the years via `--interp-years`
 
 ![](notebooks/images/population_exposed_match_year.png)
@@ -261,7 +273,7 @@ Similarly, if quantiles are present, the impacts can be sampled with the flags `
 
 	 $ rime-run-timeseries [...] --impact-file test_data/table_output_wsi_R10_pop_scaled_including_uncertainty.csv --variable "wsi|Exposure|Population" "wsi|Exposure|Population|5th percentile" "wsi|Exposure|Population|95th percentile" --impact-resample
 
-Note how several impact variables can be specified so that three variables end up considered (corresponding to median, 5th and 95th percentiles). 
+Note how several impact variables can be specified so that three variables end up considered (corresponding to median, 5th and 95th percentiles).
 They are then sorted out by parsing the variable name (e.g. " 5th" or "|5th" is expected, and the median is whatever is left).
 
 GSAT and impact distribution fitting can be combined (see figure below).
@@ -318,12 +330,12 @@ Probably in the future the vectorized form will be used as default with `rime-ru
 
 The python API is currently unstable and will be documented in the future.
 
-For now, the inner working consists in a set of functions to transform a list of records. By records, I mean dictionaries as the result of `pandas.DataFrame.to_dict('records')`, where each dict record corresponds to a row in a long pandas DataFrame. 
+For now, the inner working consists in a set of functions to transform a list of records. By records, I mean dictionaries as the result of `pandas.DataFrame.to_dict('records')`, where each dict record corresponds to a row in a long pandas DataFrame.
 There are functions to interpolate the records w.r.t warming levels or years, average across scenarios, etc. These functions can be found in the `rimeX.records` module. The emulator itself, to combine GSAT and impact data, is present in the `rimeX.emulator` module (`rime-run-timeseries` relies on `recombine_gmt_ensemble` or `recombine_gmt_vectorized`, whereas `rime-run-table` relies on `recombine_gmt_table`).
 
 Note the scripts are located in `rimeX.scripts` and can also be run in the notebook via module import for easier debugging (note the `--` separator to pass arguments to the module's `main()`, and not to `%run`):
-- `rime-run-timeseries` as `%run -m rimeX.scripts.timeseries --` 
-- `rime-run-table` as `%run -m rimeX.scripts.table --` 
+- `rime-run-timeseries` as `%run -m rimeX.scripts.timeseries --`
+- `rime-run-table` as `%run -m rimeX.scripts.table --`
 
 Check out [the TODO internal classes](#internal-classes) section for an insight where it might be going.
 
@@ -349,16 +361,16 @@ A prospective API would be a set of classes with methods, some of which would be
 	- interpolate_warming_levels
 	- mean : (current average_per_group)
 	- make_equiprobable_groups
-	- resample_from_quantiles 
-	- resample_dims : resample from an index (e.g. model, scenario)  
+	- resample_from_quantiles
+	- resample_dims : resample from an index (e.g. model, scenario)
 	- resample_montecarlo : return an `ImpactEnsemble` instance
 	- to_frame() (internally `ImpactFrame(pandas.DataFrame(self.records))`) would return an `ImpactFrame`
 	- sample_by_gmt_pathway() -> return a DataFrame of results (current `recombine_gmt_ensemble`)
 
-- `ImpactEnsemble` : DataFrame with an index (years as multi-index if other dimensions should be accounted for), and samples as columns, for vectorized sampling. 
+- `ImpactEnsemble` : DataFrame with an index (years as multi-index if other dimensions should be accounted for), and samples as columns, for vectorized sampling.
 	- sample_by_gmt_pathway() -> return a DataFrame of results (current `recombine_gmt_vectorized`)
 
-- `ImpactFrame`: semantically equivalent to `ImpactRecords`, but internal data structure is a DataFrame : good for reading, writing and as an intermediate state, but operations of destruction / reconstruction can be costly. Eventually, this could be merged with `ImpactRecords`, with one or ther other taking over depending on performance tests. 
+- `ImpactFrame`: semantically equivalent to `ImpactRecords`, but internal data structure is a DataFrame : good for reading, writing and as an intermediate state, but operations of destruction / reconstruction can be costly. Eventually, this could be merged with `ImpactRecords`, with one or ther other taking over depending on performance tests.
 For now `ImpactRecords` is the main class for work, and `ImpactFrame` is mostly a data holder.
 	- ... : some of the methods above may also be implemented using pandas methods (should be equivalent to ImpactRecords methods: ideal for unit tests)
 	- to_cube(dims) -> transform to `ImpactCube`
