@@ -673,16 +673,13 @@ def main():
         for name in o.variable + o.indicator:
             indicator = Indicator.from_config(name)
             for experiment, model in iterate_model_experiment():
+                if o.model and model not in o.model:
+                    continue
+                if o.experiment and experiment not in o.experiment:
+                    continue
                 print(f"Downloading {name} for {experiment} {model}")
                 for _ in indicator.download(experiment, model, overwrite=o.overwrite, remove_daily=o.remove_daily):
                     pass
-
-    # Now process the files
-    print(f"Download and processing to {'daily' if o.daily else 'monthly'} data is done.")
-    print("- climate variables:", ' '.join(o.variable))
-    print("- climate_forcing:", ' '.join(sorted(set(r['specifiers']['climate_forcing'] for r in results))))
-    print("- experiments:", ' '.join(sorted(set(r['specifiers']['climate_scenario'] for r in results))))
-    print(f"(total of {len([f for r in results for f in r['files']])} files)")
 
 
 if __name__ == "__main__":
