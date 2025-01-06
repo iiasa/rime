@@ -654,7 +654,8 @@ def main():
     # parser.add_argument("--monthly-statistic", default=["mean"], nargs="*",
     #                    help="""function(s) to process daily into monthly variables. Default is ["mean"].
     #                    It includes predfined functions: ["mean", "std", "max", "min", "sum"]. TODO: user-defined functions via mdoule import""")
-    parser.add_argument("--keep-daily", action='store_false', dest='remove_daily', help=argparse.SUPPRESS)
+    # parser.add_argument("--keep-daily", action='store_false', dest='remove_daily', help=argparse.SUPPRESS)
+    parser.add_argument("--remove-daily", action='store_true')
     parser.add_argument("--mirror", help=argparse.SUPPRESS)  # in case we have direct access to PIK cluster, say
     parser.add_argument("--download-folder", default=CONFIG["isimip.download_folder"], help=argparse.SUPPRESS)
     parser.add_argument("--overwrite", action='store_true')
@@ -675,16 +676,11 @@ def main():
     if o.indicator or o.variable:
         for name in o.variable + o.indicator:
             indicator = Indicator.from_config(name)
-            for model, experiment in iterate_model_experiment():
-                if o.model and model.lower() not in (m.lower() for m in o.model):
-                    print(f"Skipping {model}")
-                    continue
-                if o.experiment and experiment.lower() not in (x.lower() for x in o.experiment):
-                    print(f"Skipping {experiment}")
-                    continue
-                print(f"Downloading {name} for {experiment} {model}")
-                indicator.download(experiment, model, overwrite=o.overwrite, remove_daily=o.remove_daily)
-
+            for simu in indicator.simulations:
+                for model, experiment in iterate_model_experiment():
+                    if _matches(simu["climate_scenario"], experiment) and _matches(simu["climate_forcing"], model):
+                        print(f"Downloading {name} for {experiment} {model}")
+                        indicator.download(experiment, model, overwrite=o.overwrite, remove_daily=o.remove_daily)
 
 if __name__ == "__main__":
     main()
