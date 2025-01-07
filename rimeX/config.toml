@@ -119,6 +119,7 @@ source: https://journals.ametsoc.org/view/journals/apme/50/11/jamc-d-11-0143.1.x
 transform = "baseline_change"
 spatial_aggregation = ["latWeight", "pop2015"]
 units = "°C"
+title = "Wet Bulb Temperature"
 
 [indicator.daily_temperature_variability]
 depends_on = ["tas"]
