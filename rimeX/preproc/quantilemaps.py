@@ -26,7 +26,8 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
     quant_step = 1/quant_bins
     quants = np.linspace(quant_step/2, 1-quant_step/2, quant_bins)
 
-    all_warming_levels = []
+    warming_level_data = []
+    warming_level_coords = []
 
     keywl = lambda r: r["warming_level"]
     wl_records = sorted(warming_levels.to_dict(orient="records"), key=keywl)
@@ -86,13 +87,13 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
 
         samples = xa.concat(files_to_concat, dim="sample")
         quantiles = samples.quantile(quants, dim="sample")
-        all_warming_levels.append(quantiles)
+        warming_level_data.append(quantiles)
+        warming_level_coords.append(wl)
 
-    warming_level_coords = [dat.coords["warming_level"] for dat in all_warming_levels]
-    all_warming_levels = xa.concat(all_warming_levels, dim="warming_level")
-    all_warming_levels = all_warming_levels.assign_coords({"warming_level": warming_level_coords}) # otherwise it's dropped apparently
-    all_warming_levels.name = indicator.name
-    return all_warming_levels
+    warming_level_data = xa.concat(warming_level_data, dim="warming_level")
+    warming_level_data = warming_level_data.assign_coords({"warming_level": warming_level_coords}) # otherwise it's dropped apparently
+    warming_level_data.name = indicator.name
+    return warming_level_data
 
 
 def get_filepath(name, season="annual", root_dir=None, **kw):
@@ -139,6 +140,7 @@ def main():
 
     root_dir = Path(o.warming_level_file).parent
 
+
     for name in o.variable + o.indicator:
         indicator = Indicator.from_config(name)
 
@@ -162,3 +164,7 @@ def main():
             logger.info(f"Write to {filepath}")
             encoding = {array.name: {'zlib': True}}
             array.to_netcdf(filepath, encoding=encoding)
+
+
+if __name__ == "__main__":
+    main()
