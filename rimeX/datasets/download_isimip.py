@@ -273,7 +273,7 @@ class Indicator:
     def __init__(self, name, frequency="monthly", folder=None,
                  spatial_aggregation=None, depends_on=None, expr=None, time_aggregation=None, isimip_meta=None,
                  shell=None, custom=None,
-                 db=None, isimip_folder=None, comment=None, transform=None, year_min=None, units="", projection_baseline=None,
+                 db=None, isimip_folder=None, comment=None, transform=None, year_min=None, units="", title="", projection_baseline=None,
                  depends_on_climatology=False, climatology_quantile=False,
                  **kwargs):
 
@@ -311,7 +311,8 @@ class Indicator:
         self.comment = comment
         self.transform = transform  # this refers to the baseline period and is only accounted for later on in the emulator (misnamed...)
         self.units = units
-        self.projection_baseline = projection_baseline
+        self.title = title
+        self.projection_baseline = projection_baseline or CONFIG["preprocessing.projection_baseline"]
 
     @classmethod
     def from_config(cls, name, **kw):
@@ -641,8 +642,11 @@ class Indicator:
         for simu in self.simulations:
             yield self.download(**simu, **kwargs)
 
-    def get_all_paths(self, **kwargs):
+    def get_all_paths(self, filter=None, **kwargs):
         for simu in self.simulations:
+            if filter is not None:
+                if not filter(simu):
+                    continue
             yield self.get_path(**simu, **kwargs)
 
 

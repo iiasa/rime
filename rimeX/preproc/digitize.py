@@ -46,18 +46,21 @@ def load_seasonal_means_per_region(variable, model, experiment, region, subregio
 
     return pd.DataFrame(seasonal_means, index=years)
 
-def transform_indicator(data, indicator, meta=None):
+def transform_indicator(data, indicator, meta=None, dataref=None):
 
     if meta is None:
         meta = CONFIG.get(f"indicator.{indicator}", {})
 
     y1, y2 = meta.get("projection_baseline", CONFIG["preprocessing.projection_baseline"])
 
+    if dataref is None:
+        dataref = data.loc[y1:y2].mean()
+
     if meta.get("transform") == "baseline_change":
-        data -= data.loc[y1:y2].mean()
+        data = data - dataref
 
     elif meta.get("transform") == "baseline_change_percent":
-        data = (data / data.loc[y1:y2].mean() - 1) * 100
+        data = (data / dataref - 1) * 100
 
     elif meta.get("transform"):
         raise NotImplementedError(meta["transform"])

@@ -164,8 +164,8 @@ def _get_gmt_ensemble(o, parser):
             ens = np.empty((nt, o.gsat_samples))
             for i in range(nt):
                 # fit
-                quants = [50, 5, 95]
-                dist = fit_dist(gmt_q.iloc[i][quants], quants, o.gsat_dist)
+                quants = np.array([50, 5, 95])
+                dist = fit_dist(gmt_q.iloc[i][quants], quants/100, o.gsat_dist)
                 logger.debug(f"{i}: {repr_dist(dist)}")
 
                 # resample (equally spaced percentiles)

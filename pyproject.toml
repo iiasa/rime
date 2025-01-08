@@ -24,7 +24,7 @@ dependencies = [
   "numpy",
   "pandas",
   "xarray",
-  "tqdm", 
+  "tqdm",
   "flatdict",
 ]
 
@@ -36,7 +36,7 @@ all = [
     "pyam-iamc",
     # below for rimeX legacy code and postprocessing to work as expected
     "dask[distributed]",
-    "holoviews", 
+    "holoviews",
     "hvplot",
     # rimeX.legacy : plot dashboard:
     "cartopy",
@@ -56,6 +56,7 @@ rime-pre-gmt = "rimeX.preproc.global_average_tas:main"
 rime-pre-region = "rimeX.preproc.regional_average:main"
 rime-pre-wl = "rimeX.preproc.warminglevels:main"
 rime-pre-digitize = "rimeX.preproc.digitize:main"
+rime-pre-quantilemap = "rimeX.preproc.quantilemaps:main"
 rime-run-timeseries = "rimeX.scripts.timeseries:main"
 rime-run-map = "rimeX.scripts.map:main"
 rime-run-table = "rimeX.scripts.table:main"

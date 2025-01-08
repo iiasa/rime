@@ -4,7 +4,7 @@ from scipy.optimize import minimize
 
 def fit_dist(values, quantiles=None, dist_name=None, threshold=0.55):
     if quantiles is not None:
-        assert quantiles == [.5, .05, .95]
+        assert np.array(quantiles).tolist() == [.5, .05, .95], str(np.array(quantiles).tolist())
     mid, lo, hi = values
 
     if dist_name == "auto":
@@ -19,7 +19,6 @@ def fit_dist(values, quantiles=None, dist_name=None, threshold=0.55):
         return stat.norm(mid, ((hi-mid)+(mid-lo))/2 / stat.norm.ppf(.95))
 
     if dist_name == "lognorm":
-        import numpy as np
 
         reverse = hi - mid < mid - lo
 
@@ -34,7 +33,7 @@ def fit_dist(values, quantiles=None, dist_name=None, threshold=0.55):
         # the equality lo - loc > 0 becomes lo * (2*mid - lo - hi) - mid **2 - hi*lo <= 0
         # and suffices to note that lo * (2*mid - lo - hi) - mid **2 - hi*lo = - (mid - lo)**2 which is always < 0
 
-        normdist = fit_dist([np.log(mid - loc), np.log(lo - loc), np.log(hi - loc)], [50, 5, 95], "norm")
+        normdist = fit_dist([np.log(mid - loc), np.log(lo - loc), np.log(hi - loc)], [.5, .05, .95], "norm")
         mu, sigma = normdist.args
         dist = stat.lognorm(sigma, loc, np.exp(mu))
 
