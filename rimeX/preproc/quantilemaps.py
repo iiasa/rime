@@ -15,6 +15,17 @@ from rimeX.datasets.download_isimip import Indicator, _matches
 from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory
 from rimeX.preproc.digitize import transform_indicator
 
+def fast_quantile(a, quantiles, dim=None):
+    quantiles = np.asarray(quantiles)
+    if np.isscalar(quantiles):
+        a = a.reduce(np.percentile, quantiles*100, dim=dim)
+    else:
+        # "percentile" is orders of magnitude faster than "quantile"
+        a_np = np.percentile(a.values, quantiles*100, axis=a.dims.index(dim))
+        a = xa.DataArray(a_np,
+                                    coords=[quantiles] + [a.coords[c] for c in a.dims if c != dim],
+                                    dims=["quantile"] + [c for c in a.dims if c != dim])
+    return a
 
 def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                             quantile_bins=10, season="annual", running_mean_window=21,
@@ -86,7 +97,8 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
             files_to_concat.append(data)
 
         samples = xa.concat(files_to_concat, dim="sample")
-        quantiles = samples.quantile(quants, dim="sample")
+        # quantiles = samples.quantile(quants, dim="sample")
+        quantiles = fast_quantile(samples, quants, dim="sample")
         warming_level_data.append(quantiles)
         warming_level_coords.append(wl)
 
