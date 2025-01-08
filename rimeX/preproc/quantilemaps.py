@@ -102,7 +102,8 @@ def main():
     group = parser.add_argument_group('Warming level matching')
     group.add_argument("--running-mean-window", default=CONFIG["preprocessing.running_mean_window"], help="default: %(default)s years")
     group.add_argument("--warming-level-file", default=None)
-    group.add_argument("--quantile-bins", default=10, type=int)
+    group.add_argument("--warming-levels", type=float, default=CONFIG["preprocessing.quantilemap_warming_levels"], nargs='+', help="default: %(default)s")
+    group.add_argument("--quantile-bins", default=CONFIG["preprocessing.quantilemap_quantile_bins"], type=int)
 
     group = parser.add_argument_group('Indicator variable')
     group.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"])
@@ -127,7 +128,8 @@ def main():
         o.warming_level_file = get_warming_level_file(**{**CONFIG, **vars(o)})
 
     warming_levels = pd.read_csv(o.warming_level_file)
-
+    quantilemap_warming_levels = np.asarray(o.warming_levels)
+    warming_levels = warming_levels[warming_levels["warming_level"].isin(quantilemap_warming_levels)]
 
     root_dir = Path(o.warming_level_file).parent
 
@@ -135,11 +137,14 @@ def main():
         indicator = Indicator.from_config(name)
 
         for season in o.season:
+            if indicator.frequency == "annual" and season != "annual":
+                continue
             filepath = root_dir / "quantilemaps" / indicator.name / season / f"{indicator.name}_{season}_quantilemaps.nc"
             if filepath.exists() and not o.overwrite:
                 logger.info(f"{filepath} already exists. Use -O or --overwrite to reprocess.")
                 continue
             filepath.parent.mkdir(parents=True, exist_ok=True)
+
             array = make_quantile_map_array(indicator,
                                             warming_levels,
                                             season=season,
@@ -147,6 +152,7 @@ def main():
                                             running_mean_window=o.running_mean_window,
                                             projection_baseline=o.projection_baseline,
                                             )
+
             logger.info(f"Write to {filepath}")
             encoding = {array.name: {'zlib': True}}
             array.to_netcdf(filepath, encoding=encoding)
