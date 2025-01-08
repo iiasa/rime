@@ -12,7 +12,7 @@ import xarray as xa
 from rimeX.config import CONFIG, config_parser
 from rimeX.logs import logger, log_parser
 from rimeX.datasets.download_isimip import Indicator, _matches
-from rimeX.preproc.warminglevels import get_warming_level_file
+from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory
 from rimeX.preproc.digitize import transform_indicator
 
 
@@ -88,11 +88,17 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
         quantiles = samples.quantile(quants, dim="sample")
         all_warming_levels.append(quantiles)
 
-    warming_level_coords = [dat["warming_level"] for dat in all_warming_levels]
+    warming_level_coords = [dat.coords["warming_level"] for dat in all_warming_levels]
     all_warming_levels = xa.concat(all_warming_levels, dim="warming_level")
     all_warming_levels = all_warming_levels.assign_coords({"warming_level": warming_level_coords}) # otherwise it's dropped apparently
     all_warming_levels.name = indicator.name
     return all_warming_levels
+
+
+def get_filepath(name, season="annual", root_dir=None, **kw):
+    if root_dir is None:
+        root_dir = get_root_directory(**kw)
+    return root_dir / "quantilemaps" / name / f"{name}_{season}_quantilemaps.nc"
 
 
 def main():
@@ -139,7 +145,7 @@ def main():
         for season in o.season:
             if indicator.frequency == "annual" and season != "annual":
                 continue
-            filepath = root_dir / "quantilemaps" / indicator.name / season / f"{indicator.name}_{season}_quantilemaps.nc"
+            filepath = get_filepath(indicator.name, season, root_dir=root_dir)
             if filepath.exists() and not o.overwrite:
                 logger.info(f"{filepath} already exists. Use -O or --overwrite to reprocess.")
                 continue
