@@ -314,6 +314,10 @@ class Indicator:
         self.title = title
         self.projection_baseline = projection_baseline or CONFIG["preprocessing.projection_baseline"]
 
+    @property
+    def ncvar(self):
+        return self.isimip_meta.get("variable", self.name)
+
     @classmethod
     def from_config(cls, name, **kw):
         cfg = CONFIG.get(f"indicator.{name}", {})

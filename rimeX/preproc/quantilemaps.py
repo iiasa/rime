@@ -50,50 +50,75 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
         files_to_concat = []
         group = list(group)
 
+        # for each warming level, we loop over the different climate models and climate scenarios and simulation years
         for r in tqdm.tqdm(group):
-            simus_historical = [s for s in simulations if _matches(s["climate_scenario"], "historical") and _matches(s["climate_forcing"], r["model"])]
-            simus = [s for s in simulations if _matches(s["climate_scenario"], r["experiment"]) and _matches(s["climate_forcing"], r["model"])]
-            if len(simus_historical) == 0 or len(simus) == 0:
+
+            # filter climate models and scenarios
+            subsimus = [s for s in simulations if _matches(s["climate_scenario"], r["experiment"]) and _matches(s["climate_forcing"], r["model"])]
+            if len(subsimus) == 0:
                 logger.warning(f"No simulation for {indicator.name} {r['model']} {r['experiment']}: Skip")
                 continue
-            assert len(simus_historical) == 1
-            assert len(simus) == 1
-            simu_historical = simus_historical[0]
-            simu = simus[0]
-            # warming_level	year
-            filepath_hist = indicator.get_path(**simu_historical)
-            filepath = indicator.get_path(**simu)
 
-            with xa.open_mfdataset([filepath_hist, filepath], combine='nested', concat_dim="time") as ds:
+            # some indicators have an additional "model" specifier (impact model)
+            # here we further loop over that sub-group to make sure we match the correct historical and future simulations
+            groupkey = lambda s: s.get("model") # None for indicators without model specifier
 
-                # only select relevant months
-                if season is not None:
-                    season_mask = ds["time.month"].isin(CONFIG["preprocessing.seasons"][season])
-                else:
-                    season_mask = slice(None)
+            for model, simus in groupby(sorted(subsimus, key=groupkey), key=groupkey):
 
-                seasonal_sel = ds[indicator.name].isel(time=season_mask)
+                simus = list(simus)
+                simus_historical = [s for s in simulations if _matches(s["climate_scenario"], "historical") and _matches(s["climate_forcing"], r["model"]) and _matches(s.get("model"), model)]
 
-                # mean over the ref period
-                if projection_baseline is not None:
-                    y1, y2 = projection_baseline
-                    dataref = seasonal_sel.sel(time=slice(str(y1),str(y2))).mean("time")
+                assert len(simus_historical) == 1
+                assert len(simus) == 1
 
-                # mean over required time-slice
-                data = seasonal_sel.sel(time=slice(str(r['year']-w),str(r['year']+w))).mean("time")
+                simu_historical = simus_historical[0]
+                simu = simus[0]
+                # warming_level	year
+                filepath_hist = indicator.get_path(**simu_historical)
+                filepath = indicator.get_path(**simu)
 
-                # subtract the reference period or express as relative change
-                data = transform_indicator(data, indicator.name, dataref=dataref).load()
+                try:
+                    ds = xa.open_mfdataset([filepath_hist, filepath], combine='nested', concat_dim="time")
 
-                # assign metadata
-                data = data.assign_coords({
-                    "warming_level": r["warming_level"],
-                    "model": r["model"],
-                    "experiment": r["experiment"],
-                    "midyear": r["year"],
-                    })
+                except ValueError:
+                    ds = xa.open_mfdataset([filepath_hist, filepath], combine='nested', concat_dim="time", decode_times=False)
+                    if ds["time"].units.startswith("years since"):
+                        firstyear = int(ds["time"].units[len("years since "):].split("-")[0])
+                        ds["time"] = pd.date_range(start=f"{ds['time'].values[0]+firstyear}", periods=ds["time"].size, freq='A')
+                    else:
+                        logger.warning(f"Cannot decode time for {filepath_hist} and {filepath}")
+                        raise
 
-            files_to_concat.append(data)
+                with ds:
+
+                    # only select relevant months
+                    if season is not None:
+                        season_mask = ds["time.month"].isin(CONFIG["preprocessing.seasons"][season])
+                        seasonal_sel = ds[indicator.ncvar].isel(time=season_mask)
+
+                    else:
+                        seasonal_sel = ds[indicator.ncvar]
+
+                    # mean over the ref period
+                    if projection_baseline is not None:
+                        y1, y2 = projection_baseline
+                        dataref = seasonal_sel.sel(time=slice(str(y1),str(y2))).mean("time")
+
+                    # mean over required time-slice
+                    data = seasonal_sel.sel(time=slice(str(r['year']-w),str(r['year']+w))).mean("time")
+
+                    # subtract the reference period or express as relative change
+                    data = transform_indicator(data, indicator.name, dataref=dataref).load()
+
+                    # assign metadata
+                    data = data.assign_coords({
+                        "warming_level": r["warming_level"],
+                        "model": r["model"],
+                        "experiment": r["experiment"],
+                        "midyear": r["year"],
+                        })
+
+                files_to_concat.append(data)
 
         samples = xa.concat(files_to_concat, dim="sample")
         # quantiles = samples.quantile(quants, dim="sample")
@@ -133,7 +158,6 @@ def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .0
     rng = np.random.default_rng(seed=seed)
     igmt = rng.integers(0, gmt.columns.size, size=samples)
     resampled_gmt = gmt.iloc[:, igmt]
-    # iquantiles = rng.integers(0, a.coords["quantile"].size, size=igmt.shape[0])
     iquantiles = rng.integers(0, a.coords["quantile"].size, size=resampled_gmt.shape)
     sampled_maps = interp((resampled_gmt.values, a.coords["quantile"].values[iquantiles]))
     sampled_maps = xa.DataArray(sampled_maps, coords=[
