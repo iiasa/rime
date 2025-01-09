@@ -6,6 +6,7 @@ import tqdm
 from pathlib import Path
 
 import numpy as np
+from scipy.interpolate import RegularGridInterpolator
 import pandas as pd
 import xarray as xa
 
@@ -33,9 +34,7 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
 
     simulations = indicator.simulations
     w = running_mean_window // 2
-    quant_bins = quantile_bins
-    quant_step = 1/quant_bins
-    quants = np.linspace(quant_step/2, 1-quant_step/2, quant_bins)
+    quants = np.linspace(0, 1, quantile_bins)
 
     warming_level_data = []
     warming_level_coords = []
@@ -114,6 +113,36 @@ def get_filepath(name, season="annual", root_dir=None, **kw):
     return root_dir / "quantilemaps" / name / f"{name}_{season}_quantilemaps.nc"
 
 
+def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .05, .95]):
+    """Make a prediction of the quantile map for a given global mean temperature
+
+    Parameters
+    ----------
+    a : xa.DataArray as produced by make_quantile_map_array
+    gmt : pandas DataFrame for the global mean temperature, with years as index and ensemble members as columns
+    samples : number of samples to draw (default: 100)
+    seed : random seed
+    quantiles : quantiles to compute (default: [0.5, .05, .95])
+        if None, all ensemble members are returned
+
+    Returns
+    -------
+    sampled_maps : xa.DataArray with dimensions year, sample
+    """
+    interp = RegularGridInterpolator((a.warming_level.values, a.coords["quantile"].values), a.values, bounds_error=False)
+    rng = np.random.default_rng(seed=seed)
+    igmt = rng.integers(0, gmt.columns.size, size=samples)
+    resampled_gmt = gmt.iloc[:, igmt]
+    # iquantiles = rng.integers(0, a.coords["quantile"].size, size=igmt.shape[0])
+    iquantiles = rng.integers(0, a.coords["quantile"].size, size=resampled_gmt.shape)
+    sampled_maps = interp((resampled_gmt.values, a.coords["quantile"].values[iquantiles]))
+    sampled_maps = xa.DataArray(sampled_maps, coords=[
+        gmt.index, np.arange(samples), a.lat, a.lon], dims=["year", "sample", "lat", "lon"])
+    if quantiles is not None:
+        sampled_maps = fast_quantile(sampled_maps, quantiles, dim="sample")
+    return sampled_maps
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description=__doc__, epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[config_parser, log_parser])
@@ -121,8 +150,8 @@ def main():
     group = parser.add_argument_group('Warming level matching')
     group.add_argument("--running-mean-window", default=CONFIG["preprocessing.running_mean_window"], help="default: %(default)s years")
     group.add_argument("--warming-level-file", default=None)
-    group.add_argument("--warming-levels", type=float, default=CONFIG["preprocessing.quantilemap_warming_levels"], nargs='+', help="default: %(default)s")
-    group.add_argument("--quantile-bins", default=CONFIG["preprocessing.quantilemap_quantile_bins"], type=int)
+    group.add_argument("--warming-levels", type=float, default=CONFIG.get("preprocessing.quantilemap_warming_levels"), nargs='+', help="All warming levels by default")
+    group.add_argument("--quantile-bins", default=CONFIG["preprocessing.quantilemap_quantile_bins"], type=int, help="default: %(default)s")
 
     group = parser.add_argument_group('Indicator variable')
     group.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"])
@@ -147,8 +176,10 @@ def main():
         o.warming_level_file = get_warming_level_file(**{**CONFIG, **vars(o)})
 
     warming_levels = pd.read_csv(o.warming_level_file)
-    quantilemap_warming_levels = np.asarray(o.warming_levels)
-    warming_levels = warming_levels[warming_levels["warming_level"].isin(quantilemap_warming_levels)]
+
+    if o.warming_levels is not None:
+        quantilemap_warming_levels = np.asarray(o.warming_levels)
+        warming_levels = warming_levels[warming_levels["warming_level"].isin(quantilemap_warming_levels)]
 
     root_dir = Path(o.warming_level_file).parent
 
