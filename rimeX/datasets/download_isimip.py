@@ -364,7 +364,7 @@ class Indicator:
         request_dict = {"climate_forcing": climate_forcing, "climate_scenario": climate_scenario, **ensemble_specifiers}
         for k in self.simulation_keys:
             if k not in request_dict:
-                raise ValueError(f"Missing key required {self.name}: {k}")
+                raise ValueError(f"Missing key required {self.name}: {k}. Got {request_dict}")
 
         results = self.db.filter(**request_dict)
 
@@ -683,8 +683,8 @@ def main():
             for simu in indicator.simulations:
                 for model, experiment in iterate_model_experiment():
                     if _matches(simu["climate_scenario"], experiment) and _matches(simu["climate_forcing"], model):
-                        print(f"Downloading {name} for {experiment} {model}")
-                        indicator.download(experiment, model, overwrite=o.overwrite, remove_daily=o.remove_daily)
+                        print(f"Downloading {name} for {simu}")
+                        indicator.download(**simu, overwrite=o.overwrite, remove_daily=o.remove_daily)
 
 if __name__ == "__main__":
     main()
