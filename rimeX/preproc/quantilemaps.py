@@ -29,104 +29,139 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
     w = running_mean_window // 2
     quants = np.linspace(0, 1, quantile_bins)
 
-    warming_level_data = []
-    warming_level_coords = []
+    warming_levels["model"] = warming_levels["model"].map(str.lower)
+    warming_levels["experiment"] = warming_levels["experiment"].map(str.lower)
+    warming_level_by_model_exp = warming_levels.set_index(["model", "experiment"])
 
     keywl = lambda r: r["warming_level"]
     wl_records = sorted(warming_levels.to_dict(orient="records"), key=keywl)
-
-    logger.info(f"Process quantile maps for {indicator.name} | {season}. Warming levels {wl_records[0]['warming_level']} to {wl_records[-1]['warming_level']}")
+    logger.info(f"Collect quantile maps data for {indicator.name} | {season}. Warming levels {wl_records[0]['warming_level']} to {wl_records[-1]['warming_level']}")
 
     if equiprobable_models:
         model_frequencies = get_model_frequencies(warming_levels)
 
-    for wl, group in groupby(wl_records, key=keywl):
+    collect = {}
 
-        logger.info(f"==== {wl} ====")
-        files_to_concat = []
+    key_file = lambda r: (r["climate_forcing"], r["climate_scenario"], r.get("model"))
+
+    for key, group in tqdm.tqdm(groupby(sorted(simulations, key=key_file), key=key_file), total=len(simulations)):
         group = list(group)
+        assert len(group) == 1, group
+        simu = group[0]
+        if key[1] == "historical":
+            continue # this will be covered by the projection
+        simu_historical = {**simu, "climate_scenario": "historical"}
 
-        if equiprobable_models:
-            weights = []
-            model_frequencies_wl = model_frequencies[wl]
+        # check if that simulaion is required
+        try:
+            extract = warming_level_by_model_exp.loc[key[0]].loc[key[1]][["year", "warming_level"]]
+        except KeyError:
+            logger.debug(f"No warming level calculation for {key[0]} {key[1]}: Skip")
+            continue
 
-        # for each warming level, we loop over the different climate models and climate scenarios and simulation years
-        for r in tqdm.tqdm(group):
+        with open_files(indicator, [simu_historical, simu], **open_func_kwargs) as data:
 
-            # filter climate models and scenarios
-            subsimus = [s for s in simulations if _matches(s["climate_scenario"], r["experiment"]) and _matches(s["climate_forcing"], r["model"])]
-            if len(subsimus) == 0:
-                logger.warning(f"No simulation for {indicator.name} {r['model']} {r['experiment']}: Skip")
-                continue
+            # only select relevant months
+            if season is not None:
+                season_mask = data["time.month"].isin(CONFIG["preprocessing.seasons"][season])
+                seasonal_sel = data.isel(time=season_mask)
 
-            # some indicators have an additional "model" specifier (impact model)
-            # here we further loop over that sub-group to make sure we match the correct historical and future simulations
-            groupkey = lambda s: s.get("model") # None for indicators without model specifier
+            else:
+                seasonal_sel = data
 
-            for model, simus in groupby(sorted(subsimus, key=groupkey), key=groupkey):
+            # subtract the reference period or express as relative change
+            if indicator.transform and not skip_transform and projection_baseline is not None:
+                y1, y2 = projection_baseline
+                dataref = seasonal_sel.sel(time=slice(str(y1),str(y2))).mean("time").load()
+                assert "time" not in dataref.dims, dataref.dims
 
-                simus = list(simus)
-                simus_historical = [s for s in simulations if _matches(s["climate_scenario"], "historical") and _matches(s["climate_forcing"], r["model"]) and _matches(s.get("model"), model)]
+            # make 21-year running mean
+            data_smooth = seasonal_sel.rolling(time=running_mean_window, center=True).mean().load()
 
-                assert len(simus_historical) == 1
-                assert len(simus) == 1
+            # collect all time slices required for the warming levels
+            assert len(extract) > 0, f"No warming levels for {key[0]} {key[1]}"
 
-                simu_historical = simus_historical[0]
-                simu = simus[0]
+            for i in range(len(extract)):
+                wl = extract.iloc[i]["warming_level"]
+                year = int(extract.iloc[i]["year"])
 
-                with open_files(indicator, [simu_historical, simu], **open_func_kwargs) as data:
+                # mean over required time-slice
+                # data = seasonal_sel.sel(time=slice(str(year-w),str(year+w))).mean("time").load()
+                data = data_smooth.sel(time=str(year)).squeeze("time").load()
 
-                    # only select relevant months
-                    if season is not None:
-                        season_mask = data["time.month"].isin(CONFIG["preprocessing.seasons"][season])
-                        seasonal_sel = data.isel(time=season_mask)
+                # subtract the reference period or express as relative change
+                if indicator.transform and not skip_transform:
+                    data = transform_indicator(data, indicator.name, dataref=dataref).load()
 
-                    else:
-                        seasonal_sel = data
+                # assign metadata
+                data = data.assign_coords({
+                    "warming_level": wl,
+                    "model": key[0],
+                    "experiment": key[1],
+                    "midyear": year,
+                    })
 
-                    # mean over required time-slice
-                    data = seasonal_sel.sel(time=slice(str(r['year']-w),str(r['year']+w))).mean("time").load()
+                assert "time" not in data.dims, (data.dims, data.shape)
 
-                    # subtract the reference period or express as relative change
-                    if indicator.transform and not skip_transform:
+                # append the newly calculated data where it belongs
+                values, weights = collect.setdefault(wl, ([], []))
+                values.append(data)
+                weights.append(1/model_frequencies[key[0]] if equiprobable_models else 1)
 
-                        # mean over the ref period
-                        if projection_baseline is not None:
-                            y1, y2 = projection_baseline
-                            dataref = seasonal_sel.sel(time=slice(str(y1),str(y2))).mean("time").load()
 
-                        data = transform_indicator(data, indicator.name, dataref=dataref)
+    logger.info(f"Compute quantiles for collected data {indicator.name} | {season}.")
 
-                    # assign metadata
-                    data = data.assign_coords({
-                        "warming_level": r["warming_level"],
-                        "model": r["model"],
-                        "experiment": r["experiment"],
-                        "midyear": r["year"],
-                        })
+    warming_level_coords = np.array(sorted(collect.keys()))
 
-                files_to_concat.append(data)
+    # create an empty array to store the quantiles
+    warming_level_data = xa.DataArray(np.empty((len(warming_level_coords), len(quants), *data.shape)),
+                                      dims=["warming_level", "quantile", *data.dims],
+                                      coords={
+                                        "warming_level": warming_level_coords,
+                                        "quantile": quants,
+                                        **{k:data.coords[k] for k in data.dims},
+                                        },
+                                      name=indicator.name,
+                                      )
 
-                # downweight models that are more frequent
-                # NOTE we assume any impact model comes with the same frequency across climate models
-                # i.e. we correct for the frequency of the climate models in the selection of the warming levels
-                # but not in the occurence of impact models
-                if equiprobable_models:
-                    weights.append(1/model_frequencies_wl[r["model"]])
+    # now re-organize the collected values by warming level and calculate the quantiles
+    for i,wl in enumerate(tqdm.tqdm(warming_level_coords)):
 
-        samples = xa.concat(files_to_concat, dim="sample")
+        values, weights = collect.pop(wl)
+
+        samples = xa.concat(values, dim="sample")
+        del values  # clear memory
         # quantiles = samples.quantile(quants, dim="sample")
         if equiprobable_models:
             quantiles = fast_weighted_quantile(samples, quants, weights=weights, dim="sample")
         else:
             quantiles = fast_quantile(samples, quants, dim="sample")
-        warming_level_data.append(quantiles)
-        warming_level_coords.append(wl)
 
-    warming_level_data = xa.concat(warming_level_data, dim="warming_level")
-    warming_level_data = warming_level_data.assign_coords({"warming_level": warming_level_coords}) # otherwise it's dropped apparently
-    warming_level_data.name = indicator.name
+        warming_level_data.values[i] = quantiles.transpose("quantile", ...).values
+
+        del samples # clear memory
+        del quantiles # clear memory
+
+
     return warming_level_data
+
+
+def chunked(dim, size, total_size):
+    """
+    Decorator to process the data in chunks
+    (e.g. call quantile maps on 1 or 5 or 10 degrees latitude bands to reduce memory usage)
+    """
+    def decorator(func):
+        def wrapped(indicator, warming_levels, open_func_kwargs={}, **kwargs):
+            chunks = []
+            for isel in range(0, total_size, size):
+                logger.info(f"Chunk {isel} to {isel+size} of {total_size}")
+                open_func_kwargs_ = {**open_func_kwargs, "isel": {dim: slice(isel, isel+size)}}
+                result = func(indicator, warming_levels, open_func_kwargs=open_func_kwargs_, **kwargs)
+                chunks.append(result)
+            return xa.concat(chunks, dim=dim)
+        return wrapped
+    return decorator
 
 
 def get_filepath(name, season="annual", root_dir=None, suffix="", regional=False, regional_weights="latWeight", **kw):
@@ -255,7 +290,14 @@ def main():
                 continue
             filepath.parent.mkdir(parents=True, exist_ok=True)
 
-            array = make_quantile_map_array(indicator,
+            # to reduce the memory usage, it is possible to split the calls into smaller warming_levels chunks
+            # and concat along the warming level dimension afterwards (it will be less efficient)
+            if not o.regional:
+                make_quantile_map_array_ = chunked("lat", 36, 360)(make_quantile_map_array)
+            else:
+                make_quantile_map_array_ = make_quantile_map_array
+
+            array = make_quantile_map_array_(indicator,
                                             warming_levels,
                                             season=season,
                                             quantile_bins=o.quantile_bins,

@@ -183,9 +183,9 @@ def calc_regional_averages(v, ds_mask, name=None):
         return _calc_regional_averages_unfiltered(v, ds_mask, name=name)
 
 
-def open_map_files(indicator, simus):
+def open_map_files(indicator, simus, **isel):
     files = [indicator.get_path(**simu) for simu in simus]
-    return open_mfdataset(files, combine='nested', concat_dim="time")[indicator.ncvar]
+    return open_mfdataset(files, combine='nested', concat_dim="time", **isel)[indicator.ncvar]
 
 def get_all_subregion(region, weights="latWeight"):
     with open_region_mask(region, weights) as mask:
@@ -234,7 +234,7 @@ def _open_regional_data(indicator, simu, regions=None, weights="latWeight",
     file_regional = indicator.get_path(**simu, regional=True, regional_weight=weights)
 
     if load and file_regional.exists():
-        logger.info(f"Load regional averages from {file_regional}")
+        logger.debug(f"Load regional averages from {file_regional}")
         return open_dataset(file_regional)[indicator.ncvar]
 
     elif load_csv:
@@ -267,11 +267,15 @@ def open_regional_files(indicator, simus, **kwargs):
                       for simu in simus], dim="time") # historical and future
 
 
-def open_files(indicator, simus, regional=False, **kwargs):
+def open_files(indicator, simus, regional=False, isel={}, **kwargs):
     if regional:
-        return open_regional_files(indicator, simus, **kwargs)
+        data = open_regional_files(indicator, simus, **kwargs)
     else:
-        return open_map_files(indicator, simus)
+        data = open_map_files(indicator, simus)
+    if isel:
+        data = data.isel(isel)
+    return data
+
 
 
 
