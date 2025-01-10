@@ -62,6 +62,19 @@ def _open_regional_data_from_csv(indicator, simu, regions, weights="latWeight", 
         name=indicator.ncvar,
         )
 
+def get_merged_masks(regions, weights="latWeight", admin=True):
+    key = (weights, len(regions) if len(regions) > 1 else regions[0], "admin" if admin else "noadmin")
+    filepath = Path(CONFIG["indicators.folder"], "masks", "merged_"+"_".join(map(str, key))+".nc")
+    if filepath.exists():
+        logger.info(f"Load merged masks from {filepath}")
+        return open_dataset(filepath)
+    merged_masks = preload_masks_merged(regions, weights, admin)
+    logger.info(f"Write merged masks to {filepath}")
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    merged_masks.to_netcdf(filepath, encoding={v: {'zlib': True} for v in merged_masks.data_vars})
+    return merged_masks
+
+
 def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admin=True, save=True, load=True, load_csv=False):
     """Load the gridded netCDF and compute the regional averages on the fly
     """
@@ -80,7 +93,10 @@ def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admi
         #     ds.to_netcdf(file_regional, encoding={indicator.ncvar: {'zlib': True}})
         return ds
 
-    all_masks = preload_masks_merged(regions, weights, admin)
+    if regions is None:
+        regions = get_all_regions()
+
+    all_masks = get_merged_masks(regions, weights, admin)
 
     with open_dataset(file) as ds:
         region_averages = calc_regional_averages(ds[indicator.ncvar], all_masks, name=indicator.ncvar)
