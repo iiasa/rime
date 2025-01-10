@@ -12,25 +12,15 @@ import xarray as xa
 
 from rimeX.config import CONFIG, config_parser
 from rimeX.logs import logger, log_parser
+from rimeX.compat import open_mfdataset
+from rimeX.stats import fast_quantile
 from rimeX.datasets.download_isimip import Indicator, _matches
 from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory
 from rimeX.preproc.digitize import transform_indicator
 
-def fast_quantile(a, quantiles, dim=None):
-    quantiles = np.asarray(quantiles)
-    if np.isscalar(quantiles):
-        a = a.reduce(np.percentile, quantiles*100, dim=dim)
-    else:
-        # "percentile" is orders of magnitude faster than "quantile"
-        a_np = np.percentile(a.values, quantiles*100, axis=a.dims.index(dim))
-        a = xa.DataArray(a_np,
-                                    coords=[quantiles] + [a.coords[c] for c in a.dims if c != dim],
-                                    dims=["quantile"] + [c for c in a.dims if c != dim])
-    return a
-
 def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                             quantile_bins=10, season="annual", running_mean_window=21,
-                            projection_baseline=None):
+                            projection_baseline=None, equiprobable_models=False):
 
     simulations = indicator.simulations
     w = running_mean_window // 2
@@ -77,19 +67,7 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                 filepath_hist = indicator.get_path(**simu_historical)
                 filepath = indicator.get_path(**simu)
 
-                try:
-                    ds = xa.open_mfdataset([filepath_hist, filepath], combine='nested', concat_dim="time")
-
-                except ValueError:
-                    ds = xa.open_mfdataset([filepath_hist, filepath], combine='nested', concat_dim="time", decode_times=False)
-                    if ds["time"].units.startswith("years since"):
-                        firstyear = int(ds["time"].units[len("years since "):].split("-")[0])
-                        ds["time"] = pd.date_range(start=f"{ds['time'].values[0]+firstyear}", periods=ds["time"].size, freq='A')
-                    else:
-                        logger.warning(f"Cannot decode time for {filepath_hist} and {filepath}")
-                        raise
-
-                with ds:
+                with open_mfdataset([filepath_hist, filepath], combine='nested', concat_dim="time") as ds:
 
                     # only select relevant months
                     if season is not None:

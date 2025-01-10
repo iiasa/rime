@@ -8,6 +8,7 @@ import pandas as pd
 import xarray as xa
 
 from rimeX.logs import logger
+from rimeX.stats import weighted_quantiles, deterministic_resampling
 from rimeX.compat import get_rename_mapping, _get_ssp_mapping
 
 # from rimeX.compat import (FastIamDataFrame, concat, read_table, _isnumerical, _simplify, homogenize_table_names)
@@ -30,55 +31,6 @@ def load_magicc_ensemble(file, projection_baseline=None, projection_baseline_off
             df += projection_baseline_offset
 
     return df
-
-
-def weighted_quantiles(values, weights, quantiles=0.5, interpolate=True):
-    """
-    https://stackoverflow.com/a/75321415/2192272
-    """
-    values = np.asarray(values)
-    weights = np.asarray(weights)
-    i = np.argsort(values)
-    sorted_weights = weights[i]
-    sorted_values = values[i]
-    Sn = np.cumsum(sorted_weights)
-
-    if interpolate:
-        Pn = (Sn - sorted_weights/2 ) / Sn[-1]
-        return np.interp(quantiles, Pn, sorted_values)
-    else:
-        return sorted_values[np.searchsorted(Sn, np.asarray(quantiles) * Sn[-1])]
-
-
-def equally_spaced_quantiles(size):
-    step = 1/size
-    return np.linspace(step/2, 1-step/2, num=size)
-
-
-def deterministic_resampling(values, size, weights=None, rng=None, axis=0, shuffle=False):
-    """ Deterministic resampling of real-numbered values, with interpolation allowed
-    """
-    quantiles = equally_spaced_quantiles(size)
-
-    if weights is None:
-        resampled = np.percentile(values, quantiles*100, axis=axis)
-
-    else:
-        if np.ndim(values) > 1:
-            resampled = np.stack([weighted_quantiles(np.take(values, i, axis=axis), weights, quantiles) for i in range(values.shape[axis])], axis=axis)
-        else:
-            resampled = weighted_quantiles(values, weights, quantiles)
-
-    if shuffle:
-        if rng is None:
-            rng = np.random.default_rng()
-        rng.shuffle(resampled)
-
-    # give back its initial shape
-    if axis is not None and axis > 0:
-        resampled = resampled.swapaxes(axis, 0)
-
-    return resampled
 
 
 def vectorize_impact_values(impact_records, warming_levels=None, samples=100):
@@ -142,7 +94,7 @@ def digitize_gmt(gmt_ensemble, warming_levels):
     return np.digitize(gmt_ensemble, bins)
 
 
-def recombine_gmt_vectorized(binned_isimip_data, gmt_ensemble, samples=5000, seed=None, 
+def recombine_gmt_vectorized(binned_isimip_data, gmt_ensemble, samples=5000, seed=None,
     match_year=False, interp_method="linear", interp_bounds_error=False):
     """Take binned ISIMIP data and GMT time-series as input and  returns quantiles as output
 
@@ -157,7 +109,7 @@ def recombine_gmt_vectorized(binned_isimip_data, gmt_ensemble, samples=5000, see
     seed: random speed for resampling GSAT values
     match_year: match GMT and impact's year dimension
     interp_method: passed as RegularGridInterpolator's method parameter (default to linear)
-    interp_bounds_error: passed as RegularGridInterpolator's bounds_error parameter (default to False)        
+    interp_bounds_error: passed as RegularGridInterpolator's bounds_error parameter (default to False)
 
     Returns
     -------
@@ -190,15 +142,15 @@ def recombine_gmt_vectorized(binned_isimip_data, gmt_ensemble, samples=5000, see
     # Bypass the need to interpolate across warming levels
     # Note the linear interpolation methods with RegularGridInterpolator does not work if shuffling is enabled on impact data.
     # (see DEPRECATED docstring copied below)
-    # That should not be a problem as long as GSAT is shuffled. 
-    # We use samples as index to leveral numpy's smart indexing and obtain a result with shape `samples x time` 
+    # That should not be a problem as long as GSAT is shuffled.
+    # We use samples as index to leveral numpy's smart indexing and obtain a result with shape `samples x time`
     # (this is unrelated to the shuffling issue)
     # shuffle_impacts: bool, optional (default to False) (DEPRECATED)
     #     if False, the `sample` dimension of the vectorized impact matrix is sorted in increasing order (the default)
-    #     With linear interpolation, shuffling the impact data results in spurious autocorrelation 
-    #     (at least when a single GSAT curve is used), because the temperature forcing remains within an 
+    #     With linear interpolation, shuffling the impact data results in spurious autocorrelation
+    #     (at least when a single GSAT curve is used), because the temperature forcing remains within an
     #     interpolation bin for a few years. It must be left to False. As long as the temperature data is
-    #     shuffled (for a GSAT ensemble), the resulting statistics should remain valid. 
+    #     shuffled (for a GSAT ensemble), the resulting statistics should remain valid.
     #     (note the samples in the results will be correlated with the impact !)
 
     from scipy.interpolate import RegularGridInterpolator
@@ -217,14 +169,14 @@ def recombine_gmt_vectorized(binned_isimip_data, gmt_ensemble, samples=5000, see
 def recombine_gmt_ensemble(impact_data, gmt_ensemble, quantile_levels, match_year=False):
     """Take binned ISIMIP data and GMT time-series as input and  returns quantiles as output
 
-    Determinisitc method. This is the original method. 
+    Determinisitc method. This is the original method.
 
     Parameters
     ----------
     impact_data : pandas DataFrame or list of records with fields {"value": ..., "warming_level": ...}
     gmt_ensemble : pandas DataFrame with years as index and ensemble members as columns (warming since P.I.)
     quantile_levels : quantiles to include in the output, default from config.toml files
-    match_year : bool, False by default. 
+    match_year : bool, False by default.
         If True, the data will be grouped according to year as well as temperature.
         Some of the impact data has a "year" attribute for population growth scenario, which
         is not related to the year of the climate model time-series. The option is introduced for that situation.
@@ -256,15 +208,15 @@ def recombine_gmt_ensemble(impact_data, gmt_ensemble, quantile_levels, match_yea
         key_wl_year = lambda r: (r['warming_level'], r['year'])
         impact_data_by_wl_and_year = {(wl, year) : list(group) for (wl, year), group in groupby(sorted(impact_data, key=key_wl_year), key=key_wl_year)}
     else:
-        key_wl = lambda r: r['warming_level']    
+        key_wl = lambda r: r['warming_level']
         impact_data_by_wl = {wl : list(group) for wl, group in groupby(sorted(impact_data, key=key_wl), key=key_wl)}
 
     # Now calculate quantiles for each year
     logger.info("Re-combine all data and calculate quantiles for each year")
     quantiles = np.empty((gmt_ensemble.shape[0], len(quantile_levels)))
-                    
+
     for i, year in enumerate(tqdm.tqdm(gmt_years)):
-        
+
         all_values = []
         all_weights = []
 
@@ -281,7 +233,7 @@ def recombine_gmt_ensemble(impact_data, gmt_ensemble, quantile_levels, match_yea
                 records = impact_data_by_wl_and_year[(wl, year)]
             else:
                 records = impact_data_by_wl[wl]
-            
+
             values, weights = np.array([(r['value'], r.get('weight', 1)) for r in records]).T
             p_record = weights / weights.sum()
 
@@ -319,7 +271,7 @@ class ImpactDataInterpolator:
 
         assert "warming_level" in dataarray.dims
 
-        if "ssp_family" in dataarray.dims: 
+        if "ssp_family" in dataarray.dims:
             logger.debug("ImpactDataInterpolator: ssp_family found in DataArray dims")
             dataarray = dataarray.assign_coords({"ssp_family": _get_ssp_mapping(dataarray.ssp_family.values)})
         elif "scenario" in dataarray.dims:
@@ -342,7 +294,7 @@ class ImpactDataInterpolator:
         if mapping:
             table = table.rename(mapping or {}, axis=1)
 
-        logger.debug(f"ImpactDataInterpolator.from_dataframe: table columns: {list(table.columns)}")            
+        logger.debug(f"ImpactDataInterpolator.from_dataframe: table columns: {list(table.columns)}")
 
         if index_levels is None:
             index_levels = [c for c in ['warming_level', 'year'] if c in table.columns]
@@ -356,7 +308,7 @@ class ImpactDataInterpolator:
         # logger.debug(f"ImpactDataInterpolator.from_dataframe: {table}")
 
         # Create a 2-D data frame indexed by year and warming level
-        # (this is usually very fast)        
+        # (this is usually very fast)
         logger.debug("ImpactDataInterpolator.from_dataframe: reshape impact table with multi indices")
         levels = index_levels + meta_levels
         series = table.set_index(levels)['value'];
@@ -492,7 +444,7 @@ class ImpactDataInterpolator:
         midx = xa.Coordinates.from_pandas_multiindex(
             gmt_table.rename(gmt_index_rename, axis=1).set_index(gmt_index_names).index, 'index')
         data = data.assign_coords(midx)
-        
+
         # logger.debug(f"full dataarray {data}")
 
         if return_dataarray:
@@ -505,7 +457,7 @@ class ImpactDataInterpolator:
 
 
 def recombine_gmt_table(impact_data, gmt, **kwargs):
-    """this function aims to mimic Edward Byers' early table_impacts_gwl, which indexes the impact table 
+    """this function aims to mimic Edward Byers' early table_impacts_gwl, which indexes the impact table
     to provide a multi-indicator, multi-scenario emulated dataset, without accounting for uncertainties
 
     Parameters
@@ -521,7 +473,7 @@ def recombine_gmt_table(impact_data, gmt, **kwargs):
         To be compatible with Werning et al, a special case where "warming_level" is parsed from the scenario column is also supported.
         Scenario is of the form "ssp1_1p5".
 
-    gmt: pandas DataFrame with columns ["year", "value", "scenario", "model"] 
+    gmt: pandas DataFrame with columns ["year", "value", "scenario", "model"]
 
     **kwargs: passed to ImpactDataInterpolator __call__ (`method`, `return_dataarray`, ...)
 

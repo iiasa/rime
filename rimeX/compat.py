@@ -3,6 +3,7 @@ import glob
 from pathlib import Path
 import numpy as np
 import pandas as pd
+import xarray as xa
 from rimeX.logs import logger
 from rimeX.datasets import get_datapath
 from rimeX.config import CONFIG
@@ -518,3 +519,30 @@ def load_files(files, pyam=False, **kwargs):
         raise FileNotFoundError(f"No file(s) found for {files}")
 
     return concat_func([load_file(file, pyam=pyam, **kwargs) for file in scanned_files])
+
+
+
+def _open_dataset(func, file, **kwargs):
+    """Wrapp xarray.open_mfdataset but handles the "years since..." time format.
+    """
+    try:
+        ds = func(file, **kwargs)
+
+    except ValueError:
+        ds = func(file, decode_times=False, **kwargs)
+        if ds["time"].units.startswith("years since"):
+            firstyear = int(ds["time"].units[len("years since "):].split("-")[0])
+            ds["time"] = pd.date_range(start=f"{ds['time'].values[0]+firstyear}", periods=ds["time"].size, freq='A')
+        else:
+            logger.warning(f"Cannot decode time: {file}")
+            raise
+
+    return ds
+
+
+def open_dataset(file, **kwargs):
+    return _open_dataset(xa.open_dataset, file, **kwargs)
+
+
+def open_mfdataset(files, **kwargs):
+    return _open_dataset(xa.open_mfdataset, files, **kwargs)
