@@ -163,7 +163,7 @@ def chunked(dim, size, total_size):
         def wrapped(indicator, warming_levels, open_func_kwargs={}, **kwargs):
             chunks = []
             for isel in range(0, total_size, size):
-                logger.info(f"Chunk {isel} to {isel+size} of {total_size}")
+                logger.info(f"Chunk along {dim}: {isel} to {isel+size} of {total_size}")
                 open_func_kwargs_ = {**open_func_kwargs, "isel": {dim: slice(isel, isel+size)}}
                 result = func(indicator, warming_levels, open_func_kwargs=open_func_kwargs_, **kwargs)
                 chunks.append(result)
@@ -229,6 +229,7 @@ def main():
     group.add_argument("--projection-baseline", default=CONFIG["preprocessing.projection_baseline"], type=int, nargs=2, help="default: %(default)s")
     group.add_argument("--skip-transform", action='store_true', help="Skip the transformation of the indicator (absolute indicator only)")
     group.add_argument("--regional", action='store_true', help="Process regional averages instead of lat/lon maps")
+    group.add_argument("--chunk-size", type=int, choices=[5, 10, 36, 60, 72, 90, 180], help="Process maps in smaller chunk to save memory usage (lat range = 360)")
 
     group = parser.add_argument_group('Regional average variables')
     group.add_argument("--weight", default="latWeight", choices=CONFIG["preprocessing.regional.weights"], help="default: %(default)s")
@@ -284,6 +285,12 @@ def main():
 
     root_dir = Path(o.warming_level_file).parent
 
+    # to reduce the memory usage, it is possible to split the calls into smaller warming_levels chunks
+    # and concat along the warming level dimension afterwards (it will be less efficient)
+    if not o.regional and o.chunk_size is not None:
+        make_quantile_map_array_ = chunked("lat", o.chunk_size, 360)(make_quantile_map_array)
+    else:
+        make_quantile_map_array_ = make_quantile_map_array
 
     for name in o.variable + o.indicator:
         indicator = Indicator.from_config(name)
@@ -297,13 +304,6 @@ def main():
                 logger.info(f"{filepath} already exists. Use -O or --overwrite to reprocess.")
                 continue
             filepath.parent.mkdir(parents=True, exist_ok=True)
-
-            # to reduce the memory usage, it is possible to split the calls into smaller warming_levels chunks
-            # and concat along the warming level dimension afterwards (it will be less efficient)
-            if not o.regional:
-                make_quantile_map_array_ = chunked("lat", 36, 360)(make_quantile_map_array)
-            else:
-                make_quantile_map_array_ = make_quantile_map_array
 
             array = make_quantile_map_array_(indicator,
                                             warming_levels,
