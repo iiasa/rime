@@ -39,7 +39,6 @@ def _open_regional_data_from_csv(indicator, simu, regions, weights="latWeight", 
 
     n0 = len(files)
 
-    missing_files = [f for f in files if not f.exists()]
     missing_regions = [region for (f, region) in zip(files, regions) if not f.exists()]
     files = [f for f in files if f.exists()]
     if len(files) == 0:
@@ -67,7 +66,7 @@ def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admi
     """Load the gridded netCDF and compute the regional averages on the fly
     """
     file = indicator.get_path(**simu)
-    file_regional = indicator.get_path(**simu, regional=True, regional_weights=weights)
+    file_regional = indicator.get_path(**simu, regional=True, regional_weight=weights)
 
     if load and file_regional.exists():
         logger.info(f"Load regional averages from {file_regional}")
@@ -88,6 +87,7 @@ def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admi
 
     if save:
         logger.info(f"Write regional averages to {file_regional}")
+        region_averages.parent.mkdir(parents=True, exist_ok=True)
         region_averages.to_netcdf(file_regional, encoding={indicator.ncvar: {'zlib': True}})
 
     return region_averages
@@ -277,7 +277,8 @@ def main():
     group.add_argument("--regions", nargs="+", default=None, choices=get_all_regions(), help="Regions to process if --regional")
     group.add_argument("--no-save-region", action='store_false', dest="save_region", help="Do not save regional averages to disk")
     group.add_argument("--no-load-region", action='store_false', dest="load_region", help="Do not load regional averages from disk")
-    group.add_argument("--no-load-csv-region", action='store_false', dest="load_csv_region", help="Do not load regional averages from CSV files")
+    # group.add_argument("--no-load-csv-region", action='store_false', dest="load_csv_region", help="Do not load regional averages from CSV files")
+    group.add_argument("--load-csv-region", action='store_true', help="Load regional averages from CSV files")
 
     parser.add_argument("-O", "--overwrite", action='store_true')
     eg = parser.add_mutually_exclusive_group()

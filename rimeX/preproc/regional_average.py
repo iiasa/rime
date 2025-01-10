@@ -98,16 +98,22 @@ def preload_masks_merged(regions=None, weight="latWeight", admin=True):
         regions = get_all_regions()
     merged = None
     for region in regions:
-        with open_region_mask(region, weight) as mask:
-            mask = mask.load()
+        try:
+            with open_region_mask(region, weight) as mask:
+                mask = mask.load()
+        except FileNotFoundError as error:
+            logger.warning(str(error))
+            logger.warning(f"No mask found for {region} {weight}")
+            continue
         if not admin:
             mask = mask[list(mask)[:1]] # only use the first column (full region)
         if merged is None:
             merged = mask
         else:
             for k in mask:
-                assert k not in merged
-                merged[k] = mask[k]
+                # assert k not in merged, (k, list(merged))
+                if k not in merged:
+                    merged[k] = mask[k]
     return merged
 
 def preload_masks(regions=None, weights=["latWeight"], admin=True):
