@@ -24,7 +24,7 @@ from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 from rimeX.datasets.download_isimip import get_models, get_experiments, get_variables, isimip_parser
 from rimeX.datasets.download_isimip import Indicator, _matches
-from rimeX.compat import open_dataset
+from rimeX.compat import open_dataset, open_mfdataset
 
 
 # def get_files(variable, model, experiment, realm="*", domain="global", frequency=None, member="*", obs="*", year_start="*", year_end="*", root=None, simulation_round=None):
@@ -181,6 +181,98 @@ def calc_regional_averages(v, ds_mask, name=None):
         warnings.filterwarnings('ignore', r'invalid value encountered in scalar divide')
 
         return _calc_regional_averages_unfiltered(v, ds_mask, name=name)
+
+
+def open_map_files(indicator, simus):
+    files = [indicator.get_path(**simu) for simu in simus]
+    return open_mfdataset(files, combine='nested', concat_dim="time")[indicator.ncvar]
+
+def get_all_subregion(region, weights="latWeight"):
+    with open_region_mask(region, weights) as mask:
+        return list(mask)
+
+def _open_regional_data_from_csv(indicator, simu, regions, weights="latWeight", admin=True, **kwargs):
+    """This function loads data from the CSV files
+    """
+    if regions is None:
+        regions = get_all_regions()
+    files = [get_regional_averages_file(indicator.name, simu["climate_forcing"], simu["climate_scenario"],
+                                    region, weights, impact_model=simu.get("model"), **kwargs)
+                                    for region in regions]
+
+    n0 = len(files)
+
+    missing_regions = [region for (f, region) in zip(files, regions) if not f.exists()]
+    files = [f for f in files if f.exists()]
+    if len(files) == 0:
+        raise FileNotFoundError(f"No regional files found for {indicator.name} {simu['climate_forcing']} {simu['climate_scenario']} {simu.get('model')}")
+
+    if len(files) < n0:
+        logger.info(f"Missing regions {missing_regions}")
+        logger.warning(f"Only {len(files)} out of {n0} files exist. Skip the missing ones.")
+
+    if admin:
+        dfs = pd.concat([pd.read_csv(file, index_col=0) for file in files], axis=1)  # concat region and their admin boundaries
+    else:
+        dfs = pd.concat([pd.read_csv(file, index_col=0).iloc[:, :1] for file in files], axis=1)  # only use the first column (full region)
+
+    # make sure we have dates as index (and not just years, cause the calling function needs dates)
+    dfs.index = pd.to_datetime(dfs.index.astype(str))
+
+    return xa.DataArray(dfs,
+        coords=[dfs.index, dfs.columns],
+        dims=["time", "region"],
+        name=indicator.ncvar,
+        )
+
+
+def _open_regional_data(indicator, simu, regions=None, weights="latWeight",
+                        admin=True, save=True, load=True, load_csv=False, all_masks=None):
+    """Load the gridded netCDF and compute the regional averages on the fly
+    """
+    file = indicator.get_path(**simu)
+    file_regional = indicator.get_path(**simu, regional=True, regional_weight=weights)
+
+    if load and file_regional.exists():
+        logger.info(f"Load regional averages from {file_regional}")
+        return open_dataset(file_regional)[indicator.ncvar]
+
+    elif load_csv:
+        logger.info(f"Load regional averages from CSV files")
+        ds = _open_regional_data_from_csv(indicator, simu, regions, weights, admin)
+        # if save:
+        #     logger.info(f"Write regional averages to {file_regional}")
+        #     ds.to_netcdf(file_regional, encoding={indicator.ncvar: {'zlib': True}})
+        return ds
+
+    if regions is None:
+        regions = get_all_regions()
+
+    if all_masks is None:
+        all_masks = get_merged_masks(regions, weights, admin)
+
+    with open_dataset(file) as ds:
+        region_averages = calc_regional_averages(ds[indicator.ncvar], all_masks, name=indicator.ncvar)
+
+    if save:
+        logger.info(f"Write regional averages to {file_regional}")
+        file_regional.parent.mkdir(parents=True, exist_ok=True)
+        region_averages.to_netcdf(file_regional, encoding={indicator.ncvar: {'zlib': True}})
+
+    return region_averages
+
+
+def open_regional_files(indicator, simus, **kwargs):
+    return xa.concat([_open_regional_data(indicator, simu, **kwargs)
+                      for simu in simus], dim="time") # historical and future
+
+
+def open_files(indicator, simus, regional=False, **kwargs):
+    if regional:
+        return open_regional_files(indicator, simus, **kwargs)
+    else:
+        return open_map_files(indicator, simus)
+
 
 
 def main():
