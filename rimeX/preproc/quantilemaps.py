@@ -290,7 +290,7 @@ def main():
 
     group = parser.add_argument_group('Regional average variables')
     group.add_argument("--weight", default="latWeight", choices=CONFIG["preprocessing.regional.weights"], help="default: %(default)s")
-    group.add_argument("--regions", nargs="+", default=None, choices=get_all_regions(), help="Regions to process if --regional")
+    group.add_argument("--region", nargs="+", default=None, choices=get_all_regions(), help="Regions to process if --regional")
     group.add_argument("--no-save-region", action='store_false', dest="save_region", help="Do not save regional averages to disk")
     group.add_argument("--no-load-region", action='store_false', dest="load_region", help="Do not load regional averages from disk")
     # group.add_argument("--no-load-csv-region", action='store_false', dest="load_csv_region", help="Do not load regional averages from CSV files")
@@ -322,10 +322,10 @@ def main():
         if o.equiprobable_climate_models:
             parts.append("eq")
         if o.regional and o.region != get_all_regions():
-            if len(o.regions) == 1:
-                parts.append(f"r{o.regions[0]}")
+            if len(o.region) == 1:
+                parts.append(f"r{o.region[0]}")
             else:
-                parts.append(f"r{len(o.regions)}")
+                parts.append(f"r{len(o.region)}")
         o.suffix = "_" + "-".join(parts)
 
     CONFIG["isimip.simulation_round"] = o.simulation_round
@@ -367,7 +367,7 @@ def main():
                                             open_func_kwargs=dict(
                                                 regional=o.regional,
                                                 weights=o.weight,
-                                                regions=o.regions,
+                                                regions=o.region,
                                                 save=o.save_region,
                                                 load=o.load_region,
                                                 load_csv=o.load_csv_region,
