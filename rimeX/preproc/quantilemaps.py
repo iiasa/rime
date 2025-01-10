@@ -75,7 +75,8 @@ def get_merged_masks(regions, weights="latWeight", admin=True):
     return merged_masks
 
 
-def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admin=True, save=True, load=True, load_csv=False):
+def _open_regional_data(indicator, simu, regions=None, weights="latWeight",
+                        admin=True, save=True, load=True, load_csv=False, all_masks=None):
     """Load the gridded netCDF and compute the regional averages on the fly
     """
     file = indicator.get_path(**simu)
@@ -96,7 +97,8 @@ def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admi
     if regions is None:
         regions = get_all_regions()
 
-    all_masks = get_merged_masks(regions, weights, admin)
+    if all_masks is None:
+        all_masks = get_merged_masks(regions, weights, admin)
 
     with open_dataset(file) as ds:
         region_averages = calc_regional_averages(ds[indicator.ncvar], all_masks, name=indicator.ncvar)
@@ -109,8 +111,11 @@ def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admi
     return region_averages
 
 
-def open_regional_files(indicator, simus, **kwargs):
-    return xa.concat([_open_regional_data(indicator, simu, **kwargs)
+def open_regional_files(indicator, simus, regions, weights, admin=True, **kwargs):
+    if regions is None:
+        regions = get_all_regions()
+    all_masks = get_merged_masks(regions, weights, admin)
+    return xa.concat([_open_regional_data(indicator, simu, regions=regions, weights=weights, admin=admin, all_masks=all_masks, **kwargs)
                       for simu in simus], dim="time") # historical and future
 
 
