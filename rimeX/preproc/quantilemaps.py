@@ -321,7 +321,7 @@ def main():
             parts.append(f"qb{o.quantile_bins}")
         if o.equiprobable_climate_models:
             parts.append("eq")
-        if o.regional and o.region != get_all_regions():
+        if o.regional and o.region is not None and o.region != get_all_regions():
             if len(o.region) == 1:
                 parts.append(f"r{o.region[0]}")
             else:
