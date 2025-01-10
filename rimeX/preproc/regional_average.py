@@ -143,7 +143,7 @@ def preload_masks(regions=None, weights=["latWeight"], admin=True):
                     mask_loaded = mask.load()
                     if not admin:
                         mask_loaded = mask_loaded[list(mask_loaded)[:1]]
-                    masks[(region, weights)] = mask_loaded
+                    masks[(region, weight)] = mask_loaded
 
             except FileNotFoundError as error:
                 # logger.warning(str(error))
@@ -308,9 +308,15 @@ def main():
             for experiment, group__ in groupby(sorted(group_, key=lambda x: x["climate_scenario"]), key=lambda x: x["climate_scenario"]):
                 for impact_model, group in groupby(sorted(group__, key=lambda x: x.get("model")), key=lambda x: x.get("model")):
                     group = list(group)
-                    logger.info(f"{variable}, {model}, {experiment}:: {len(group)} simulations")
+                    assert len(group) == 1, group
+                    simu = group[0]
 
-                    todo = [(region, weights) for region in o.region for weights in o.weights if o.overwrite or not get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model).exists()]
+                    todo = [(region, weights) for region in o.region
+                            for weights in o.weights
+                                if (region, weights) in masks
+                                    and (o.overwrite or not get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model).exists())]
+
+                    logger.info(f"{variable}, {model}, {experiment}:: {len(todo)} averages to calculate")
 
                     if not todo:
                         logger.info(f"{variable}, {model}, {experiment} region-mask averages already exist")
@@ -322,58 +328,21 @@ def main():
                     else:
                         logger.info(f"{variable}, {model}, {experiment}:: process {len(todo)} region-mask")
 
-                    results = {}
-                    tempfiles = set()
+                    file = indicator.get_path(**simu)
 
-                    for file in tqdm.tqdm([indicator.get_path(**simu) for simu in group]):
-                    # for file in tqdm.tqdm(get_files(variable, model, experiment, frequency=o.frequency, simulation_round=o.simulation_round)):
+                    with open_dataset(file) as ds:
 
-                        with open_dataset(file) as ds:
+                        v = ds[indicator.ncvar].load()
 
-                            v = ds[indicator.ncvar].load()
+                        for region, weights in todo:
+                            ofile = get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model)
+                            res = calc_regional_averages(v, masks[(region, weights)], name=variable)
+                            ofile.parent.mkdir(exist_ok=True, parents=True)
 
-                            for region, weights in todo:
+                            res.to_pandas().to_csv(ofile)
 
-                                # save intermediary file in the ISIMIP tree structure (useful if time-slices are added later, e.g. historical back in time)
-                                tag = f"region-{region}-{weights}"
-                                # filetmp = Path(str(file).replace("global", tag))
-                                filetmp = Path(str(file)+f".{tag}")
-                                tempfiles.add(filetmp)
-
-                                if filetmp.exists():
-                                # if filetmp.exists() and not o.overwrite: # uncomment if the region itself if redefined
-                                    res = xa.open_dataset(filetmp)[variable].load()
-
-                                else:
-                                    if (region, weights) not in masks:
-                                        continue
-
-                                    res = calc_regional_averages(v, masks[(region, weights)], name=variable)
-
-                                    filetmp.parent.mkdir(exist_ok=True, parents=True)
-                                    res.to_netcdf(filetmp, encoding={variable: {"zlib": True}})
-
-                                results[(file, region, weights)] = res
-
-                            # clean-up memory
-                            del v
-
-                    # recombine by year and write to disk
-                    rw_key = lambda r: (r[0][1], r[0][2])
-                    for (region, weights), rw_group in groupby(sorted(results.items(), key=rw_key), key=rw_key):
-                        result = xa.concat([data for key, data in rw_group], dim="time")
-                        assert type(result) is xa.DataArray
-                        ofile = get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model)
-
-                        logger.info(f"Write region average output {ofile}")
-                        ofile.parent.mkdir(exist_ok=True, parents=True)
-                        # result.to_dataset(name=o.variable).to_netcdf(ofile)
-                        result.to_pandas().to_csv(ofile)
-
-                    for file in tempfiles:
-                        if file.exists():
-                            logger.debug(f"Remove {file}")
-                            file.unlink()
+                        # clean-up memory
+                        del v
 
 if __name__ == "__main__":
     main()
