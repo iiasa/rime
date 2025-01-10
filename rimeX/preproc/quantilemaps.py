@@ -114,7 +114,7 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
         samples = xa.concat(files_to_concat, dim="sample")
         # quantiles = samples.quantile(quants, dim="sample")
         if equiprobable_models:
-            samples = fast_weighted_quantile(samples, quants, weights=weights, dim="sample")
+            quantiles = fast_weighted_quantile(samples, quants, weights=weights, dim="sample")
         else:
             quantiles = fast_quantile(samples, quants, dim="sample")
         warming_level_data.append(quantiles)
@@ -194,10 +194,12 @@ def main():
     if o.auto_suffix:
         assert o.suffix == "", "Cannot use --suffix and --auto-suffix together"
         parts = []
-        if o.running_mean_window != 21:
+        if o.running_mean_window != CONFIG["preprocessing.running_mean_window"]:
             parts.append(f"rmw{o.running_mean_window}")
         if o.warming_levels is not None:
             parts.append(f"wl{len(o.warming_levels)}")
+        if o.quantile_bins != CONFIG["preprocessing.quantilemap_quantile_bins"]:
+            parts.append(f"qb{o.quantile_bins}")
         if o.equiprobable_climate_models:
             parts.append("eq")
         o.suffix = "_" + "-".join(parts)
