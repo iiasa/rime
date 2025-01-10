@@ -12,16 +12,104 @@ import xarray as xa
 
 from rimeX.config import CONFIG, config_parser
 from rimeX.logs import logger, log_parser
-from rimeX.compat import open_mfdataset
+from rimeX.compat import open_mfdataset, open_dataset
 from rimeX.stats import fast_quantile, fast_weighted_quantile
 from rimeX.datasets.download_isimip import Indicator, _matches
 from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory
 from rimeX.preproc.digitize import transform_indicator
+from rimeX.preproc.regional_average import get_regional_averages_file, preload_masks_merged, calc_regional_averages, open_region_mask, get_all_regions
+
+
+def open_map_files(indicator, simus):
+    files = [indicator.get_path(**simu) for simu in simus]
+    return open_mfdataset(files, combine='nested', concat_dim="time")[indicator.ncvar]
+
+def get_all_subregion(region, weights="latWeight"):
+    with open_region_mask(region, weights) as mask:
+        return list(mask)
+
+def _open_regional_data_from_csv(indicator, simu, regions, weights="latWeight", admin=True, **kwargs):
+    """This function loads data from the CSV files
+    """
+    if regions is None:
+        regions = get_all_regions()
+    files = [get_regional_averages_file(indicator.name, simu["climate_forcing"], simu["climate_scenario"],
+                                    region, weights, impact_model=simu.get("model"), **kwargs)
+                                    for region in regions]
+
+    n0 = len(files)
+
+    missing_files = [f for f in files if not f.exists()]
+    missing_regions = [region for (f, region) in zip(files, regions) if not f.exists()]
+    files = [f for f in files if f.exists()]
+    if len(files) == 0:
+        raise FileNotFoundError(f"No regional files found for {indicator.name} {simu['climate_forcing']} {simu['climate_scenario']} {simu.get('model')}")
+
+    if len(files) < n0:
+        logger.info(f"Missing regions {missing_regions}")
+        logger.warning(f"Only {len(files)} out of {n0} files exist. Skip the missing ones.")
+
+    if admin:
+        dfs = pd.concat([pd.read_csv(file, index_col=0) for file in files], axis=1)  # concat region and their admin boundaries
+    else:
+        dfs = pd.concat([pd.read_csv(file, index_col=0).iloc[:, :1] for file in files], axis=1)  # only use the first column (full region)
+
+    # make sure we have dates as index (and not just years, cause the calling function needs dates)
+    dfs.index = pd.to_datetime(dfs.index.astype(str))
+
+    return xa.DataArray(dfs,
+        coords=[dfs.index, dfs.columns],
+        dims=["time", "region"],
+        name=indicator.ncvar,
+        )
+
+def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admin=True, save=True, load=True, load_csv=False):
+    """Load the gridded netCDF and compute the regional averages on the fly
+    """
+    file = indicator.get_path(**simu)
+    file_regional = indicator.get_path(**simu, regional=True)
+
+    if load and file_regional.exists():
+        logger.info(f"Load regional averages from {file_regional}")
+        return open_dataset(file_regional)[indicator.ncvar]
+
+    elif load_csv:
+        logger.info(f"Load regional averages from CSV files")
+        ds = _open_regional_data_from_csv(indicator, simu, regions, weights, admin)
+        # if save:
+        #     logger.info(f"Write regional averages to {file_regional}")
+        #     ds.to_netcdf(file_regional, encoding={indicator.ncvar: {'zlib': True}})
+        return ds
+
+    all_masks = preload_masks_merged(regions, weights, admin)
+
+    with open_dataset(file) as ds:
+        region_averages = calc_regional_averages(ds[indicator.ncvar], all_masks, name=indicator.ncvar)
+
+    if save:
+        logger.info(f"Write regional averages to {file_regional}")
+        region_averages.to_netcdf(file_regional, encoding={indicator.ncvar: {'zlib': True}})
+
+    return region_averages
+
+
+def open_regional_files(indicator, simus, **kwargs):
+    return xa.concat([_open_regional_data(indicator, simu, **kwargs)
+                      for simu in simus], dim="time") # historical and future
+
+
+def open_files(indicator, simus, regional=False, **kwargs):
+    if regional:
+        return open_regional_files(indicator, simus, **kwargs)
+    else:
+        return open_map_files(indicator, simus)
+
 
 def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                             quantile_bins=10, season="annual", running_mean_window=21,
                             projection_baseline=None, equiprobable_models=False,
-                            skip_transform=False):
+                            skip_transform=False, open_func_kwargs={}):
+
 
     simulations = indicator.simulations
     w = running_mean_window // 2
@@ -70,19 +158,16 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
 
                 simu_historical = simus_historical[0]
                 simu = simus[0]
-                # warming_level	year
-                filepath_hist = indicator.get_path(**simu_historical)
-                filepath = indicator.get_path(**simu)
 
-                with open_mfdataset([filepath_hist, filepath], combine='nested', concat_dim="time") as ds:
+                with open_files(indicator, [simu_historical, simu], **open_func_kwargs) as data:
 
                     # only select relevant months
                     if season is not None:
-                        season_mask = ds["time.month"].isin(CONFIG["preprocessing.seasons"][season])
-                        seasonal_sel = ds[indicator.ncvar].isel(time=season_mask)
+                        season_mask = data["time.month"].isin(CONFIG["preprocessing.seasons"][season])
+                        seasonal_sel = data.isel(time=season_mask)
 
                     else:
-                        seasonal_sel = ds[indicator.ncvar]
+                        seasonal_sel = data
 
                     # mean over required time-slice
                     data = seasonal_sel.sel(time=slice(str(r['year']-w),str(r['year']+w))).mean("time").load()
@@ -129,10 +214,13 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
     return warming_level_data
 
 
-def get_filepath(name, season="annual", root_dir=None, suffix="", **kw):
+def get_filepath(name, season="annual", root_dir=None, suffix="", regional=False, regional_weights="latWeight", **kw):
     if root_dir is None:
         root_dir = get_root_directory(**kw)
-    return root_dir / "quantilemaps" / name / f"{name}_{season}_quantilemaps{suffix}.nc"
+    if regional:
+        return root_dir / "regional" / name / f"{name}_{season}_regional_{regional_weights}{suffix}.nc"
+    else:
+        return root_dir / "quantilemaps" / name / f"{name}_{season}_quantilemaps{suffix}.nc"
 
 
 def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .05, .95]):
@@ -182,6 +270,14 @@ def main():
     group.add_argument("--simulation-round", nargs="+", default=CONFIG["isimip.simulation_round"], help="default: %(default)s")
     group.add_argument("--projection-baseline", default=CONFIG["preprocessing.projection_baseline"], type=int, nargs=2, help="default: %(default)s")
     group.add_argument("--skip-transform", action='store_true', help="Skip the transformation of the indicator (absolute indicator only)")
+    group.add_argument("--regional", action='store_true', help="Process regional averages instead of lat/lon maps")
+
+    group = parser.add_argument_group('Regional average variables')
+    group.add_argument("--weight", default="latWeight", choices=CONFIG["preprocessing.regional.weights"], help="default: %(default)s")
+    group.add_argument("--regions", nargs="+", default=None, choices=get_all_regions(), help="Regions to process if --regional")
+    group.add_argument("--no-save-region", action='store_false', dest="save_region", help="Do not save regional averages to disk")
+    group.add_argument("--no-load-region", action='store_false', dest="load_region", help="Do not load regional averages from disk")
+    group.add_argument("--no-load-csv-region", action='store_false', dest="load_csv_region", help="Do not load regional averages from CSV files")
 
     parser.add_argument("-O", "--overwrite", action='store_true')
     eg = parser.add_mutually_exclusive_group()
@@ -208,6 +304,11 @@ def main():
             parts.append(f"qb{o.quantile_bins}")
         if o.equiprobable_climate_models:
             parts.append("eq")
+        if o.regional and o.region != get_all_regions():
+            if len(o.regions) == 1:
+                parts.append(f"r{o.regions[0]}")
+            else:
+                parts.append(f"r{len(o.regions)}")
         o.suffix = "_" + "-".join(parts)
 
     CONFIG["isimip.simulation_round"] = o.simulation_round
@@ -231,7 +332,8 @@ def main():
         for season in o.season:
             if indicator.frequency == "annual" and season != "annual":
                 continue
-            filepath = get_filepath(indicator.name, season, root_dir=root_dir, suffix=o.suffix)
+            filepath = get_filepath(indicator.name, season, root_dir=root_dir, suffix=o.suffix,
+                                    regional=o.regional, regional_weights=o.weight)
             if filepath.exists() and not o.overwrite:
                 logger.info(f"{filepath} already exists. Use -O or --overwrite to reprocess.")
                 continue
@@ -245,6 +347,13 @@ def main():
                                             projection_baseline=o.projection_baseline,
                                             equiprobable_models=o.equiprobable_climate_models,
                                             skip_transform=o.skip_transform,
+                                            open_func_kwargs=dict(
+                                                regional=o.regional,
+                                                regions=o.regions,
+                                                save=o.save_region,
+                                                load=o.load_region,
+                                                load_csv=o.load_csv_region,
+                                            ),
                                             )
 
             logger.info(f"Write to {filepath}")
