@@ -13,7 +13,7 @@ import xarray as xa
 from rimeX.config import CONFIG, config_parser
 from rimeX.logs import logger, log_parser
 from rimeX.compat import open_mfdataset
-from rimeX.stats import fast_quantile
+from rimeX.stats import fast_quantile, fast_weighted_quantile
 from rimeX.datasets.download_isimip import Indicator, _matches
 from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory
 from rimeX.preproc.digitize import transform_indicator
@@ -39,6 +39,12 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
         logger.info(f"==== {wl} ====")
         files_to_concat = []
         group = list(group)
+
+        if equiprobable_models:
+            # calculate how many times each model enters for each warming level, and later downweight it accordingly
+            modelkey = lambda r: r["model"]
+            model_frequencies = {k:len(list(g)) for k, g in groupby(sorted(group, key=modelkey), key=modelkey)}
+            weights = []
 
         # for each warming level, we loop over the different climate models and climate scenarios and simulation years
         for r in tqdm.tqdm(group):
@@ -98,9 +104,19 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
 
                 files_to_concat.append(data)
 
+                # downweight models that are more frequent
+                # NOTE we assume any impact model comes with the same frequency across climate models
+                # i.e. we correct for the frequency of the climate models in the selection of the warming levels
+                # but not in the occurence of impact models
+                if equiprobable_models:
+                    weights.append(1/model_frequencies[r["model"]])
+
         samples = xa.concat(files_to_concat, dim="sample")
         # quantiles = samples.quantile(quants, dim="sample")
-        quantiles = fast_quantile(samples, quants, dim="sample")
+        if equiprobable_models:
+            samples = fast_weighted_quantile(samples, quants, weights=weights, dim="sample")
+        else:
+            quantiles = fast_quantile(samples, quants, dim="sample")
         warming_level_data.append(quantiles)
         warming_level_coords.append(wl)
 
@@ -154,6 +170,7 @@ def main():
     group.add_argument("--warming-level-file", default=None)
     group.add_argument("--warming-levels", type=float, default=CONFIG.get("preprocessing.quantilemap_warming_levels"), nargs='+', help="All warming levels by default")
     group.add_argument("--quantile-bins", default=CONFIG["preprocessing.quantilemap_quantile_bins"], type=int, help="default: %(default)s")
+    group.add_argument("--equiprobable-climate-models", action='store_true', help="Downweight models that are more frequent in the warming level selection")
 
     group = parser.add_argument_group('Indicator variable')
     group.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"])
@@ -204,6 +221,7 @@ def main():
                                             quantile_bins=o.quantile_bins,
                                             running_mean_window=o.running_mean_window,
                                             projection_baseline=o.projection_baseline,
+                                            equiprobable_models=o.equiprobable_climate_models,
                                             )
 
             logger.info(f"Write to {filepath}")
