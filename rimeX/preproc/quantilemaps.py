@@ -111,11 +111,8 @@ def _open_regional_data(indicator, simu, regions=None, weights="latWeight",
     return region_averages
 
 
-def open_regional_files(indicator, simus, regions, weights, admin=True, **kwargs):
-    if regions is None:
-        regions = get_all_regions()
-    all_masks = get_merged_masks(regions, weights, admin)
-    return xa.concat([_open_regional_data(indicator, simu, regions=regions, weights=weights, admin=admin, all_masks=all_masks, **kwargs)
+def open_regional_files(indicator, simus, **kwargs):
+    return xa.concat([_open_regional_data(indicator, simu, **kwargs)
                       for simu in simus], dim="time") # historical and future
 
 
