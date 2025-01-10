@@ -24,6 +24,7 @@ from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
 from rimeX.datasets.download_isimip import get_models, get_experiments, get_variables, isimip_parser
 from rimeX.datasets.download_isimip import Indicator, _matches
+from rimeX.compat import open_dataset
 
 
 # def get_files(variable, model, experiment, realm="*", domain="global", frequency=None, member="*", obs="*", year_start="*", year_end="*", root=None, simulation_round=None):
@@ -47,10 +48,12 @@ def get_files(variable, model, experiment, **kwargs):
     except ValueError:
         return []
 
-def get_regional_averages_file(variable, model, experiment, region, weights, simulation_round=None, root=None):
+def get_regional_averages_file(variable, model, experiment, region, weights, simulation_round=None, root=None, impact_model=None):
     if simulation_round is None: simulation_round = CONFIG["isimip.simulation_round"]
     simulation_round = "-".join([{"isimip2b": "isimip2", "isimip3b": "isimip3"}.get(s.lower(), s.lower()) for s in simulation_round])
     if root is None: root = Path(CONFIG["isimip.climate_impact_explorer"]) / simulation_round
+    if impact_model is not None:
+        model = f"{model}_{impact_model}"
     return Path(root) / f"isimip_regional_data/{region}/{weights}/{model.lower()}_{experiment}_{variable}_{region.lower()}_{weights.lower()}.csv"
 
 def get_coords(res=0.5):
@@ -59,14 +62,11 @@ def get_coords(res=0.5):
     return lon, lat
 
 
-def get_region_mask(region, weights, masks_folder=None):
+def open_region_mask(region, weights, masks_folder=None):
     """return DataArray mask from a subregion"""
     if masks_folder is None: masks_folder = CONFIG["preprocessing.regional.masks_folder"]
     path = Path(masks_folder) / f"{region}/masks/{region}_360x720lat89p75to-89p75lon-179p75to179p75_{weights}.nc4"
-    with xa.open_dataset(path) as ds:
-        # return ds[region].load()
-        return ds.load()
-        # return m.reindex(lon=np.arange(), )
+    return xa.open_dataset(path)
 
 def _regional_average(v, mask):
     """Country averages
@@ -88,19 +88,79 @@ def _regional_average(v, mask):
     return (v[..., m] * weights).sum(axis=-1) / weights.sum()
 
 
-def preload_masks(regions, weights):
+def get_all_regions():
+    return sorted([o.name for o in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
 
+def preload_masks_merged(regions=None, weight="latWeight", admin=True):
+    """Return a xarray.Dataset with all masks for the given regions and weights
+    """
+    if regions is None:
+        regions = get_all_regions()
+    merged = None
+    for region in regions:
+        with open_region_mask(region, weight) as mask:
+            mask = mask.load()
+        if not admin:
+            mask = mask[list(mask)[:1]] # only use the first column (full region)
+        if merged is None:
+            merged = mask
+        else:
+            for k in mask:
+                assert k not in merged
+                merged[k] = mask[k]
+    return merged
+
+def preload_masks(regions=None, weights=["latWeight"], admin=True):
+    """Return a xarray.Dataset with all masks for the given regions and weights
+    """
+    if regions is None:
+        regions = get_all_regions()
     masks = {}
-    for weights in weights:
+    for weight in weights:
         for region in regions:
             try:
-                masks[(region, weights)] = get_region_mask(region, weights)
+                with open_region_mask(region, weight) as mask:
+                    mask_loaded = mask.load()
+                    if not admin:
+                        mask_loaded = mask_loaded[list(mask_loaded)[:1]]
+                    masks[(region, weights)] = mask_loaded
 
             except FileNotFoundError as error:
                 # logger.warning(str(error))
-                logger.warning(f"No mask found for {region} {weights}")
+                logger.warning(f"No mask found for {region} {weight}")
 
     return masks
+
+
+def _calc_regional_averages_unfiltered(v, ds_mask, name=None):
+    """Transform a DataArray time x lat x lon into a time x region dataset
+
+    v : xarray.DataArray (will be reindexed onto ds_mask)
+    ds_mask : xarray.Dataset of binary masks (the regions)
+    """
+    assert v.dims == ("time", "lat", "lon") # no need to be more general here
+
+    v_extract = v.reindex(lon=ds_mask.lon.values, lat=ds_mask.lat.values)
+
+    subregions = list(ds_mask)
+
+    return xa.DataArray(
+        np.array([_regional_average(v_extract.values, ds_mask[k].values) for k in subregions]).T,
+        name=name, dims=("time", "region"), coords={"time": v.time, "region": subregions})
+
+
+def calc_regional_averages(v, ds_mask, name=None):
+    """Transform a DataArray time x lat x lon into a time x region dataset
+
+    v : xarray.DataArray (will be reindexed onto ds_mask)
+    ds_mask : xarray.Dataset of binary masks (the regions)
+    """
+    # silence some warnings that may occur
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', r'invalid value encountered in divide')
+        warnings.filterwarnings('ignore', r'invalid value encountered in scalar divide')
+
+        return _calc_regional_averages_unfiltered(v, ds_mask, name=name)
 
 
 def main():
@@ -125,39 +185,36 @@ def main():
         indicator = Indicator.from_config(variable)
         simus = [simu for simu in indicator.simulations
                  if _matches(simu["climate_forcing"], o.model)
-                 and _matches(simu["climate_scenario"], o.experiment)]
+                 and _matches(simu["climate_scenario"], o.experiment)
+                 and _matches(simu.get("model"), o.impact_model)]
 
         for model, group_ in groupby(sorted(simus, key=lambda x: x["climate_forcing"]), key=lambda x: x["climate_forcing"]):
-            for experiment, group in groupby(sorted(group_, key=lambda x: x["climate_scenario"]), key=lambda x: x["climate_scenario"]):
-                group = list(group)
-                logger.info(f"{variable}, {model}, {experiment}:: {len(group)} simulations")
+            for experiment, group__ in groupby(sorted(group_, key=lambda x: x["climate_scenario"]), key=lambda x: x["climate_scenario"]):
+                for impact_model, group in groupby(sorted(group__, key=lambda x: x.get("model")), key=lambda x: x.get("model")):
+                    group = list(group)
+                    logger.info(f"{variable}, {model}, {experiment}:: {len(group)} simulations")
 
-                todo = [(region, weights) for region in o.region for weights in o.weights if o.overwrite or not get_regional_averages_file(variable, model, experiment, region, weights).exists()]
+                    todo = [(region, weights) for region in o.region for weights in o.weights if o.overwrite or not get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model).exists()]
 
-                if not todo:
-                    logger.info(f"{variable}, {model}, {experiment} region-mask averages already exist")
-                    continue
+                    if not todo:
+                        logger.info(f"{variable}, {model}, {experiment} region-mask averages already exist")
+                        continue
 
-                elif len(todo) < len(o.region)*len(o.weights):
-                    logger.info(f"{variable}, {model}, {experiment}:: {len(todo)} / {len(o.region)*len(o.weights)} region-mask left to process")
+                    elif len(todo) < len(o.region)*len(o.weights):
+                        logger.info(f"{variable}, {model}, {experiment}:: {len(todo)} / {len(o.region)*len(o.weights)} region-mask left to process")
 
-                else:
-                    logger.info(f"{variable}, {model}, {experiment}:: process {len(todo)} region-mask")
+                    else:
+                        logger.info(f"{variable}, {model}, {experiment}:: process {len(todo)} region-mask")
 
-                results = {}
-                tempfiles = set()
+                    results = {}
+                    tempfiles = set()
 
-                for file in tqdm.tqdm([indicator.get_path(**simu) for simu in group]):
-                # for file in tqdm.tqdm(get_files(variable, model, experiment, frequency=o.frequency, simulation_round=o.simulation_round)):
-                    with xa.open_dataset(file) as ds:
+                    for file in tqdm.tqdm([indicator.get_path(**simu) for simu in group]):
+                    # for file in tqdm.tqdm(get_files(variable, model, experiment, frequency=o.frequency, simulation_round=o.simulation_round)):
 
-                        v = ds[variable].load()
-                        assert v.dims == ("time", "lat", "lon") # no need to be more general here
+                        with open_dataset(file) as ds:
 
-                        # silence some warnings that may occur
-                        with warnings.catch_warnings():
-                            warnings.filterwarnings('ignore', r'invalid value encountered in divide')
-                            warnings.filterwarnings('ignore', r'invalid value encountered in scalar divide')
+                            v = ds[indicator.ncvar].load()
 
                             for region, weights in todo:
 
@@ -175,39 +232,32 @@ def main():
                                     if (region, weights) not in masks:
                                         continue
 
-                                    ds_mask = masks[(region, weights)]
-                                    v_extract = v.reindex(lon=ds_mask.lon.values, lat=ds_mask.lat.values)
-
-                                    subregions = list(ds_mask)
-
-                                    res = xa.DataArray(
-                                        np.array([_regional_average(v_extract.values, ds_mask[k].values) for k in subregions]).T,
-                                        name=variable, dims=("time", "region"), coords={"time": ds.time, "region": subregions})
+                                    res = calc_regional_averages(v, masks[(region, weights)], name=variable)
 
                                     filetmp.parent.mkdir(exist_ok=True, parents=True)
                                     res.to_netcdf(filetmp, encoding={variable: {"zlib": True}})
 
                                 results[(file, region, weights)] = res
 
-                        # clean-up memory
-                        del v
+                            # clean-up memory
+                            del v
 
-                # recombine by year and write to disk
-                rw_key = lambda r: (r[0][1], r[0][2])
-                for (region, weights), rw_group in groupby(sorted(results.items(), key=rw_key), key=rw_key):
-                    result = xa.concat([data for key, data in rw_group], dim="time")
-                    assert type(result) is xa.DataArray
-                    ofile = get_regional_averages_file(variable, model, experiment, region, weights)
+                    # recombine by year and write to disk
+                    rw_key = lambda r: (r[0][1], r[0][2])
+                    for (region, weights), rw_group in groupby(sorted(results.items(), key=rw_key), key=rw_key):
+                        result = xa.concat([data for key, data in rw_group], dim="time")
+                        assert type(result) is xa.DataArray
+                        ofile = get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model)
 
-                    logger.info(f"Write region average output {ofile}")
-                    ofile.parent.mkdir(exist_ok=True, parents=True)
-                    # result.to_dataset(name=o.variable).to_netcdf(ofile)
-                    result.to_pandas().to_csv(ofile)
+                        logger.info(f"Write region average output {ofile}")
+                        ofile.parent.mkdir(exist_ok=True, parents=True)
+                        # result.to_dataset(name=o.variable).to_netcdf(ofile)
+                        result.to_pandas().to_csv(ofile)
 
-                for file in tempfiles:
-                    if file.exists():
-                        logger.debug(f"Remove {file}")
-                        file.unlink()
+                    for file in tempfiles:
+                        if file.exists():
+                            logger.debug(f"Remove {file}")
+                            file.unlink()
 
 if __name__ == "__main__":
     main()
