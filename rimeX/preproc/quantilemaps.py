@@ -67,7 +67,7 @@ def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admi
     """Load the gridded netCDF and compute the regional averages on the fly
     """
     file = indicator.get_path(**simu)
-    file_regional = indicator.get_path(**simu, regional=True)
+    file_regional = indicator.get_path(**simu, regional=True, regional_weights=weights)
 
     if load and file_regional.exists():
         logger.info(f"Load regional averages from {file_regional}")
@@ -349,6 +349,7 @@ def main():
                                             skip_transform=o.skip_transform,
                                             open_func_kwargs=dict(
                                                 regional=o.regional,
+                                                weights=o.weight,
                                                 regions=o.regions,
                                                 save=o.save_region,
                                                 load=o.load_region,

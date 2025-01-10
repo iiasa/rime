@@ -400,7 +400,7 @@ class Indicator:
         return results
 
 
-    def get_path(self, climate_scenario, climate_forcing, ext=".nc", region=None, regional=False, time_slice=None, **ensemble_specifiers):
+    def get_path(self, climate_scenario, climate_forcing, ext=".nc", region=None, regional=False, regional_weight="latWeight", time_slice=None, **ensemble_specifiers):
         """returns the local file path for this indicator
         """
         result = self._get_dataset_meta(climate_scenario, climate_forcing, **ensemble_specifiers)[0]
@@ -419,7 +419,7 @@ class Indicator:
 
         # one file for all regions
         elif regional:
-            region_tag = f"_regional"
+            region_tag = f"_regional_{regional_weight}"
             regionfolders = []
 
         # lon-lat file
