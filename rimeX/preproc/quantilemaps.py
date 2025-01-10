@@ -87,7 +87,7 @@ def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admi
 
     if save:
         logger.info(f"Write regional averages to {file_regional}")
-        region_averages.parent.mkdir(parents=True, exist_ok=True)
+        file_regional.parent.mkdir(parents=True, exist_ok=True)
         region_averages.to_netcdf(file_regional, encoding={indicator.ncvar: {'zlib': True}})
 
     return region_averages
