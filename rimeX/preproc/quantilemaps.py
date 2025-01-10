@@ -83,16 +83,18 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                     else:
                         seasonal_sel = ds[indicator.ncvar]
 
-                    # mean over the ref period
-                    if projection_baseline is not None:
-                        y1, y2 = projection_baseline
-                        dataref = seasonal_sel.sel(time=slice(str(y1),str(y2))).mean("time")
-
                     # mean over required time-slice
-                    data = seasonal_sel.sel(time=slice(str(r['year']-w),str(r['year']+w))).mean("time")
+                    data = seasonal_sel.sel(time=slice(str(r['year']-w),str(r['year']+w))).mean("time").load()
 
                     # subtract the reference period or express as relative change
-                    data = transform_indicator(data, indicator.name, dataref=dataref).load()
+                    if indicator.transform:
+
+                        # mean over the ref period
+                        if projection_baseline is not None:
+                            y1, y2 = projection_baseline
+                            dataref = seasonal_sel.sel(time=slice(str(y1),str(y2))).mean("time").load()
+
+                        data = transform_indicator(data, indicator.name, dataref=dataref)
 
                     # assign metadata
                     data = data.assign_coords({
