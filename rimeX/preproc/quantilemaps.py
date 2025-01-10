@@ -126,10 +126,10 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
     return warming_level_data
 
 
-def get_filepath(name, season="annual", root_dir=None, **kw):
+def get_filepath(name, season="annual", root_dir=None, suffix="", **kw):
     if root_dir is None:
         root_dir = get_root_directory(**kw)
-    return root_dir / "quantilemaps" / name / f"{name}_{season}_quantilemaps.nc"
+    return root_dir / "quantilemaps" / name / f"{name}_{season}_quantilemaps{suffix}.nc"
 
 
 def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .05, .95]):
@@ -180,6 +180,9 @@ def main():
     group.add_argument("--projection-baseline", default=CONFIG["preprocessing.projection_baseline"], type=int, nargs=2, help="default: %(default)s")
 
     parser.add_argument("-O", "--overwrite", action='store_true')
+    eg = parser.add_mutually_exclusive_group()
+    eg.add_argument("--suffix", default="", help="add suffix to the output file name (to reflect different processing options)")
+    eg.add_argument("--auto-suffix", action='store_true', help="add an automatically-generated suffix to the output file name (to reflect different processing options)")
 
     # group = parser.add_argument_group('Result')
     # group.add_argument("--backend", nargs="+", default=CONFIG["preprocessing.isimip_binned_backend"], choices=["csv", "feather"])
@@ -187,6 +190,17 @@ def main():
     # group.add_argument("--cpus", type=int)
 
     o = parser.parse_args()
+
+    if o.auto_suffix:
+        assert o.suffix == "", "Cannot use --suffix and --auto-suffix together"
+        parts = []
+        if o.running_mean_window != 21:
+            parts.append(f"rmw{o.running_mean_window}")
+        if o.warming_levels is not None:
+            parts.append(f"wl{len(o.warming_levels)}")
+        if o.equiprobable_climate_models:
+            parts.append("eq")
+        o.suffix = "_" + "-".join(parts)
 
     CONFIG["isimip.simulation_round"] = o.simulation_round
     CONFIG["preprocessing.projection_baseline"] = o.projection_baseline
@@ -209,7 +223,7 @@ def main():
         for season in o.season:
             if indicator.frequency == "annual" and season != "annual":
                 continue
-            filepath = get_filepath(indicator.name, season, root_dir=root_dir)
+            filepath = get_filepath(indicator.name, season, root_dir=root_dir, suffix=o.suffix)
             if filepath.exists() and not o.overwrite:
                 logger.info(f"{filepath} already exists. Use -O or --overwrite to reprocess.")
                 continue
