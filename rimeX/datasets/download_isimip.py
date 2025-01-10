@@ -59,6 +59,7 @@ def _get_isimip_parser(choices=True):
     group.add_argument("--experiment", nargs='+', default=get_experiments(), choices=get_experiments() if choices else None)
     _lower_to_upper = {m.lower():m for m in get_models()}
     group.add_argument("--model", nargs='+', default=get_models(), choices=get_models() if choices else None, type=lambda s: _lower_to_upper.get(s, s))
+    group.add_argument("--impact-model", nargs='+', default=[None])
     group.add_argument("--simulation-round", nargs="+", default=CONFIG["isimip.simulation_round"], help="default %(default)s") # already set in _prepare_isimip_protocol, but here for help
 
     return isimip_parser
@@ -399,7 +400,7 @@ class Indicator:
         return results
 
 
-    def get_path(self, climate_scenario, climate_forcing, ext=".nc", region=None, time_slice=None, **ensemble_specifiers):
+    def get_path(self, climate_scenario, climate_forcing, ext=".nc", region=None, regional=False, time_slice=None, **ensemble_specifiers):
         """returns the local file path for this indicator
         """
         result = self._get_dataset_meta(climate_scenario, climate_forcing, **ensemble_specifiers)[0]
@@ -410,14 +411,24 @@ class Indicator:
         timeslice_tag = f"_{time_slice[0]}_{time_slice[1]}"
         other_tags = "_".join(meta[k] for k in self.simulation_keys if k not in ["climate_scenario", "climate_forcing"])
         ensemble_tag = f"_{other_tags}" if other_tags else ""
-        region_tag = f"_{region}" if region else ""
+
+        # one file for all regions
         if region:
             regionfolders = ["spatial_averages", region]
+            region_tag = f"_{region}"
+
+        # one file for all regions
+        elif regional:
+            region_tag = f"_regional"
+            regionfolders = []
+
+        # lon-lat file
         else:
+            region_tag = f""
             regionfolders = []
 
         # special case where the indicator is exactly the same as the ISIMIP variable
-        if self.frequency == meta["time_step"] and self.depends_on is None and len(time_slices) == 1 and region is None and ext == ".nc":
+        if not regional and self.frequency == meta["time_step"] and self.depends_on is None and len(time_slices) == 1 and region is None and ext == ".nc":
             with contextlib.redirect_stdout(io.StringIO()):
                 return download(result['files'][0]['path'], folder=self.db.download_folder, dry_run=True)
 
