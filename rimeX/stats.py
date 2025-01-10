@@ -155,7 +155,8 @@ def weighted_quantiles(values, weights, quantiles=0.5, interpolate=True):
     NOTE: Perhaps surprisingly, weighted_quantiles([0, 1, 2], [.5, .25, .25], .5) returns 0.666 instead of 0.5
     whereas weighted_quantiles([0, 0, 1, 2], [1, 1, 1, 1], .5) and np.quantile([0, 0, 1, 2], .5) do return 0.5
 
-    This should be fixed in the future.
+    This should be fixed in the future. However, we should make sure we still have
+    `weighted_quantiles(np.array([1, 2, 3, 4]), np.ones(4), interpolate=True) == 2.5` (as we now do)
     """
     values = np.asarray(values)
     weights = np.asarray(weights)
