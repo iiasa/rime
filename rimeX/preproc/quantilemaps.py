@@ -20,7 +20,8 @@ from rimeX.preproc.digitize import transform_indicator
 
 def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                             quantile_bins=10, season="annual", running_mean_window=21,
-                            projection_baseline=None, equiprobable_models=False):
+                            projection_baseline=None, equiprobable_models=False,
+                            skip_transform=False):
 
     simulations = indicator.simulations
     w = running_mean_window // 2
@@ -87,7 +88,7 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                     data = seasonal_sel.sel(time=slice(str(r['year']-w),str(r['year']+w))).mean("time").load()
 
                     # subtract the reference period or express as relative change
-                    if indicator.transform:
+                    if indicator.transform and not skip_transform:
 
                         # mean over the ref period
                         if projection_baseline is not None:
@@ -180,6 +181,7 @@ def main():
     group.add_argument("--season", nargs="+", default=list(CONFIG["preprocessing.seasons"]), choices=list(CONFIG["preprocessing.seasons"]))
     group.add_argument("--simulation-round", nargs="+", default=CONFIG["isimip.simulation_round"], help="default: %(default)s")
     group.add_argument("--projection-baseline", default=CONFIG["preprocessing.projection_baseline"], type=int, nargs=2, help="default: %(default)s")
+    group.add_argument("--skip-transform", action='store_true', help="Skip the transformation of the indicator (absolute indicator only)")
 
     parser.add_argument("-O", "--overwrite", action='store_true')
     eg = parser.add_mutually_exclusive_group()
@@ -196,6 +198,8 @@ def main():
     if o.auto_suffix:
         assert o.suffix == "", "Cannot use --suffix and --auto-suffix together"
         parts = []
+        if o.skip_transform:
+            parts.append("abs")
         if o.running_mean_window != CONFIG["preprocessing.running_mean_window"]:
             parts.append(f"rmw{o.running_mean_window}")
         if o.warming_levels is not None:
@@ -240,6 +244,7 @@ def main():
                                             running_mean_window=o.running_mean_window,
                                             projection_baseline=o.projection_baseline,
                                             equiprobable_models=o.equiprobable_climate_models,
+                                            skip_transform=o.skip_transform,
                                             )
 
             logger.info(f"Write to {filepath}")
