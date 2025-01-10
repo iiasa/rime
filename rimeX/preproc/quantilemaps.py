@@ -18,7 +18,15 @@ from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directo
 from rimeX.preproc.digitize import transform_indicator
 from rimeX.preproc.regional_average import get_all_regions, open_files
 
+def catchwarnings(func):
+    def wrapped(*args, **kwargs):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return func(*args, **kwargs)
+    return wrapped
 
+@catchwarnings
 def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                             quantile_bins=10, season="annual", running_mean_window=21,
                             projection_baseline=None, equiprobable_models=False,
