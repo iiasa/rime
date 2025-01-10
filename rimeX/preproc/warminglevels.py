@@ -5,6 +5,7 @@ import argparse
 import json
 from pathlib import Path
 import datetime
+from itertools import groupby
 import numpy as np
 import pandas as pd
 from rimeX.preproc.regional_average import get_files, isimip_parser
@@ -112,6 +113,21 @@ def get_warming_level_file(warming_level_path=None, **kw):
         warming_level_path = root_directory / "warming_levels.csv"
     # return Path(__file__).parent / warming_level_folder / warming_level_path
     return warming_level_path
+
+
+def get_model_frequencies(warming_levels:pd.DataFrame):
+    """Calculate how many times each model enters for each warming level, and later downweight it accordingly
+    """
+    model_frequencies = {}
+
+    keywl = lambda r: r["warming_level"]
+    wl_records = sorted(warming_levels.to_dict(orient="records"), key=keywl)
+
+    for wl, group in groupby(wl_records, key=keywl):
+        modelkey = lambda r: r["model"]
+        model_frequencies[wl] = {k:len(list(g)) for k, g in groupby(sorted(group, key=modelkey), key=modelkey)}
+
+    return model_frequencies
 
 
 def main():

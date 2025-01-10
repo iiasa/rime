@@ -15,7 +15,7 @@ from rimeX.logs import logger, log_parser
 from rimeX.compat import open_mfdataset, open_dataset
 from rimeX.stats import fast_quantile, fast_weighted_quantile
 from rimeX.datasets.download_isimip import Indicator, _matches
-from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory
+from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory, get_model_frequencies
 from rimeX.preproc.digitize import transform_indicator
 from rimeX.preproc.regional_average import get_regional_averages_file, get_merged_masks, calc_regional_averages, open_region_mask, get_all_regions
 
@@ -110,20 +110,6 @@ def open_files(indicator, simus, regional=False, **kwargs):
     else:
         return open_map_files(indicator, simus)
 
-
-def get_model_frequencies(warming_levels:pd.DataFrame):
-    """Calculate how many times each model enters for each warming level, and later downweight it accordingly
-    """
-    model_frequencies = {}
-
-    keywl = lambda r: r["warming_level"]
-    wl_records = sorted(warming_levels.to_dict(orient="records"), key=keywl)
-
-    for wl, group in groupby(wl_records, key=keywl):
-        modelkey = lambda r: r["model"]
-        model_frequencies[wl] = {k:len(list(g)) for k, g in groupby(sorted(group, key=modelkey), key=modelkey)}
-
-    return model_frequencies
 
 def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                             quantile_bins=10, season="annual", running_mean_window=21,
