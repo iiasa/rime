@@ -192,6 +192,26 @@ def weighted_quantiles_along_axis(values, weights, quantiles=0.5, axis=-1, **kwa
 
     return res
 
+
+def fast_weighted_quantile(a, quantiles, weights=None, dim=None):
+    """Compute quantiles along a specified dimension of a DataArray.
+    """
+    if weights is None:
+        return fast_quantile(a, quantiles, dim=dim)
+
+    quantiles = np.asarray(quantiles)
+
+    if np.isscalar(quantiles):
+        a = a.reduce(weighted_quantiles_along_axis, weights, quantiles, dim=dim)
+
+    else:
+        a_np = weighted_quantiles_along_axis(a.values, weights, quantiles, axis=a.dims.index(dim))
+        a = xa.DataArray(a_np,
+                                    coords=[a.coords[c] if c != dim else quantiles for c in a.dims],
+                                    dims=[c if c != dim else "quantile" for c in a.dims])
+    return a
+
+
 def equally_spaced_quantiles(size):
     step = 1/size
     return np.linspace(step/2, 1-step/2, num=size)
