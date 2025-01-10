@@ -17,7 +17,7 @@ from rimeX.stats import fast_quantile, fast_weighted_quantile
 from rimeX.datasets.download_isimip import Indicator, _matches
 from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory
 from rimeX.preproc.digitize import transform_indicator
-from rimeX.preproc.regional_average import get_regional_averages_file, preload_masks_merged, calc_regional_averages, open_region_mask, get_all_regions
+from rimeX.preproc.regional_average import get_regional_averages_file, get_merged_masks, calc_regional_averages, open_region_mask, get_all_regions
 
 
 def open_map_files(indicator, simus):
@@ -61,18 +61,6 @@ def _open_regional_data_from_csv(indicator, simu, regions, weights="latWeight", 
         dims=["time", "region"],
         name=indicator.ncvar,
         )
-
-def get_merged_masks(regions, weights="latWeight", admin=True):
-    key = (weights, len(regions) if len(regions) > 1 else regions[0], "admin" if admin else "noadmin")
-    filepath = Path(CONFIG["indicators.folder"], "masks", "merged_"+"_".join(map(str, key))+".nc")
-    if filepath.exists():
-        logger.info(f"Load merged masks from {filepath}")
-        return open_dataset(filepath)
-    merged_masks = preload_masks_merged(regions, weights, admin)
-    logger.info(f"Write merged masks to {filepath}")
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-    merged_masks.to_netcdf(filepath, encoding={v: {'zlib': True} for v in merged_masks.data_vars})
-    return merged_masks
 
 
 def _open_regional_data(indicator, simu, regions=None, weights="latWeight",
@@ -123,6 +111,20 @@ def open_files(indicator, simus, regional=False, **kwargs):
         return open_map_files(indicator, simus)
 
 
+def get_model_frequencies(warming_levels:pd.DataFrame):
+    """Calculate how many times each model enters for each warming level, and later downweight it accordingly
+    """
+    model_frequencies = {}
+
+    keywl = lambda r: r["warming_level"]
+    wl_records = sorted(warming_levels.to_dict(orient="records"), key=keywl)
+
+    for wl, group in groupby(wl_records, key=keywl):
+        modelkey = lambda r: r["model"]
+        model_frequencies[wl] = {k:len(list(g)) for k, g in groupby(sorted(group, key=modelkey), key=modelkey)}
+
+    return model_frequencies
+
 def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                             quantile_bins=10, season="annual", running_mean_window=21,
                             projection_baseline=None, equiprobable_models=False,
@@ -141,6 +143,9 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
 
     logger.info(f"Process quantile maps for {indicator.name} | {season}. Warming levels {wl_records[0]['warming_level']} to {wl_records[-1]['warming_level']}")
 
+    if equiprobable_models:
+        model_frequencies = get_model_frequencies(warming_levels)
+
     for wl, group in groupby(wl_records, key=keywl):
 
         logger.info(f"==== {wl} ====")
@@ -148,10 +153,8 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
         group = list(group)
 
         if equiprobable_models:
-            # calculate how many times each model enters for each warming level, and later downweight it accordingly
-            modelkey = lambda r: r["model"]
-            model_frequencies = {k:len(list(g)) for k, g in groupby(sorted(group, key=modelkey), key=modelkey)}
             weights = []
+            model_frequencies_wl = model_frequencies[wl]
 
         # for each warming level, we loop over the different climate models and climate scenarios and simulation years
         for r in tqdm.tqdm(group):
@@ -215,7 +218,7 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                 # i.e. we correct for the frequency of the climate models in the selection of the warming levels
                 # but not in the occurence of impact models
                 if equiprobable_models:
-                    weights.append(1/model_frequencies[r["model"]])
+                    weights.append(1/model_frequencies_wl[r["model"]])
 
         samples = xa.concat(files_to_concat, dim="sample")
         # quantiles = samples.quantile(quants, dim="sample")

@@ -116,6 +116,20 @@ def preload_masks_merged(regions=None, weight="latWeight", admin=True):
                     merged[k] = mask[k]
     return merged
 
+
+def get_merged_masks(regions, weights="latWeight", admin=True):
+    key = (weights, len(regions) if len(regions) > 1 else regions[0], "admin" if admin else "noadmin")
+    filepath = Path(CONFIG["indicators.folder"], "masks", "merged_"+"_".join(map(str, key))+".nc")
+    if filepath.exists():
+        logger.info(f"Load merged masks from {filepath}")
+        return open_dataset(filepath)
+    merged_masks = preload_masks_merged(regions, weights, admin)
+    logger.info(f"Write merged masks to {filepath}")
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    merged_masks.to_netcdf(filepath, encoding={v: {'zlib': True} for v in merged_masks.data_vars})
+    return merged_masks
+
+
 def preload_masks(regions=None, weights=["latWeight"], admin=True):
     """Return a xarray.Dataset with all masks for the given regions and weights
     """
