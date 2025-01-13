@@ -33,12 +33,11 @@ def get_files(variable, model, experiment, **kwargs):
     except ValueError:
         return []
 
-def get_regional_averages_file(variable, model, experiment, region, weights, **kwargs):
+def get_regional_averages_file(variable, model, experiment, region, weights, impact_model=None, **kwargs):
     indicator = Indicator.from_config(variable)
-    try:
-        return [indicator.get_path(experiment, model, region=region, regional_weight=weights, **kwargs)]
-    except ValueError:
-        return []
+    return indicator.get_path(experiment, model, region=region, regional_weight=weights, model=impact_model, **kwargs)
+    # except ValueError:
+    #     return []
 
 def get_coords(res=0.5):
     lon = np.arange(-180 + res/2, 180, res)

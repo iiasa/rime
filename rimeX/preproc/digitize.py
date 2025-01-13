@@ -10,20 +10,24 @@ import glob
 import tqdm
 import concurrent.futures
 import itertools
-from itertools import groupby, product
+from itertools import groupby, product, chain
 import numpy as np
 import pandas as pd
 import xarray as xa
 
 from rimeX.logs import logger, setup_logger, log_parser
 from rimeX.config import CONFIG, config_parser
+from rimeX.datasets.download_isimip import Indicator
 from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory
 from rimeX.preproc.regional_average import get_regional_averages_file, get_files
 from rimeX.records import average_per_group, make_models_equiprobable
 
 def load_seasonal_means_per_region(variable, model, experiment, region, subregion, weights, seasons=['annual', 'winter', 'spring', 'summer', 'autumn'], **kw):
 
-    file = get_regional_averages_file(variable, model, experiment, region, weights, **kw)
+    try:
+        file = get_regional_averages_file(variable, model, experiment, region, weights, **kw)
+    except ValueError as error:
+        raise FileNotFoundError(str(error))
     monthly = pd.read_csv(file, index_col=0)[subregion or region]
 
     if CONFIG.get(f"indicator.{variable}.frequency", "monthly") == "annual":
@@ -68,7 +72,7 @@ def transform_indicator(data, indicator, meta=None, dataref=None):
     return data
 
 
-def load_regional_indicator_data(variable, region, subregion, weights, season, models, experiments, **kw):
+def load_regional_indicator_data(variable, region, subregion, weights, season, models, impact_models, experiments, **kw):
     """higher level function than load_seasonal_means_per_region
 
     => add historical data
@@ -78,54 +82,55 @@ def load_regional_indicator_data(variable, region, subregion, weights, season, m
 
     all_data = {}
     for model in models:
+        for impact_model in impact_models:
 
-        if not meta.get("historical", True):
-            # this is concatenated in the future scenario files
-            historical = None
+            if not meta.get("historical", True):
+                # this is concatenated in the future scenario files
+                historical = None
 
-        else:
-            try:
-                historical = load_seasonal_means_per_region(variable, model, "historical", region, subregion, weights, seasons=[season], **kw)[season]
-            except FileNotFoundError as error:
-                logger.warning(str(error))
-                logger.warning(f"=> Historical data file not found for {variable} | {model} | {region} | {subregion} | {weights} | {season}. Skip")
-                continue
-
-            if np.isnan(historical).all():
-                logger.warning(f"Historical is NaN for {variable} | {model} | {region} | {subregion} | {weights} | {season}. Skip")
-                continue
-
-        for experiment in experiments:
-            if experiment == "historical":
-                continue
-
-            logger.info(f"load {variable} | {model} | {experiment} | {region} | {subregion} | {weights} | {season}")
-
-            try:
-                future = load_seasonal_means_per_region(variable, model, experiment, region, subregion, weights, seasons=[season], **kw)[season]
-
-            except FileNotFoundError:
-                logger.warning(f"=> file not Found")
-                continue
-
-            if historical is not None:
-                data = pd.concat([historical, future])
             else:
-                data = future
+                try:
+                    historical = load_seasonal_means_per_region(variable, model, "historical", region, subregion, weights, seasons=[season], impact_model=impact_model, **kw)[season]
+                except FileNotFoundError as error:
+                    logger.warning(str(error))
+                    logger.warning(f"=> Historical data file not found for {variable} | {model} | {impact_model} | {region} | {subregion} | {weights} | {season}. Skip")
+                    continue
 
-            if np.isnan(data.values).all():
-                logger.warning(f"All NaNs: {variable} | {model} | {region} | {subregion} | {weights} | {season}. Skip")
-                continue
+                if np.isnan(historical).all():
+                    logger.warning(f"Historical is NaN for {variable} | {model} | {impact_model} | {region} | {subregion} | {weights} | {season}. Skip")
+                    continue
 
-            elif np.isnan(data.values).any():
-                logger.warning(f"Some NaNs ({np.isnan(data.values).sum()} out of {data.size}): {variable} | {model} | {region} | {subregion} | {weights} | {season}. Skip")
-                continue
-                # raise ValueError(f"{model} | {experiment} => some NaNs were found")
+            for experiment in experiments:
+                if experiment == "historical":
+                    continue
 
-            # indicator-dependent treatment
-            data = transform_indicator(data, variable, meta=meta)
+                logger.info(f"load {variable} | {model} | {impact_model} | {experiment} | {region} | {subregion} | {weights} | {season}")
 
-            all_data[(model, experiment)] = data
+                try:
+                    future = load_seasonal_means_per_region(variable, model, experiment, region, subregion, weights, seasons=[season], impact_model=impact_model, **kw)[season]
+
+                except FileNotFoundError:
+                    logger.warning(f"=> file not Found")
+                    continue
+
+                if historical is not None:
+                    data = pd.concat([historical, future])
+                else:
+                    data = future
+
+                if np.isnan(data.values).all():
+                    logger.warning(f"All NaNs: {variable} | {model} | {impact_model} | {region} | {subregion} | {weights} | {season}. Skip")
+                    continue
+
+                elif np.isnan(data.values).any():
+                    logger.warning(f"Some NaNs ({np.isnan(data.values).sum()} out of {data.size}): {variable} | {model} | {impact_model} | {region} | {subregion} | {weights} | {season}. Skip")
+                    continue
+                    # raise ValueError(f"{model} | {experiment} => some NaNs were found")
+
+                # indicator-dependent treatment
+                data = transform_indicator(data, variable, meta=meta)
+
+                all_data[(model, impact_model, experiment)] = data
 
     return all_data
 
@@ -172,11 +177,12 @@ def _bin_isimip_records(indicator_data, warming_levels,
             logger.warning(f"{model}|{experiment}: none of {len(warming_level_in_this_group)} warming levels are needed. Skip")
             continue
 
-        if (model, experiment) not in indicator_data:
+        # data = indicator_data[(model, experiment)]
+        all_data = {k[1]:indicator_data[k] for k in indicator_data if k[0] == model and k[2] == experiment}
+        # assert len(all_data) > 0
+        if len(all_data) == 0:
             logger.warning(f"{model}|{experiment} is not present in impact data: Skip")
             continue
-
-        data = indicator_data[(model, experiment)]
 
         for wl, group2 in groupby(sorted(group, key=key_wl), key=key_wl):
 
@@ -192,14 +198,15 @@ def _bin_isimip_records(indicator_data, warming_levels,
             for year in years:
                 start, end = year - running_mean_window//2, year + running_mean_window//2
 
-                datasel = data.loc[start:end]
+                for impact_model, data in all_data.items():
+                    datasel = data.loc[start:end]
 
-                if np.isnan(datasel.values).any():
-                    logger.warning(f"{model} | {experiment} | {start} to {end} => some NaNs were found")
-                    if np.isnan(datasel.values).all():
-                        raise ValueErrror(f"{model} | {experiment} => all NaNs slide")
+                    if np.isnan(datasel.values).any():
+                        logger.warning(f"{model} | {impact_model} | {experiment} | {start} to {end} => some NaNs were found")
+                        if np.isnan(datasel.values).all():
+                            raise ValueError(f"{model} | {impact_model} | {experiment} => all NaNs slide")
 
-                binned_isimip_data.append({"value":datasel.mean(axis=0), "model": model, "experiment": experiment, "year": year, "warming_level": wl, **(meta or {})})
+                    binned_isimip_data.append({"value":datasel.mean(axis=0), "model": model, "experiment": experiment, "impact_model": impact_model, "year": year, "warming_level": wl, **(meta or {})})
 
     return binned_isimip_data
 
@@ -230,8 +237,10 @@ def bin_isimip_records(indicator_data, warming_levels,
     if running_mean_window is None: running_mean_window = CONFIG["preprocessing.running_mean_window"]
 
     logger.info("bin ISIMIP data")
+    print("indicator_data", len(indicator_data))
     binned_isimip_data = _bin_isimip_records(indicator_data, warming_levels,
         running_mean_window=running_mean_window, warming_levels_reached=warming_levels_reached, meta=meta)
+    print("binned_isimip_data", len(binned_isimip_data))
 
     if average_scenarios:
         logger.info("average across scenarios (and years)")
@@ -333,8 +342,13 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
 
     models = sorted(warming_levels['model'].unique().tolist())
     experiments = sorted(warming_levels['experiment'].unique().tolist())
+    indicator = Indicator.from_config(variable)
+    if "model" in indicator.simulation_keys:
+        impact_models = sorted(s["model"] for s in indicator.simulations)
+    else:
+        impact_models = [None]
 
-    indicator_data = load_regional_indicator_data(variable, region, subregion, weights, season, models, experiments, simulation_round=simulation_round)
+    indicator_data = load_regional_indicator_data(variable, region, subregion, weights, season, models, impact_models, experiments, simulation_round=simulation_round)
 
     if len(indicator_data) == 0:
         logger.warning(f"No indicator data for {variable} | {region} | {subregion} | {weights} | {season}.")
@@ -391,8 +405,8 @@ def main():
     group.add_argument("--warming-level-file", default=None)
 
     group = parser.add_argument_group('Indicator variable')
-    parser.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"])
-    parser.add_argument("-i", "--indicator", nargs='+', default=[], choices=CONFIG["indicator"], help="includes additional, secondary indicator with specific monthly statistics")
+    all_variables = list(CONFIG["isimip.variables"]) + sorted(set(v.split(".")[0] for v in CONFIG["indicator"]))
+    parser.add_argument("-i", "--indicator", nargs='+', default=[], choices=all_variables, help="includes additional, secondary indicator with specific monthly statistics")
     group.add_argument("--region", nargs="+", default=all_regions, choices=all_regions)
     group.add_argument("--all-subregions", action='store_true', help='include subregions as defined in CIE mask files')
     # group.add_argument("--subregion", nargs="+", help="if not provided, will default to region average")
@@ -425,7 +439,7 @@ def main():
     logger.info(f"Load warming level file {o.warming_level_file}")
     warming_levels = pd.read_csv(o.warming_level_file)
 
-    all_items = [(variable, region, subregion, weights, season) for variable, region, weights, season in product(o.variable+o.indicator, o.region, o.weights, o.season) for subregion in [region]+(get_subregions(region) if o.all_subregions else [])]
+    all_items = [(variable, region, subregion, weights, season) for variable, region, weights, season in product(o.indicator, o.region, o.weights, o.season) for subregion in [region]+(get_subregions(region) if o.all_subregions else [])]
     logger.info(f"Number of jobs (variables x region x subregion x weights x season): {len(all_items)}")
 
     if o.cpus is None or o.cpus < 2:
