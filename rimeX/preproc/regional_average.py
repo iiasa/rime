@@ -78,7 +78,8 @@ def _regional_average(v, mask):
     """
     # Determines the model `mask` (assuming it is constant throughout)
     # Equivalent to: ~np.isnan(v[0,...,0,:,:])
-    valid_first_slice = np.isfinite(v[tuple(0 for _ in range(v.ndim - 2))])
+    first_slice = v[tuple(0 for _ in range(v.ndim - 2))]
+    valid_first_slice = np.isfinite(first_slice) & (np.abs(first_slice) < 1e10)
     m = np.isfinite(mask) & (mask > 0) & valid_first_slice
 
     if not m.any():
@@ -220,7 +221,7 @@ def _open_regional_data_from_csv(indicator, simu, regions, weights="latWeight", 
 
 
 def _open_regional_data(indicator, simu, regions=None, weights="latWeight",
-                        admin=True, save=True, load=True, load_csv=False, all_masks=None):
+                        admin=True, save=True, load=True, load_csv=False, masks=None):
     """Load the gridded netCDF and compute the regional averages on the fly
     """
     file = indicator.get_path(**simu)
@@ -318,17 +319,15 @@ def main():
                                 if (region, weights) in masks
                                     and (o.overwrite or not get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model).exists())]
 
-                    logger.info(f"{variable}, {model}, {experiment}:: {len(todo)} averages to calculate")
-
                     if not todo:
-                        logger.info(f"{variable}, {model}, {experiment} region-mask averages already exist")
+                        logger.info(f"{variable}, {model}, {experiment}, {impact_model}: all region-mask averages already exist")
                         continue
 
                     elif len(todo) < len(o.region)*len(o.weights):
-                        logger.info(f"{variable}, {model}, {experiment}:: {len(todo)} / {len(o.region)*len(o.weights)} region-mask left to process")
+                        logger.info(f"{variable}, {model}, {experiment}, {impact_model}:: {len(todo)} / {len(o.region)*len(o.weights)} region-mask averages to process")
 
                     else:
-                        logger.info(f"{variable}, {model}, {experiment}:: process {len(todo)} region-mask")
+                        logger.info(f"{variable}, {model}, {experiment}, {impact_model}:: process {len(todo)} region-mask")
 
                     file = indicator.get_path(**simu)
 
