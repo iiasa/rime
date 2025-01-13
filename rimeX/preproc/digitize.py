@@ -109,8 +109,8 @@ def load_regional_indicator_data(variable, region, subregion, weights, season, m
                 try:
                     future = load_seasonal_means_per_region(variable, model, experiment, region, subregion, weights, seasons=[season], impact_model=impact_model, **kw)[season]
 
-                except FileNotFoundError:
-                    logger.warning(f"=> file not Found")
+                except FileNotFoundError as error:
+                    logger.warning(f"=> file not Found: {str(error)}")
                     continue
 
                 if historical is not None:
@@ -344,7 +344,7 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
     experiments = sorted(warming_levels['experiment'].unique().tolist())
     indicator = Indicator.from_config(variable)
     if "model" in indicator.simulation_keys:
-        impact_models = sorted(s["model"] for s in indicator.simulations)
+        impact_models = sorted(set(s["model"] for s in indicator.simulations))
     else:
         impact_models = [None]
 
