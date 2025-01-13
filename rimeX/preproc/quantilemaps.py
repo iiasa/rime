@@ -30,7 +30,7 @@ def catchwarnings(func):
 def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                             quantile_bins=21, season="annual", running_mean_window=21,
                             projection_baseline=None, equiprobable_models=False,
-                            skip_transform=False, open_func_kwargs={}):
+                            skip_transform=False, skip_nans=False, open_func_kwargs={}):
 
 
     simulations = indicator.simulations
@@ -149,9 +149,9 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
         del values  # clear memory
         # quantiles = samples.quantile(quants, dim="sample")
         if equiprobable_models:
-            quantiles = fast_weighted_quantile(samples, quants, weights=weights, dim="sample")
+            quantiles = fast_weighted_quantile(samples, quants, weights=weights, dim="sample", skipna=skip_nans)
         else:
-            quantiles = fast_quantile(samples, quants, dim="sample")
+            quantiles = fast_quantile(samples, quants, dim="sample", skipna=skip_nans)
 
         warming_level_data.values[i] = quantiles.transpose("quantile", ...).values
 
@@ -258,6 +258,7 @@ def main():
     parser.add_argument("-O", "--overwrite", action='store_true')
     parser.add_argument("--suffix", default="", help="add suffix to the output file name (to reflect different processing options)")
     parser.add_argument("--no-auto-suffix", action='store_false', dest="auto_suffix", help="add an automatically-generated suffix to the output file name (to reflect different processing options)")
+    parser.add_argument("--skip-nans", action='store_true', help="Skip NaN values in the quantile map calculation")
 
     # group = parser.add_argument_group('Result')
     # group.add_argument("--backend", nargs="+", default=CONFIG["preprocessing.isimip_binned_backend"], choices=["csv", "feather"])
@@ -355,6 +356,7 @@ def main():
                                                     projection_baseline=o.projection_baseline,
                                                     equiprobable_models=o.equiprobable_climate_models,
                                                     skip_transform=o.skip_transform,
+                                                    skip_nans=o.skip_nans,
                                                     open_func_kwargs=open_func_kwargs,
                                                     )
 
