@@ -26,9 +26,9 @@ def catchwarnings(func):
             return func(*args, **kwargs)
     return wrapped
 
-@catchwarnings
+# @catchwarnings
 def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
-                            quantile_bins=10, season="annual", running_mean_window=21,
+                            quantile_bins=21, season="annual", running_mean_window=21,
                             projection_baseline=None, equiprobable_models=False,
                             skip_transform=False, open_func_kwargs={}):
 
@@ -77,14 +77,19 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
             else:
                 seasonal_sel = data
 
+            # crunch anual mean
+            annual_mean = seasonal_sel.groupby("time.year").mean()
+
             # subtract the reference period or express as relative change
             if indicator.transform and not skip_transform and projection_baseline is not None:
                 y1, y2 = projection_baseline
-                dataref = seasonal_sel.sel(time=slice(str(y1),str(y2))).mean("time").load()
-                assert "time" not in dataref.dims, dataref.dims
+                dataref = annual_mean.sel(year=slice(y1, y2)).mean("year").load()
+                assert np.isfinite(dataref.values).any(), key
 
             # make 21-year running mean
-            data_smooth = seasonal_sel.rolling(time=running_mean_window, center=True).mean().load()
+            # we require at least half full to have non-nans values
+            data_smooth = annual_mean.rolling(year=running_mean_window, center=True, min_periods=w).mean().load()
+            # assert np.isfinite(data_smooth.values).any(), key
 
             # collect all time slices required for the warming levels
             assert len(extract) > 0, f"No warming levels for {key[0]} {key[1]}"
@@ -95,7 +100,10 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
 
                 # mean over required time-slice
                 # data = seasonal_sel.sel(time=slice(str(year-w),str(year+w))).mean("time").load()
-                data = data_smooth.sel(time=str(year)).squeeze("time").load()
+                data = data_smooth.sel(year=year).load()
+                if not np.isfinite(data.values).any():
+                    logger.warning(f"All NaNs (after rolling mean with {w} valid values required): {(wl, year, simu)}")
+                assert "year" not in data.dims, (data.dims, data.shape)
 
                 # subtract the reference period or express as relative change
                 if indicator.transform and not skip_transform:
@@ -114,7 +122,7 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                 # append the newly calculated data where it belongs
                 values, weights = collect.setdefault(wl, ([], []))
                 values.append(data)
-                weights.append(1/model_frequencies[key[0]] if equiprobable_models else 1)
+                weights.append(1/model_frequencies[wl][key[0]] if equiprobable_models else 1)
 
 
     logger.info(f"Compute quantiles for collected data {indicator.name} | {season}.")
@@ -172,11 +180,21 @@ def chunked(dim, size, total_size):
     return decorator
 
 
-def get_filepath(name, season="annual", root_dir=None, suffix="", regional=False, regional_weights="latWeight", **kw):
+def get_filepath(name, season="annual", root_dir=None, suffix="", region=None, regional=False,
+                 regional_weights="latWeight", regions=None, **kw):
     if root_dir is None:
         root_dir = get_root_directory(**kw)
     if regional:
-        return root_dir / "regional" / name / f"{name}_{season}_regional_{regional_weights}{suffix}.nc"
+        if regions is not None and regions != get_all_regions():
+            parts = []
+            if len(regions) == 1:
+                parts.append(f"r{regions[0].lower()}")
+            else:
+                parts.append(f"r{len(regions)}")
+            suffix += f"_{'-'.join(parts)}"
+        return root_dir / "quantilemaps_regional" / name / f"{name}_{season}_noadmin_{regional_weights.lower()}{suffix}.nc"
+    elif region is not None:
+        return root_dir / "quantilemaps_regional_admin" / name / region / f"{name}_{season}_{region.lower()}_{regional_weights.lower()}{suffix}.nc"
     else:
         return root_dir / "quantilemaps" / name / f"{name}_{season}_quantilemaps{suffix}.nc"
 
@@ -228,21 +246,18 @@ def main():
     group.add_argument("--simulation-round", nargs="+", default=CONFIG["isimip.simulation_round"], help="default: %(default)s")
     group.add_argument("--projection-baseline", default=CONFIG["preprocessing.projection_baseline"], type=int, nargs=2, help="default: %(default)s")
     group.add_argument("--skip-transform", action='store_true', help="Skip the transformation of the indicator (absolute indicator only)")
-    group.add_argument("--regional", action='store_true', help="Process regional averages instead of lat/lon maps")
-    group.add_argument("--chunk-size", type=int, choices=[5, 10, 36, 60, 72, 90, 180], help="Process maps in smaller chunk to save memory usage (lat range = 360)")
+    group.add_argument("--regional", action='store_true', help="Process regional averages (one file per region including admin boundaries)")
+    group.add_argument("--regional-no-admin", action='store_true', help="Process merged regional averages without admin boundaries")
+    group.add_argument("--map", action='store_true', help="Process lat/lon maps")
+    group.add_argument("--map-chunk-size", type=int, choices=[5, 10, 36, 60, 72, 90, 180], help="Process maps in smaller chunk to save memory usage (lat range = 360)")
 
     group = parser.add_argument_group('Regional average variables')
     group.add_argument("--weight", default="latWeight", choices=CONFIG["preprocessing.regional.weights"], help="default: %(default)s")
     group.add_argument("--region", nargs="+", default=None, choices=get_all_regions(), help="Regions to process if --regional")
-    group.add_argument("--no-save-region", action='store_false', dest="save_region", help="Do not save regional averages to disk")
-    group.add_argument("--no-load-region", action='store_false', dest="load_region", help="Do not load regional averages from disk")
-    # group.add_argument("--no-load-csv-region", action='store_false', dest="load_csv_region", help="Do not load regional averages from CSV files")
-    group.add_argument("--load-csv-region", action='store_true', help="Load regional averages from CSV files")
 
     parser.add_argument("-O", "--overwrite", action='store_true')
-    eg = parser.add_mutually_exclusive_group()
-    eg.add_argument("--suffix", default="", help="add suffix to the output file name (to reflect different processing options)")
-    eg.add_argument("--auto-suffix", action='store_true', help="add an automatically-generated suffix to the output file name (to reflect different processing options)")
+    parser.add_argument("--suffix", default="", help="add suffix to the output file name (to reflect different processing options)")
+    parser.add_argument("--no-auto-suffix", action='store_false', dest="auto_suffix", help="add an automatically-generated suffix to the output file name (to reflect different processing options)")
 
     # group = parser.add_argument_group('Result')
     # group.add_argument("--backend", nargs="+", default=CONFIG["preprocessing.isimip_binned_backend"], choices=["csv", "feather"])
@@ -252,7 +267,6 @@ def main():
     o = parser.parse_args()
 
     if o.auto_suffix:
-        assert o.suffix == "", "Cannot use --suffix and --auto-suffix together"
         parts = []
         if o.skip_transform:
             parts.append("abs")
@@ -264,15 +278,14 @@ def main():
             parts.append(f"qb{o.quantile_bins}")
         if o.equiprobable_climate_models:
             parts.append("eq")
-        if o.regional and o.region is not None and o.region != get_all_regions():
-            if len(o.region) == 1:
-                parts.append(f"r{o.region[0]}")
-            else:
-                parts.append(f"r{len(o.region)}")
-        o.suffix = "_" + "-".join(parts)
+        if len(parts) > 0:
+            o.suffix += "_" + "-".join(parts)
 
     CONFIG["isimip.simulation_round"] = o.simulation_round
     CONFIG["preprocessing.projection_baseline"] = o.projection_baseline
+
+    if o.region is None:
+        o.region = get_all_regions()
 
     if o.warming_level_file is None:
         o.warming_level_file = get_warming_level_file(**{**CONFIG, **vars(o)})
@@ -285,47 +298,70 @@ def main():
 
     root_dir = Path(o.warming_level_file).parent
 
-    # to reduce the memory usage, it is possible to split the calls into smaller warming_levels chunks
-    # and concat along the warming level dimension afterwards (it will be less efficient)
-    if not o.regional and o.chunk_size is not None:
-        make_quantile_map_array_ = chunked("lat", o.chunk_size, 360)(make_quantile_map_array)
-    else:
-        make_quantile_map_array_ = make_quantile_map_array
-
     for name in o.variable + o.indicator:
         indicator = Indicator.from_config(name)
 
         for season in o.season:
             if indicator.frequency == "annual" and season != "annual":
                 continue
-            filepath = get_filepath(indicator.name, season, root_dir=root_dir, suffix=o.suffix,
-                                    regional=o.regional, regional_weights=o.weight)
-            if filepath.exists() and not o.overwrite:
-                logger.info(f"{filepath} already exists. Use -O or --overwrite to reprocess.")
-                continue
-            filepath.parent.mkdir(parents=True, exist_ok=True)
 
-            array = make_quantile_map_array_(indicator,
-                                            warming_levels,
-                                            season=season,
-                                            quantile_bins=o.quantile_bins,
-                                            running_mean_window=o.running_mean_window,
-                                            projection_baseline=o.projection_baseline,
-                                            equiprobable_models=o.equiprobable_climate_models,
-                                            skip_transform=o.skip_transform,
-                                            open_func_kwargs=dict(
-                                                regional=o.regional,
+            for mode in ["regional_no_admin", "regional", "map"]:
+                if not getattr(o, mode):
+                    continue
+
+                if mode == "regional":
+                    # in that mode loop over all regions and create a file for each, including admin boundaries
+                    open_func_kwargs_loop = [ dict(
+                                                regional=True,
+                                                admin=True,
+                                                weights=o.weight,
+                                                regions=[region],
+                                            ) for region in o.region]
+
+                    files = [get_filepath(indicator.name, season, root_dir=root_dir, suffix=o.suffix,
+                                            region=region, regional_weights=o.weight) for region in o.region]
+
+                else:
+                    # in these modes, create a single file for all regions, without admin boundaries, or a single file for the lat/lon maps
+                    regional = mode in ["regional_no_admin", "regional"]
+                    open_func_kwargs_loop = [dict(
+                                                regional=regional,
+                                                admin=False,
                                                 weights=o.weight,
                                                 regions=o.region,
-                                                save=o.save_region,
-                                                load=o.load_region,
-                                                load_csv=o.load_csv_region,
-                                            ),
-                                            )
+                                            )]
+                    files = [get_filepath(indicator.name, season, root_dir=root_dir, suffix=o.suffix,
+                                        regional=regional, regional_weights=o.weight, regions=o.region)]
 
-            logger.info(f"Write to {filepath}")
-            encoding = {array.name: {'zlib': True}}
-            array.to_netcdf(filepath, encoding=encoding)
+                # to reduce the memory usage, it is possible to split the calls into smaller warming_levels chunks
+                # and concat along the warming level dimension afterwards (it will be less efficient)
+                if mode == "map" and o.map_chunk_size is not None:
+                    make_quantile_map_array_ = chunked("lat", o.map_chunk_size, 360)(make_quantile_map_array)
+                else:
+                    make_quantile_map_array_ = make_quantile_map_array
+
+
+                for filepath, open_func_kwargs in zip(files, open_func_kwargs_loop):
+
+                    if filepath.exists() and not o.overwrite:
+                        logger.info(f"{filepath} already exists. Use -O or --overwrite to reprocess.")
+                        continue
+
+                    array = make_quantile_map_array_(indicator,
+                                                    warming_levels,
+                                                    season=season,
+                                                    quantile_bins=o.quantile_bins,
+                                                    running_mean_window=o.running_mean_window,
+                                                    projection_baseline=o.projection_baseline,
+                                                    equiprobable_models=o.equiprobable_climate_models,
+                                                    skip_transform=o.skip_transform,
+                                                    open_func_kwargs=open_func_kwargs,
+                                                    )
+
+                    logger.info(f"Write to {filepath}")
+                    filepath.parent.mkdir(parents=True, exist_ok=True)
+                    encoding = {array.name: {'zlib': True}}
+                    array.to_netcdf(filepath, encoding=encoding)
 
 
 if __name__ == "__main__":
