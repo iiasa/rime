@@ -133,22 +133,23 @@ def interp_along_axis(x, xp, fp, axis=-1, **kwargs):
     return out
 
 
-def fast_quantile(a, quantiles, dim=None):
+def fast_quantile(a, quantiles, dim=None, skipna=False):
     """Compute quantiles along a specified dimension of a DataArray.
     """
+    func = np.nanpercentile if skipna else np.percentile
     quantiles = np.asarray(quantiles)
     if np.isscalar(quantiles):
-        a = a.reduce(np.percentile, quantiles*100, dim=dim)
+        a = a.reduce(func, quantiles*100, dim=dim)
     else:
         # "percentile" is orders of magnitude faster than "quantile"
-        a_np = np.percentile(a.values, quantiles*100, axis=a.dims.index(dim))
+        a_np = func(a.values, quantiles*100, axis=a.dims.index(dim))
         a = xa.DataArray(a_np,
                                     coords=[quantiles] + [a.coords[c] for c in a.dims if c != dim],
                                     dims=["quantile"] + [c for c in a.dims if c != dim])
     return a
 
 
-def weighted_quantiles(values, weights, quantiles=0.5, interpolate=True):
+def weighted_quantiles(values, weights, quantiles=0.5, interpolate=True, skipna=False):
     """
     https://stackoverflow.com/a/75321415/2192272
 
@@ -160,6 +161,10 @@ def weighted_quantiles(values, weights, quantiles=0.5, interpolate=True):
     """
     values = np.asarray(values)
     weights = np.asarray(weights)
+    if skipna:
+        mask = ~np.isnan(values)
+        values = values[mask]
+        weights = weights[mask]
     i = np.argsort(values)
     sorted_weights = weights[i]
     sorted_values = values[i]
@@ -171,7 +176,7 @@ def weighted_quantiles(values, weights, quantiles=0.5, interpolate=True):
     else:
         return sorted_values[np.searchsorted(Sn, np.asarray(quantiles) * Sn[-1])]
 
-def weighted_quantiles_along_axis(values, weights, quantiles=0.5, axis=-1, **kwargs):
+def weighted_quantiles_along_axis(values, weights, quantiles=0.5, axis=-1, skipna=False, **kwargs):
 
     if np.isscalar(quantiles):
         quantiles = np.array([quantiles])
@@ -185,7 +190,7 @@ def weighted_quantiles_along_axis(values, weights, quantiles=0.5, axis=-1, **kwa
     res = np.empty(values.shape[:axis] + (len(quantiles),) + values.shape[axis+1:])
 
     for idx in product(*[range(s) if i != axis else [slice(None)] for i, s in enumerate(values.shape)]):
-        res[idx] = weighted_quantiles(values[idx], weights, quantiles, **kwargs)
+        res[idx] = weighted_quantiles(values[idx], weights, quantiles, skipna=skipna, **kwargs)
 
     if squeeze:
         res = res.squeeze(axis)
@@ -193,19 +198,19 @@ def weighted_quantiles_along_axis(values, weights, quantiles=0.5, axis=-1, **kwa
     return res
 
 
-def fast_weighted_quantile(a, quantiles, weights=None, dim=None):
+def fast_weighted_quantile(a, quantiles, weights=None, dim=None, skipna=False):
     """Compute quantiles along a specified dimension of a DataArray.
     """
     if weights is None:
-        return fast_quantile(a, quantiles, dim=dim)
+        return fast_quantile(a, quantiles, dim=dim, skipna=skipna)
 
     quantiles = np.asarray(quantiles)
 
     if np.isscalar(quantiles):
-        a = a.reduce(weighted_quantiles_along_axis, weights, quantiles, dim=dim)
+        a = a.reduce(weighted_quantiles_along_axis, weights, quantiles, dim=dim, skipna=skipna)
 
     else:
-        a_np = weighted_quantiles_along_axis(a.values, weights, quantiles, axis=a.dims.index(dim))
+        a_np = weighted_quantiles_along_axis(a.values, weights, quantiles, axis=a.dims.index(dim), skipna=skipna)
         a = xa.DataArray(a_np,
                                     coords=[a.coords[c] if c != dim else quantiles for c in a.dims],
                                     dims=[c if c != dim else "quantile" for c in a.dims])
