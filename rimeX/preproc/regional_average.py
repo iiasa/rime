@@ -96,25 +96,10 @@ def preload_masks_merged(regions=None, weight="latWeight", admin=True):
     """
     if regions is None:
         regions = get_all_regions()
-    merged = None
-    for region in regions:
-        try:
-            with open_region_mask(region, weight) as mask:
-                mask = mask.load()
-        except FileNotFoundError as error:
-            logger.warning(str(error))
-            logger.warning(f"No mask found for {region} {weight}")
-            continue
-        if not admin:
-            mask = mask[list(mask)[:1]] # only use the first column (full region)
-        if merged is None:
-            merged = mask
-        else:
-            for k in mask:
-                # assert k not in merged, (k, list(merged))
-                if k not in merged:
-                    merged[k] = mask[k]
-    return merged
+    masks = preload_masks(regions, [weight], admin)
+    merged_masks = xa.merge(list(masks.values()), compat="override", combine_attrs="drop_conflicts", fill_value=np.nan)
+    del merged_masks.coords["region"]
+    return merged_masks
 
 
 def get_merged_masks(regions, weights="latWeight", admin=True):
@@ -152,7 +137,7 @@ def preload_masks(regions=None, weights=["latWeight"], admin=True):
     return masks
 
 
-def _calc_regional_averages_unfiltered(v, ds_mask, name=None):
+def _calc_regional_averages_unfiltered(v, ds_mask, name=None, reindex=True):
     """Transform a DataArray time x lat x lon into a time x region dataset
 
     v : xarray.DataArray (will be reindexed onto ds_mask)
@@ -160,7 +145,13 @@ def _calc_regional_averages_unfiltered(v, ds_mask, name=None):
     """
     assert v.dims == ("time", "lat", "lon") # no need to be more general here
 
-    v_extract = v.reindex(lon=ds_mask.lon.values, lat=ds_mask.lat.values)
+    if reindex:
+        # at the time of writing, the mask dataset is defined on a local grid
+        # so we need to extract the larger dataset onto that local grid
+        v_extract = v.reindex(lon=ds_mask.lon.values, lat=ds_mask.lat.values)
+    else:
+        # for applications where the dataset and the mask are already on the same grid
+        v_extract = v
 
     subregions = list(ds_mask)
 
@@ -169,7 +160,7 @@ def _calc_regional_averages_unfiltered(v, ds_mask, name=None):
         name=name, dims=("time", "region"), coords={"time": v.time, "region": subregions})
 
 
-def calc_regional_averages(v, ds_mask, name=None):
+def calc_regional_averages(v, ds_mask, name=None, **kwargs):
     """Transform a DataArray time x lat x lon into a time x region dataset
 
     v : xarray.DataArray (will be reindexed onto ds_mask)
@@ -180,7 +171,7 @@ def calc_regional_averages(v, ds_mask, name=None):
         warnings.filterwarnings('ignore', r'invalid value encountered in divide')
         warnings.filterwarnings('ignore', r'invalid value encountered in scalar divide')
 
-        return _calc_regional_averages_unfiltered(v, ds_mask, name=name)
+        return _calc_regional_averages_unfiltered(v, ds_mask, name=name, **kwargs)
 
 
 def open_map_files(indicator, simus, **isel):
@@ -213,6 +204,8 @@ def _open_regional_data_from_csv(indicator, simu, regions, weights="latWeight", 
 
     if admin:
         dfs = pd.concat([pd.read_csv(file, index_col=0) for file in files], axis=1)  # concat region and their admin boundaries
+        # remove duplicate columns
+        dfs = dfs.loc[:, ~dfs.columns.duplicated()]
     else:
         dfs = pd.concat([pd.read_csv(file, index_col=0).iloc[:, :1] for file in files], axis=1)  # only use the first column (full region)
 
@@ -248,11 +241,20 @@ def _open_regional_data(indicator, simu, regions=None, weights="latWeight",
     if regions is None:
         regions = get_all_regions()
 
-    if all_masks is None:
-        all_masks = get_merged_masks(regions, weights, admin)
+    if masks is None:
+        masks = get_merged_masks(regions, weights, admin)
 
     with open_dataset(file) as ds:
-        region_averages = calc_regional_averages(ds[indicator.ncvar], all_masks, name=indicator.ncvar)
+        if type(masks) is xa.Dataset:
+            logger.debug(f"Compute regional averages from a single masks Dataset")
+            region_averages = calc_regional_averages(ds[indicator.ncvar], masks, name=indicator.ncvar)
+        else:
+            logger.debug(f"Compute regional averages from a list of masks")
+            if type(masks) is dict:
+                masks = masks.values()
+            region_averages_ = [calc_regional_averages(ds[indicator.ncvar], masks_, name=indicator.ncvar) for masks_ in masks]
+            logger.debug(f"Concatenate regional averages from {len(region_averages_)} datasets")
+            region_averages = xa.combine_nested(region_averages_, concat_dim="region", compat="override", coords="minimal")
 
     if save:
         logger.info(f"Write regional averages to {file_regional}")
