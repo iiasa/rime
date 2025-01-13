@@ -248,10 +248,10 @@ def open_files(indicator, simus, regional=False, isel={}, **kwargs):
 def main():
 
     ALL_MASKS = sorted([o.name for o in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
-
+    all_variables = list(CONFIG["isimip.variables"]) + sorted(set(v.split(".")[0] for v in CONFIG["indicator"]))
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, isimip_parser])
-    parser.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"])
-    parser.add_argument("-i", "--indicator", nargs='+', default=[], choices=CONFIG["indicator"], help="includes additional, secondary indicator with specific monthly statistics")
+    # parser.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"])
+    parser.add_argument("-i", "--indicator", nargs='+', default=[], choices=all_variables, help="includes additional, secondary indicator with specific monthly statistics")
     parser.add_argument("--overwrite", action='store_true')
     # parser.add_argument("--backends", nargs="+", choices=["csv", "netcdf"], default=["netcdf", "csv"])
     parser.add_argument("--frequency")
@@ -270,7 +270,7 @@ def main():
         write_merged_regional_averages = False
 
 
-    for variable in o.variable+o.indicator:
+    for variable in o.indicator:
         indicator = Indicator.from_config(variable)
         for simu in indicator.simulations:
             if not _matches(simu["climate_forcing"], o.model):

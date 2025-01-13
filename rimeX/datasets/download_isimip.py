@@ -672,9 +672,11 @@ class Indicator:
 
 
 def main():
+    all_variables = list(CONFIG["isimip.variables"]) + sorted(set(v.split(".")[0] for v in CONFIG["indicator"]))
+
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, isimip_parser])
-    parser.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"], help='the original ISIMIP variables')
-    parser.add_argument("-i", "--indicator", nargs='+', default=[], choices=CONFIG["indicator"], help="includes additional, secondary indicator with specific monthly statistics")
+    # parser.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"], help='the original ISIMIP variables')
+    parser.add_argument("-i", "--indicator", nargs='+', default=[], choices=all_variables)
     parser.add_argument("--daily", action='store_true', dest='daily', help=argparse.SUPPRESS)
     # parser.add_argument("--monthly-statistic", default=["mean"], nargs="*",
     #                    help="""function(s) to process daily into monthly variables. Default is ["mean"].
@@ -690,7 +692,7 @@ def main():
 
     CONFIG["isimip.download_folder"] = o.download_folder
 
-    if not (o.indicator or o.variable):
+    if not (o.indicator):
         parser.error("Please provide either --variable or --indicator")
         parser.print_help()
         parser.exit(1)
@@ -698,8 +700,8 @@ def main():
     print("model", o.model)
     print("experiment", o.experiment)
 
-    if o.indicator or o.variable:
-        for name in o.variable + o.indicator:
+    if o.indicator:
+        for name in o.indicator:
             indicator = Indicator.from_config(name)
             for simu in indicator.simulations:
                 for model, experiment in iterate_model_experiment():

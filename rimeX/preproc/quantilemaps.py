@@ -240,8 +240,9 @@ def main():
     group.add_argument("--equiprobable-climate-models", action='store_true', help="Downweight models that are more frequent in the warming level selection")
 
     group = parser.add_argument_group('Indicator variable')
-    group.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"])
-    group.add_argument("-i", "--indicator", nargs='+', default=[], choices=CONFIG["indicator"], help="includes additional, secondary indicator with specific monthly statistics")
+    all_variables = list(CONFIG["isimip.variables"]) + sorted(set(v.split(".")[0] for v in CONFIG["indicator"]))
+    # group.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"])
+    group.add_argument("-i", "--indicator", nargs='+', default=[], choices=all_variables)
     group.add_argument("--season", nargs="+", default=list(CONFIG["preprocessing.seasons"]), choices=list(CONFIG["preprocessing.seasons"]))
     group.add_argument("--simulation-round", nargs="+", default=CONFIG["isimip.simulation_round"], help="default: %(default)s")
     group.add_argument("--projection-baseline", default=CONFIG["preprocessing.projection_baseline"], type=int, nargs=2, help="default: %(default)s")
@@ -299,7 +300,7 @@ def main():
 
     root_dir = Path(o.warming_level_file).parent
 
-    for name in o.variable + o.indicator:
+    for name in o.indicator:
         indicator = Indicator.from_config(name)
 
         for season in o.season:
