@@ -26,21 +26,6 @@ from rimeX.datasets.download_isimip import get_models, get_experiments, get_vari
 from rimeX.datasets.download_isimip import Indicator, _matches
 from rimeX.compat import open_dataset, open_mfdataset
 
-
-# def get_files(variable, model, experiment, realm="*", domain="global", frequency=None, member="*", obs="*", year_start="*", year_end="*", root=None, simulation_round=None):
-#     if root is None: root = CONFIG["isimip.download_folder"]
-#     if simulation_round is None: simulation_round = CONFIG["isimip.simulation_round"]
-#     frequency = frequency or CONFIG.get(f"indicator.{variable}.frequency", "monthly")
-#     model_lower = model.lower()
-#     model_upper = {m.lower():m for m in get_models()}[model_lower] if (model_lower and model_lower != "*") else "*"
-#     input_data = "*"
-#     if "ISIMIP2" in simulation_round:
-#         frequency2 = {"annual": "year", "monthly":"month", "daily": "day"}.get(frequency, frequency)
-#         member = "*"
-#         pattern = root + "/" + f"{simulation_round}/{input_data}/{realm}/biascorrected/{domain}/{experiment}/{model_upper}/{variable}_{frequency2}_{model_upper}_{experiment}_{member}_*_{year_start}0101-{year_end}1231.nc4"
-#     else:
-#         pattern = root + "/" + f"{simulation_round}/{input_data}/climate/{realm}/bias-adjusted/{domain}/{frequency}/{experiment}/{model_upper}/{model_lower}_{member}_{obs}_{experiment}_{variable}_{domain}_{frequency}_{year_start}_{year_end}.nc"
-#     return sorted(glob.glob(pattern))
 def get_files(variable, model, experiment, **kwargs):
     indicator = Indicator.from_config(variable)
     try:
@@ -48,13 +33,12 @@ def get_files(variable, model, experiment, **kwargs):
     except ValueError:
         return []
 
-def get_regional_averages_file(variable, model, experiment, region, weights, simulation_round=None, root=None, impact_model=None):
-    if simulation_round is None: simulation_round = CONFIG["isimip.simulation_round"]
-    simulation_round = "-".join([{"isimip2b": "isimip2", "isimip3b": "isimip3"}.get(s.lower(), s.lower()) for s in simulation_round])
-    if root is None: root = Path(CONFIG["isimip.climate_impact_explorer"]) / simulation_round
-    if impact_model is not None:
-        model = f"{model}_{impact_model}"
-    return Path(root) / f"isimip_regional_data/{region}/{weights}/{model.lower()}_{experiment}_{variable}_{region.lower()}_{weights.lower()}.csv"
+def get_regional_averages_file(variable, model, experiment, region, weights, **kwargs):
+    indicator = Indicator.from_config(variable)
+    try:
+        return [indicator.get_path(experiment, model, region=region, regional_weight=weights, **kwargs)]
+    except ValueError:
+        return []
 
 def get_coords(res=0.5):
     lon = np.arange(-180 + res/2, 180, res)
@@ -68,7 +52,7 @@ def open_region_mask(region, weights, masks_folder=None):
     path = Path(masks_folder) / f"{region}/masks/{region}_360x720lat89p75to-89p75lon-179p75to179p75_{weights}.nc4"
     return xa.open_dataset(path)
 
-def _regional_average(v, mask):
+def _regional_average(v, mask, _no_recursion=False, context=""):
     """Country averages
 
     v: numpy array with last dims (..., lat, lon)
@@ -80,6 +64,21 @@ def _regional_average(v, mask):
     # Equivalent to: ~np.isnan(v[0,...,0,:,:])
     first_slice = v[tuple(0 for _ in range(v.ndim - 2))]
     valid_first_slice = np.isfinite(first_slice) & (np.abs(first_slice) < 1e10)
+    valid = np.isfinite(v)
+    valid_any_slice = valid.any(axis=tuple(i for i in range(v.ndim - 2)))
+    valid_all_slice = valid.all(axis=tuple(i for i in range(v.ndim - 2)))
+    if np.any(valid_any_slice & ~valid_all_slice):
+        logger.warning(f"{context} The nan mask may vary based on the time slice -> proceed to per-year regional average")
+        assert _no_recursion is False, "_no_recursion should be False"
+        a = np.full(v.shape[:-2], np.nan)
+        # make things easier by reshaping the data
+        import math
+        a_flat = a.reshape(math.prod(a.shape[:-2]), *a.shape[-2:])
+        v_flat = v.reshape(math.prod(v.shape[:-2]), *v.shape[-2:])
+        for i in range(v_flat.shape[0]):
+            a_flat[i:i+1] = _regional_average(v_flat[i:i+1], mask, _no_recursion=True)
+        return a
+
     m = np.isfinite(mask) & (mask > 0) & valid_first_slice
 
     if not m.any():
@@ -91,6 +90,29 @@ def _regional_average(v, mask):
 
 def get_all_regions():
     return sorted([o.name for o in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
+
+
+def preload_masks(regions=None, weights=["latWeight"], admin=True):
+    """Return a xarray.Dataset with all masks for the given regions and weights
+    """
+    if regions is None:
+        regions = get_all_regions()
+    masks = {}
+    for weight in weights:
+        for region in regions:
+            try:
+                with open_region_mask(region, weight) as mask:
+                    mask_loaded = mask.load()
+                    if not admin:
+                        mask_loaded = mask_loaded[list(mask_loaded)[:1]]
+                    masks[(region, weight)] = mask_loaded
+
+            except FileNotFoundError as error:
+                # logger.warning(str(error))
+                logger.warning(f"No mask found for {region} {weight}")
+
+    return masks
+
 
 def preload_masks_merged(regions=None, weight="latWeight", admin=True):
     """Return a xarray.Dataset with all masks for the given regions and weights
@@ -116,28 +138,6 @@ def get_merged_masks(regions, weights="latWeight", admin=True):
     return merged_masks
 
 
-def preload_masks(regions=None, weights=["latWeight"], admin=True):
-    """Return a xarray.Dataset with all masks for the given regions and weights
-    """
-    if regions is None:
-        regions = get_all_regions()
-    masks = {}
-    for weight in weights:
-        for region in regions:
-            try:
-                with open_region_mask(region, weight) as mask:
-                    mask_loaded = mask.load()
-                    if not admin:
-                        mask_loaded = mask_loaded[list(mask_loaded)[:1]]
-                    masks[(region, weight)] = mask_loaded
-
-            except FileNotFoundError as error:
-                # logger.warning(str(error))
-                logger.warning(f"No mask found for {region} {weight}")
-
-    return masks
-
-
 def _calc_regional_averages_unfiltered(v, ds_mask, name=None, reindex=True):
     """Transform a DataArray time x lat x lon into a time x region dataset
 
@@ -157,7 +157,7 @@ def _calc_regional_averages_unfiltered(v, ds_mask, name=None, reindex=True):
     subregions = list(ds_mask)
 
     return xa.DataArray(
-        np.array([_regional_average(v_extract.values, ds_mask[k].values) for k in subregions]).T,
+        np.array([_regional_average(v_extract.values, ds_mask[k].values, context=k) for k in subregions]).T,
         name=name, dims=("time", "region"), coords={"time": v.time, "region": subregions})
 
 
@@ -183,25 +183,41 @@ def get_all_subregion(region, weights="latWeight"):
     with open_region_mask(region, weights) as mask:
         return list(mask)
 
-def _open_regional_data_from_csv(indicator, simu, regions, weights="latWeight", admin=True, **kwargs):
-    """This function loads data from the CSV files
+def _dataframe_to_dataarray(df, **kwargs):
+    return xa.DataArray(df,
+            # make sure we have dates as index (and not just years, cause the calling function needs dates)
+            coords=[pd.to_datetime(df.index.astype(str)), df.columns],
+            dims=["time", "region"], **kwargs,
+            )
+
+def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admin=False, **kwargs):
+    """This function loads data from the CSV files as computed in the preprocessing step
     """
     if regions is None:
         regions = get_all_regions()
-    files = [get_regional_averages_file(indicator.name, simu["climate_forcing"], simu["climate_scenario"],
-                                    region, weights, impact_model=simu.get("model"), **kwargs)
+
+    # if admin averages are not required, load the regional averages excluding the admin boundaries,
+    # which are in a sperate file for convenience
+    if not admin:
+        file = indicator.get_path(**simu, regional=True, regional_weight=weights)
+        df = pd.read_csv(file, index_col=0)
+        return _dataframe_to_dataarray(df, name=indicator.ncvar)
+
+    files = [indicator.get_path(**simu, region=region, regional_weight=weights, **kwargs)
                                     for region in regions]
 
     n0 = len(files)
 
     missing_regions = [region for (f, region) in zip(files, regions) if not f.exists()]
+    missing_files = [f for f in files if not f.exists()]
     files = [f for f in files if f.exists()]
     if len(files) == 0:
+        print("missing files", missing_files)
         raise FileNotFoundError(f"No regional files found for {indicator.name} {simu['climate_forcing']} {simu['climate_scenario']} {simu.get('model')}")
 
     if len(files) < n0:
-        logger.info(f"Missing regions {missing_regions}")
-        logger.warning(f"Only {len(files)} out of {n0} files exist. Skip the missing ones.")
+        logger.debug(f"Missing regions {missing_regions}")
+        logger.debug(f"Only {len(files)} out of {n0} files exist. Skip the missing ones.")
 
     if admin:
         dfs = pd.concat([pd.read_csv(file, index_col=0) for file in files], axis=1)  # concat region and their admin boundaries
@@ -210,59 +226,7 @@ def _open_regional_data_from_csv(indicator, simu, regions, weights="latWeight", 
     else:
         dfs = pd.concat([pd.read_csv(file, index_col=0).iloc[:, :1] for file in files], axis=1)  # only use the first column (full region)
 
-    # make sure we have dates as index (and not just years, cause the calling function needs dates)
-    dfs.index = pd.to_datetime(dfs.index.astype(str))
-
-    return xa.DataArray(dfs,
-        coords=[dfs.index, dfs.columns],
-        dims=["time", "region"],
-        name=indicator.ncvar,
-        )
-
-
-def _open_regional_data(indicator, simu, regions=None, weights="latWeight",
-                        admin=True, save=True, load=True, load_csv=False, masks=None):
-    """Load the gridded netCDF and compute the regional averages on the fly
-    """
-    file = indicator.get_path(**simu)
-    file_regional = indicator.get_path(**simu, regional=True, regional_weight=weights)
-
-    if load and file_regional.exists():
-        logger.debug(f"Load regional averages from {file_regional}")
-        return open_dataset(file_regional)[indicator.ncvar]
-
-    elif load_csv:
-        logger.info(f"Load regional averages from CSV files")
-        ds = _open_regional_data_from_csv(indicator, simu, regions, weights, admin)
-        # if save:
-        #     logger.info(f"Write regional averages to {file_regional}")
-        #     ds.to_netcdf(file_regional, encoding={indicator.ncvar: {'zlib': True}})
-        return ds
-
-    if regions is None:
-        regions = get_all_regions()
-
-    if masks is None:
-        masks = get_merged_masks(regions, weights, admin)
-
-    with open_dataset(file) as ds:
-        if type(masks) is xa.Dataset:
-            logger.debug(f"Compute regional averages from a single masks Dataset")
-            region_averages = calc_regional_averages(ds[indicator.ncvar], masks, name=indicator.ncvar)
-        else:
-            logger.debug(f"Compute regional averages from a list of masks")
-            if type(masks) is dict:
-                masks = masks.values()
-            region_averages_ = [calc_regional_averages(ds[indicator.ncvar], masks_, name=indicator.ncvar) for masks_ in masks]
-            logger.debug(f"Concatenate regional averages from {len(region_averages_)} datasets")
-            region_averages = xa.combine_nested(region_averages_, concat_dim="region", compat="override", coords="minimal")
-
-    if save:
-        logger.info(f"Write regional averages to {file_regional}")
-        file_regional.parent.mkdir(parents=True, exist_ok=True)
-        region_averages.to_netcdf(file_regional, encoding={indicator.ncvar: {'zlib': True}})
-
-    return region_averages
+    return _dataframe_to_dataarray(dfs, name=indicator.ncvar)
 
 
 def open_regional_files(indicator, simus, **kwargs):
@@ -290,6 +254,7 @@ def main():
     parser.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"])
     parser.add_argument("-i", "--indicator", nargs='+', default=[], choices=CONFIG["indicator"], help="includes additional, secondary indicator with specific monthly statistics")
     parser.add_argument("--overwrite", action='store_true')
+    # parser.add_argument("--backends", nargs="+", choices=["csv", "netcdf"], default=["netcdf", "csv"])
     parser.add_argument("--frequency")
     group = parser.add_argument_group('mask')
     group.add_argument("--region", nargs='+', default=ALL_MASKS, choices=ALL_MASKS)
@@ -300,50 +265,95 @@ def main():
 
     masks = preload_masks(o.region, o.weights)
 
+    write_merged_regional_averages = True
+    if list(o.region) != list(get_all_regions()):
+        logger.warning("Skip writing the summary netCDF file with all country averages because the required regions are different from the default")
+        write_merged_regional_averages = False
+
+
     for variable in o.variable+o.indicator:
         indicator = Indicator.from_config(variable)
-        simus = [simu for simu in indicator.simulations
-                 if _matches(simu["climate_forcing"], o.model)
-                 and _matches(simu["climate_scenario"], o.experiment)
-                 and _matches(simu.get("model"), o.impact_model)]
+        for simu in indicator.simulations:
+            if not _matches(simu["climate_forcing"], o.model):
+                continue
+            if not _matches(simu["climate_scenario"], o.experiment):
+                continue
+            if not _matches(simu.get("model"), o.impact_model):
+                continue
 
-        for model, group_ in groupby(sorted(simus, key=lambda x: x["climate_forcing"]), key=lambda x: x["climate_forcing"]):
-            for experiment, group__ in groupby(sorted(group_, key=lambda x: x["climate_scenario"]), key=lambda x: x["climate_scenario"]):
-                for impact_model, group in groupby(sorted(group__, key=lambda x: x.get("model")), key=lambda x: x.get("model")):
-                    group = list(group)
-                    assert len(group) == 1, group
-                    simu = group[0]
+            todo = [(region, weights) for region in o.region
+                    for weights in o.weights
+                        if (region, weights) in masks
+                            and (o.overwrite or not indicator.get_path(**simu, region=region, regional_weight=weights).exists())]
+                                    # and (o.overwrite or not get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model).exists())]
 
-                    todo = [(region, weights) for region in o.region
-                            for weights in o.weights
-                                if (region, weights) in masks
-                                    and (o.overwrite or not get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model).exists())]
+            # also consider merged files
+            merged_files = [indicator.get_path(**simu, regional=True, regional_weight=weights) for weights in o.weights]
+            write_merged_regional_averages_ = write_merged_regional_averages and any(not f.exists() for f in merged_files)
+            nothing_todo = not todo and write_merged_regional_averages_
 
-                    if not todo:
-                        logger.info(f"{variable}, {model}, {experiment}, {impact_model}: all region-mask averages already exist")
-                        continue
+            if nothing_todo:
+                logger.info(f"{variable}, {simu}: all region-mask averages already exist")
+                continue
 
-                    elif len(todo) < len(o.region)*len(o.weights):
-                        logger.info(f"{variable}, {model}, {experiment}, {impact_model}:: {len(todo)} / {len(o.region)*len(o.weights)} region-mask averages to process")
+            elif not todo:
+                logger.info(f"{variable}, {simu}: compute merged regional averages")
 
-                    else:
-                        logger.info(f"{variable}, {model}, {experiment}, {impact_model}:: process {len(todo)} region-mask")
+            elif len(todo) < len(o.region)*len(o.weights):
+                logger.info(f"{variable}, {simu}:: {len(todo)} / {len(o.region)*len(o.weights)} region-mask averages to process")
 
-                    file = indicator.get_path(**simu)
+            else:
+                logger.info(f"{variable}, {simu}:: process {len(todo)} region-mask")
 
-                    with open_dataset(file) as ds:
+            file = indicator.get_path(**simu)
 
-                        v = ds[indicator.ncvar].load()
+            # calculate regional averages including admin boundaries
+            with open_dataset(file) as ds:
 
-                        for region, weights in todo:
-                            ofile = get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model)
-                            res = calc_regional_averages(v, masks[(region, weights)], name=variable)
-                            ofile.parent.mkdir(exist_ok=True, parents=True)
+                v = ds[indicator.ncvar].load()
 
-                            res.to_pandas().to_csv(ofile)
+                for weight in o.weights:
+                    for region in o.region:
 
-                        # clean-up memory
-                        del v
+                        if not (region, weight) in masks:
+                            continue
+
+                        ofile_csv = indicator.get_path(**simu, region=region, regional_weight=weight)
+                        if not o.overwrite and ofile_csv.exists():
+                            continue
+
+                        # keep the same netCDF name as the original file, for consistency with lat/lon file
+                        res = calc_regional_averages(v, masks[(region, weight)], name=indicator.ncvar)
+
+                        # write to CSV
+                        ofile_csv.parent.mkdir(exist_ok=True, parents=True)
+                        res.to_pandas().to_csv(ofile_csv)
+
+                # clean-up memory
+                del v
+
+            # make a combined file with all regions but without admin boundaries
+            if write_merged_regional_averages:
+                for weight in o.weights:
+                    rfiles = [(indicator.get_path(**simu, region=region, regional_weight=weight), region)
+                                        for region in o.region]
+                    # some masks do not exist, so we need to filter unexistent files
+                    rfiles = [(f, region) for f, region in rfiles if f.exists()]
+
+                    # load all regional averages and keep only the first column (full region, no admin)
+                    data = pd.concat([pd.read_csv(f, index_col=0)[region] for f, region in rfiles], axis=1)
+                    data.name = indicator.ncvar
+                    data.index = pd.to_datetime(data.index)
+                    data.index.name = "time"
+
+                    ofile = indicator.get_path(**simu, regional=True, regional_weight=weight)
+                    logger.info(f"{indicator.name}|{simu}|{weight} : write merged regional averages to {ofile}")
+                    ofile.parent.mkdir(exist_ok=True, parents=True)
+                    data.to_csv(ofile)
+                    # data.to_netcdf(ofile, encoding={variable: {'zlib': True}})
+
+                # clean-up memory
+                del data
 
 if __name__ == "__main__":
     main()

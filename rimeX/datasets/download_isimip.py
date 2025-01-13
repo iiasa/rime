@@ -400,7 +400,7 @@ class Indicator:
         return results
 
 
-    def get_path(self, climate_scenario, climate_forcing, ext=".nc", region=None, regional=False, regional_weight="latWeight", time_slice=None, **ensemble_specifiers):
+    def get_path(self, climate_scenario, climate_forcing, region=None, regional=False, regional_weight="latWeight", time_slice=None, **ensemble_specifiers):
         """returns the local file path for this indicator
         """
         result = self._get_dataset_meta(climate_scenario, climate_forcing, **ensemble_specifiers)[0]
@@ -412,20 +412,25 @@ class Indicator:
         other_tags = "_".join(meta[k] for k in self.simulation_keys if k not in ["climate_scenario", "climate_forcing"])
         ensemble_tag = f"_{other_tags}" if other_tags else ""
 
-        # one file for all regions
+        # one file for each region including admin boundaries
         if region:
-            regionfolders = ["spatial_averages", region]
-            region_tag = f"_{region}"
+            assert regional_weight is not None
+            regionfolders = [regional_weight, region]
+            region_tag = f"_{region}_{regional_weight}".lower()
+            ext = ".csv"
 
         # one file for all regions
         elif regional:
-            region_tag = f"_regional_{regional_weight}"
+            region_tag = f"_regional_{regional_weight}".lower()
             regionfolders = []
+            ext = ".csv"
 
         # lon-lat file
         else:
             region_tag = f""
             regionfolders = []
+            ext = ".nc"
+
 
         # special case where the indicator is exactly the same as the ISIMIP variable
         if not regional and self.frequency == meta["time_step"] and self.depends_on is None and len(time_slices) == 1 and region is None and ext == ".nc":
@@ -433,7 +438,8 @@ class Indicator:
                 return download(result['files'][0]['path'], folder=self.db.download_folder, dry_run=True)
 
         # otherwise create a new path separate from the ISIMIP database
-        return Path(self.folder, self.name, climate_scenario, climate_forcing.lower(), *regionfolders, f"{climate_forcing.lower()}{ensemble_tag}_{climate_scenario}_{self.name}{region_tag}_{self.frequency}{timeslice_tag}"+ext)
+        basename = f"{climate_forcing.lower()}{ensemble_tag}_{climate_scenario}_{self.name}{region_tag}_{self.frequency}{timeslice_tag}"+ext
+        return Path(self.folder, self.name, climate_scenario, climate_forcing.lower(), *regionfolders, basename)
 
     def download_climatology(self, climate_forcing, dry_run=False, **ensemble_specifiers):
         """compute the climatology of the base variables the indicator depends on
