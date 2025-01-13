@@ -21,7 +21,6 @@ folder="/mnt/ISIMIP/indicators"
 [indicator.maize_yield]
 frequency = "annual"
 spatial_aggregation = ["latWeight"]
-transform = "baseline_change_percent"
 
 [indicator.maize_yield.isimip_meta]
 specifiers = ["variable", "crop"]
@@ -32,7 +31,6 @@ ensemble_specifiers = ["model"] # further specifiers to identify the ensemble me
 [indicator.rice_yield]
 frequency = "annual"
 spatial_aggregation = ["latWeight"]
-transform = "baseline_change_percent"
 
 [indicator.rice_yield.isimip_meta]
 specifiers = ["variable", "crop"]
@@ -43,7 +41,6 @@ ensemble_specifiers = ["model"] # further specifiers to identify the ensemble me
 [indicator.wheat_yield]
 frequency = "annual"
 spatial_aggregation = ["latWeight"]
-transform = "baseline_change_percent"
 
 [indicator.wheat_yield.isimip_meta]
 specifiers = ["variable", "crop"]
@@ -54,7 +51,6 @@ ensemble_specifiers = ["model"] # further specifiers to identify the ensemble me
 [indicator.soy_yield]
 frequency = "annual"
 spatial_aggregation = ["latWeight"]
-transform = "baseline_change_percent"
 
 [indicator.soy_yield.isimip_meta]
 specifiers = ["variable", "crop"]
