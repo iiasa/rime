@@ -16,6 +16,7 @@ import glob
 import tqdm
 from itertools import groupby, product
 import warnings
+import math
 import numpy as np
 import pandas as pd
 import xarray as xa
@@ -50,41 +51,6 @@ def open_region_mask(region, weights, masks_folder=None):
     if masks_folder is None: masks_folder = CONFIG["preprocessing.regional.masks_folder"]
     path = Path(masks_folder) / f"{region}/masks/{region}_360x720lat89p75to-89p75lon-179p75to179p75_{weights}.nc4"
     return xa.open_dataset(path)
-
-def _regional_average(v, mask, _no_recursion=False, context=""):
-    """Country averages
-
-    v: numpy array with last dims (..., lat, lon)
-    mask: numpy array defined on the same grid as v
-
-    Returns a numpy array
-    """
-    # Determines the model `mask` (assuming it is constant throughout)
-    # Equivalent to: ~np.isnan(v[0,...,0,:,:])
-    first_slice = v[tuple(0 for _ in range(v.ndim - 2))]
-    valid_first_slice = np.isfinite(first_slice) & (np.abs(first_slice) < 1e10)
-    valid = np.isfinite(v)
-    valid_any_slice = valid.any(axis=tuple(i for i in range(v.ndim - 2)))
-    valid_all_slice = valid.all(axis=tuple(i for i in range(v.ndim - 2)))
-    if np.any(valid_any_slice & ~valid_all_slice):
-        logger.warning(f"{context} The nan mask may vary based on the time slice -> proceed to per-year regional average")
-        assert _no_recursion is False, "_no_recursion should be False"
-        a = np.full(v.shape[:-2], np.nan)
-        # make things easier by reshaping the data
-        import math
-        a_flat = a.reshape(math.prod(a.shape[:-2]), *a.shape[-2:])
-        v_flat = v.reshape(math.prod(v.shape[:-2]), *v.shape[-2:])
-        for i in range(v_flat.shape[0]):
-            a_flat[i:i+1] = _regional_average(v_flat[i:i+1], mask, _no_recursion=True)
-        return a
-
-    m = np.isfinite(mask) & (mask > 0) & valid_first_slice
-
-    if not m.any():
-        logger.debug(f"no valid data")
-
-    weights = mask[m]
-    return (v[..., m] * weights).sum(axis=-1) / weights.sum()
 
 
 def get_all_regions():
@@ -137,6 +103,28 @@ def get_merged_masks(regions, weights="latWeight", admin=True):
     return merged_masks
 
 
+def _regional_average(v, mask):
+    """Country averages
+
+    v: numpy array with last dims (..., lat, lon)
+    mask: numpy array defined on the same grid as v
+
+    Returns a numpy array
+    """
+    # Determines the model `mask` (assuming it is constant throughout)
+    # Equivalent to: ~np.isnan(v[0,...,0,:,:])
+    first_slice = v[tuple(0 for _ in range(v.ndim - 2))]
+    valid_first_slice = np.isfinite(first_slice) & (np.abs(first_slice) < 1e10)
+
+    m = np.isfinite(mask) & (mask > 0) & valid_first_slice
+
+    if not m.any():
+        logger.debug(f"no valid data")
+
+    weights = mask[m]
+    return (v[..., m] * weights).sum(axis=-1) / weights.sum()
+
+
 def _calc_regional_averages_unfiltered(v, ds_mask, name=None, reindex=True):
     """Transform a DataArray time x lat x lon into a time x region dataset
 
@@ -148,15 +136,27 @@ def _calc_regional_averages_unfiltered(v, ds_mask, name=None, reindex=True):
     if reindex:
         # at the time of writing, the mask dataset is defined on a local grid
         # so we need to extract the larger dataset onto that local grid
-        v_extract = v.reindex(lon=ds_mask.lon.values, lat=ds_mask.lat.values)
-    else:
-        # for applications where the dataset and the mask are already on the same grid
-        v_extract = v
+        v = v.reindex(lon=ds_mask.lon.values, lat=ds_mask.lat.values)
 
     subregions = list(ds_mask)
 
+    # first_slice = v[tuple(0 for _ in range(v.ndim - 2))]
+    # valid_first_slice = np.isfinite(first_slice) & (np.abs(first_slice) < 1e10)
+    valid = np.isfinite(v.values) & (np.abs(v.values) < 1e10)
+    valid_any_slice = valid.any(axis=0)
+    valid_all_slice = valid.all(axis=0)
+
+    if np.any(valid_any_slice & ~valid_all_slice):
+        logger.warning(f"{name or v.name} | The nan mask may vary based on the time slice -> proceed to per-year regional average")
+        a = np.full((v.shape[0], len(subregions)), np.nan)
+        for j, k in enumerate(subregions):
+            mask = ds_mask[k].values
+            for i in range(v.shape[0]):
+                a[i:i+1, j] = _regional_average(v.values[i:i+1], mask)
+        return xa.DataArray(a, name=name, dims=("time", "region"), coords={"time": v.time, "region": subregions})
+
     return xa.DataArray(
-        np.array([_regional_average(v_extract.values, ds_mask[k].values, context=k) for k in subregions]).T,
+        np.array([_regional_average(v.values, ds_mask[k].values) for k in subregions]).T,
         name=name, dims=("time", "region"), coords={"time": v.time, "region": subregions})
 
 
