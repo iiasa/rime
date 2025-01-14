@@ -22,15 +22,16 @@ from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directo
 from rimeX.preproc.regional_average import get_regional_averages_file, get_files
 from rimeX.records import average_per_group, make_models_equiprobable
 
-def load_seasonal_means_per_region(variable, model, experiment, region, subregion, weights, seasons=['annual', 'winter', 'spring', 'summer', 'autumn'], **kw):
+def load_seasonal_means_per_region(indicator, region, subregion, weights, seasons=['annual', 'winter', 'spring', 'summer', 'autumn'], **simu):
 
     try:
-        file = get_regional_averages_file(variable, model, experiment, region, weights, **kw)
+        file = indicator.get_path(**simu, region=region, regional_weight=weights)
+        # file = get_regional_averages_file(variable, model, experiment, region, weights, **kw)
     except ValueError as error:
         raise FileNotFoundError(str(error))
     monthly = pd.read_csv(file, index_col=0)[subregion or region]
 
-    if CONFIG.get(f"indicator.{variable}.frequency", "monthly") == "annual":
+    if indicator.frequency == "annual":
         seasonal_means = {"annual": monthly.values}
         years = monthly.index
 
@@ -55,6 +56,9 @@ def transform_indicator(data, indicator, meta=None, dataref=None):
     if meta is None:
         meta = CONFIG.get(f"indicator.{indicator}", {})
 
+    if not meta.get("transform"):
+        return data
+
     y1, y2 = meta.get("projection_baseline", CONFIG["preprocessing.projection_baseline"])
 
     if dataref is None:
@@ -72,65 +76,44 @@ def transform_indicator(data, indicator, meta=None, dataref=None):
     return data
 
 
-def load_regional_indicator_data(variable, region, subregion, weights, season, models, impact_models, experiments, **kw):
+def load_regional_indicator_data(indicator, region, subregion, weights, season, **kw):
     """higher level function than load_seasonal_means_per_region
 
     => add historical data
     => add variable-specific processing (e.g. retrieve projection baseline)
     """
-    meta = CONFIG.get(f"indicator.{variable}", {})
-
     all_data = {}
-    for model in models:
-        for impact_model in impact_models:
+    key = lambda x: (x["climate_forcing"], x.get("model"))
+    for key, simus in groupby(sorted(indicator.simulations, key=key), key=key):
 
-            if not meta.get("historical", True):
-                # this is concatenated in the future scenario files
-                historical = None
+        simus = list(simus)
+        experiments = sorted(set(s["climate_scenario"] for s in simus))
+        logger.info(f"load all experiments for {indicator.name} | {key} | {region} | {subregion} | {weights} | {season}: {experiments}")
+        model_data = [load_seasonal_means_per_region(indicator, region, subregion, weights, seasons=[season], **simu)[season] for simu in simus]
 
-            else:
-                try:
-                    historical = load_seasonal_means_per_region(variable, model, "historical", region, subregion, weights, seasons=[season], impact_model=impact_model, **kw)[season]
-                except FileNotFoundError as error:
-                    logger.warning(str(error))
-                    logger.warning(f"=> Historical data file not found for {variable} | {model} | {impact_model} | {region} | {subregion} | {weights} | {season}. Skip")
-                    continue
+        # concatenate historical data and future scenarios
+        if "historical" in experiments:
+            i = experiments.index("historical")
+            data_h = model_data[i]
+            del simus[i]
+            del model_data[i]
+            del experiments[i]
 
-                if np.isnan(historical).all():
-                    logger.warning(f"Historical is NaN for {variable} | {model} | {impact_model} | {region} | {subregion} | {weights} | {season}. Skip")
-                    continue
+            if np.isnan(data_h).all():
+                logger.warning(f"Historical is NaN for {key} | {region} | {subregion} | {weights} | {season}. Skip")
+                continue
 
-            for experiment in experiments:
-                if experiment == "historical":
-                    continue
-
-                logger.info(f"load {variable} | {model} | {impact_model} | {experiment} | {region} | {subregion} | {weights} | {season}")
-
-                try:
-                    future = load_seasonal_means_per_region(variable, model, experiment, region, subregion, weights, seasons=[season], impact_model=impact_model, **kw)[season]
-
-                except FileNotFoundError as error:
-                    logger.warning(f"=> file not Found: {str(error)}")
-                    continue
-
-                if historical is not None:
-                    data = pd.concat([historical, future])
-                else:
-                    data = future
-
-                if np.isnan(data.values).all():
-                    logger.warning(f"All NaNs: {variable} | {model} | {impact_model} | {region} | {subregion} | {weights} | {season}. Skip")
-                    continue
-
-                elif np.isnan(data.values).any():
-                    logger.warning(f"Some NaNs ({np.isnan(data.values).sum()} out of {data.size}): {variable} | {model} | {impact_model} | {region} | {subregion} | {weights} | {season}. Skip")
-                    continue
-                    # raise ValueError(f"{model} | {experiment} => some NaNs were found")
-
+            for i, data in enumerate(model_data):
                 # indicator-dependent treatment
-                data = transform_indicator(data, variable, meta=meta)
+                data = pd.concat([data_h, data], axis=0)
+                model_data[i] = data
 
-                all_data[(model, impact_model, experiment)] = data
+        for data in model_data:
+            model = simus["climate_forcing"]
+            experiment = simus["climate_scenario"]
+            impact_model = simus.get("model")
+            data = transform_indicator(data, indicator.name)
+            all_data[(model, impact_model, experiment)] = data
 
     return all_data
 
@@ -340,15 +323,8 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
                 raise NotImplementedError(backend)
             return df.rename({"scenario":"experiment", "midyear": "year"}).to_dict("records")
 
-    models = sorted(warming_levels['model'].unique().tolist())
-    experiments = sorted(warming_levels['experiment'].unique().tolist())
     indicator = Indicator.from_config(variable)
-    if "model" in indicator.simulation_keys:
-        impact_models = sorted(set(s["model"] for s in indicator.simulations))
-    else:
-        impact_models = [None]
-
-    indicator_data = load_regional_indicator_data(variable, region, subregion, weights, season, models, impact_models, experiments, simulation_round=simulation_round)
+    indicator_data = load_regional_indicator_data(indicator, region, subregion, weights, season)
 
     if len(indicator_data) == 0:
         logger.warning(f"No indicator data for {variable} | {region} | {subregion} | {weights} | {season}.")
