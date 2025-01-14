@@ -147,7 +147,7 @@ def _calc_regional_averages_unfiltered(v, ds_mask, name=None, reindex=True):
     valid_all_slice = valid.all(axis=0)
 
     if np.any(valid_any_slice & ~valid_all_slice):
-        logger.warning(f"{name or v.name} | The nan mask may vary based on the time slice -> proceed to per-year regional average")
+        logger.warning(f"{name or v.name} | {subregions[0]}... | Data available varies in time. Proceed to per-year regional average.")
         a = np.full((v.shape[0], len(subregions)), np.nan)
         for j, k in enumerate(subregions):
             mask = ds_mask[k].values
