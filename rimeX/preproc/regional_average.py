@@ -12,6 +12,7 @@ Memory usage is moderate (5G VIRT, 3G RES), mostly due to pre-loading all (parti
 """
 from pathlib import Path
 import argparse
+import concurrent.futures
 import glob
 import tqdm
 from itertools import groupby, product
@@ -243,7 +244,84 @@ def open_files(indicator, simus, regional=False, isel={}, **kwargs):
     return data
 
 
+def _crunch_regional_averages(indicator, simu, masks, o, write_merged_regional_averages=True):
 
+    todo = [(region, weights) for region in o.region
+            for weights in o.weights
+                if (region, weights) in masks
+                    and (o.overwrite or not indicator.get_path(**simu, region=region, regional_weight=weights).exists())]
+                            # and (o.overwrite or not get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model).exists())]
+
+    # also consider merged files
+    merged_files = [indicator.get_path(**simu, regional=True, regional_weight=weights) for weights in o.weights]
+    write_merged_regional_averages_ = write_merged_regional_averages and any(not f.exists() for f in merged_files)
+    nothing_todo = not todo and write_merged_regional_averages_
+
+    if nothing_todo:
+        logger.info(f"{indicator.name}, {simu}: all region-mask averages already exist")
+        return
+
+    elif not todo:
+        logger.info(f"{indicator.name}, {simu}: compute merged regional averages")
+
+    elif len(todo) < len(o.region)*len(o.weights):
+        logger.info(f"{indicator.name}, {simu}:: {len(todo)} / {len(o.region)*len(o.weights)} region-mask averages to process")
+
+    else:
+        logger.info(f"{indicator.name}, {simu}:: process {len(todo)} region-mask")
+
+
+    # calculate regional averages including admin boundaries
+    if todo:
+        file = indicator.get_path(**simu)
+        with open_dataset(file) as ds:
+
+            v = ds[indicator.ncvar].load()
+
+            for weight in o.weights:
+                for region in o.region:
+
+                    if not (region, weight) in masks:
+                        continue
+
+                    ofile_csv = indicator.get_path(**simu, region=region, regional_weight=weight)
+                    if not o.overwrite and ofile_csv.exists():
+                        continue
+
+                    # keep the same netCDF name as the original file, for consistency with lat/lon file
+                    res = calc_regional_averages(v, masks[(region, weight)], name=indicator.ncvar)
+
+                    # write to CSV
+                    ofile_csv.parent.mkdir(exist_ok=True, parents=True)
+                    res.to_pandas().to_csv(ofile_csv)
+
+            # clean-up memory
+            del v
+
+    # make a combined file with all regions but without admin boundaries
+    if write_merged_regional_averages:
+        for weight in o.weights:
+            ofile = indicator.get_path(**simu, regional=True, regional_weight=weight)
+            if not o.overwrite and ofile.exists():
+                continue
+            rfiles = [(indicator.get_path(**simu, region=region, regional_weight=weight), region)
+                                for region in o.region]
+            # some masks do not exist, so we need to filter unexistent files
+            rfiles = [(f, region) for f, region in rfiles if f.exists()]
+
+            # load all regional averages and keep only the first column (full region, no admin)
+            data = pd.concat([pd.read_csv(f, index_col=0)[region] for f, region in rfiles], axis=1)
+            data.name = indicator.ncvar
+            data.index = pd.to_datetime(data.index)
+            data.index.name = "time"
+
+            logger.info(f"{indicator.name}|{simu}|{weight} : write merged regional averages to {ofile}")
+            ofile.parent.mkdir(exist_ok=True, parents=True)
+            data.to_csv(ofile)
+            # data.to_netcdf(ofile, encoding={variable: {'zlib': True}})
+
+            # clean-up memory
+            del data
 
 def main():
 
@@ -258,6 +336,7 @@ def main():
     group = parser.add_argument_group('mask')
     group.add_argument("--region", nargs='+', default=ALL_MASKS, choices=ALL_MASKS)
     group.add_argument("--weights", nargs='+', default=CONFIG["preprocessing.regional.weights"], choices=CONFIG["preprocessing.regional.weights"])
+    group.add_argument("--cpus", type=int)
 
     o = parser.parse_args()
     setup_logger(o)
@@ -269,93 +348,42 @@ def main():
         logger.warning("Skip writing the summary netCDF file with all country averages because the required regions are different from the default")
         write_merged_regional_averages = False
 
+    def iterator():
 
-    for variable in o.indicator:
-        indicator = Indicator.from_config(variable)
-        for simu in indicator.simulations:
-            if not _matches(simu["climate_forcing"], o.model):
-                continue
-            if not _matches(simu["climate_scenario"], o.experiment):
-                continue
-            if not _matches(simu.get("model"), o.impact_model):
-                continue
+        for variable in o.indicator:
 
-            todo = [(region, weights) for region in o.region
-                    for weights in o.weights
-                        if (region, weights) in masks
-                            and (o.overwrite or not indicator.get_path(**simu, region=region, regional_weight=weights).exists())]
-                                    # and (o.overwrite or not get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model).exists())]
+            indicator = Indicator.from_config(variable)
 
-            # also consider merged files
-            merged_files = [indicator.get_path(**simu, regional=True, regional_weight=weights) for weights in o.weights]
-            write_merged_regional_averages_ = write_merged_regional_averages and any(not f.exists() for f in merged_files)
-            nothing_todo = not todo and write_merged_regional_averages_
+            for simu in indicator.simulations:
+                if not _matches(simu["climate_forcing"], o.model):
+                    continue
+                if not _matches(simu["climate_scenario"], o.experiment):
+                    continue
+                if not _matches(simu.get("model"), o.impact_model):
+                    continue
 
-            if nothing_todo:
-                logger.info(f"{variable}, {simu}: all region-mask averages already exist")
-                continue
-
-            elif not todo:
-                logger.info(f"{variable}, {simu}: compute merged regional averages")
-
-            elif len(todo) < len(o.region)*len(o.weights):
-                logger.info(f"{variable}, {simu}:: {len(todo)} / {len(o.region)*len(o.weights)} region-mask averages to process")
-
-            else:
-                logger.info(f"{variable}, {simu}:: process {len(todo)} region-mask")
+                yield indicator, simu
 
 
-            # calculate regional averages including admin boundaries
-            if todo:
-                file = indicator.get_path(**simu)
-                with open_dataset(file) as ds:
+    all_items = [(indicator, simu) for indicator, simu in iterator()]
 
-                    v = ds[indicator.ncvar].load()
+    if o.cpus is not None:
+        o.cpus = min(o.cpus, len(all_items))
 
-                    for weight in o.weights:
-                        for region in o.region:
+    if o.cpus and o.cpus > 1:
+        pool = concurrent.futures.ProcessPoolExecutor(max_workers=o.cpus)
+    else:
+        # dummy Executor pool that calls the function directly and returns None
+        pool = argparse.Namespace(submit=lambda f, *args, **kwargs: f(*args, **kwargs))
+    jobs = []
 
-                            if not (region, weight) in masks:
-                                continue
+    for indicator, simu in all_items:
+        # _crunch_regional_averages(indicator, simu, masks, o, write_merged_regional_averages=write_merged_regional_averages)
+        jobs.append( pool.submit(_crunch_regional_averages, indicator, simu, masks, o, write_merged_regional_averages=write_merged_regional_averages) )
 
-                            ofile_csv = indicator.get_path(**simu, region=region, regional_weight=weight)
-                            if not o.overwrite and ofile_csv.exists():
-                                continue
-
-                            # keep the same netCDF name as the original file, for consistency with lat/lon file
-                            res = calc_regional_averages(v, masks[(region, weight)], name=indicator.ncvar)
-
-                            # write to CSV
-                            ofile_csv.parent.mkdir(exist_ok=True, parents=True)
-                            res.to_pandas().to_csv(ofile_csv)
-
-                    # clean-up memory
-                    del v
-
-            # make a combined file with all regions but without admin boundaries
-            if write_merged_regional_averages:
-                for weight in o.weights:
-                    ofile = indicator.get_path(**simu, regional=True, regional_weight=weight)
-                    if not o.overwrite and ofile.exists():
-                        continue
-                    rfiles = [(indicator.get_path(**simu, region=region, regional_weight=weight), region)
-                                        for region in o.region]
-                    # some masks do not exist, so we need to filter unexistent files
-                    rfiles = [(f, region) for f, region in rfiles if f.exists()]
-
-                    # load all regional averages and keep only the first column (full region, no admin)
-                    data = pd.concat([pd.read_csv(f, index_col=0)[region] for f, region in rfiles], axis=1)
-                    data.name = indicator.ncvar
-                    data.index = pd.to_datetime(data.index)
-                    data.index.name = "time"
-
-                    logger.info(f"{indicator.name}|{simu}|{weight} : write merged regional averages to {ofile}")
-                    ofile.parent.mkdir(exist_ok=True, parents=True)
-                    data.to_csv(ofile)
-                    # data.to_netcdf(ofile, encoding={variable: {'zlib': True}})
-
-                    # clean-up memory
-                    del data
+    for job in tqdm.tqdm(jobs):
+        if job is not None:
+            job.result()
 
 if __name__ == "__main__":
     main()
