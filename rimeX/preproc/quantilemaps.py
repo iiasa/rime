@@ -349,17 +349,23 @@ def main():
                         logger.info(f"{filepath} already exists. Use -O or --overwrite to reprocess.")
                         continue
 
-                    array = make_quantile_map_array_(indicator,
-                                                    warming_levels,
-                                                    season=season,
-                                                    quantile_bins=o.quantile_bins,
-                                                    running_mean_window=o.running_mean_window,
-                                                    projection_baseline=o.projection_baseline,
-                                                    equiprobable_models=o.equiprobable_climate_models,
-                                                    skip_transform=o.skip_transform,
-                                                    skip_nans=o.skip_nans,
-                                                    open_func_kwargs=open_func_kwargs,
-                                                    )
+                    try:
+                        array = make_quantile_map_array_(indicator,
+                                                        warming_levels,
+                                                        season=season,
+                                                        quantile_bins=o.quantile_bins,
+                                                        running_mean_window=o.running_mean_window,
+                                                        projection_baseline=o.projection_baseline,
+                                                        equiprobable_models=o.equiprobable_climate_models,
+                                                        skip_transform=o.skip_transform,
+                                                        skip_nans=o.skip_nans,
+                                                        open_func_kwargs=open_func_kwargs,
+                                                        )
+                    except:
+                        if mode == "regional":
+                            logger.warning(f"Failed to process {indicator.name} | {open_func_kwargs['regions']}")
+                            continue
+                        raise
 
                     logger.info(f"Write to {filepath}")
                     filepath.parent.mkdir(parents=True, exist_ok=True)
