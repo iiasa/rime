@@ -304,36 +304,40 @@ def main():
             else:
                 logger.info(f"{variable}, {simu}:: process {len(todo)} region-mask")
 
-            file = indicator.get_path(**simu)
 
             # calculate regional averages including admin boundaries
-            with open_dataset(file) as ds:
+            if todo:
+                file = indicator.get_path(**simu)
+                with open_dataset(file) as ds:
 
-                v = ds[indicator.ncvar].load()
+                    v = ds[indicator.ncvar].load()
 
-                for weight in o.weights:
-                    for region in o.region:
+                    for weight in o.weights:
+                        for region in o.region:
 
-                        if not (region, weight) in masks:
-                            continue
+                            if not (region, weight) in masks:
+                                continue
 
-                        ofile_csv = indicator.get_path(**simu, region=region, regional_weight=weight)
-                        if not o.overwrite and ofile_csv.exists():
-                            continue
+                            ofile_csv = indicator.get_path(**simu, region=region, regional_weight=weight)
+                            if not o.overwrite and ofile_csv.exists():
+                                continue
 
-                        # keep the same netCDF name as the original file, for consistency with lat/lon file
-                        res = calc_regional_averages(v, masks[(region, weight)], name=indicator.ncvar)
+                            # keep the same netCDF name as the original file, for consistency with lat/lon file
+                            res = calc_regional_averages(v, masks[(region, weight)], name=indicator.ncvar)
 
-                        # write to CSV
-                        ofile_csv.parent.mkdir(exist_ok=True, parents=True)
-                        res.to_pandas().to_csv(ofile_csv)
+                            # write to CSV
+                            ofile_csv.parent.mkdir(exist_ok=True, parents=True)
+                            res.to_pandas().to_csv(ofile_csv)
 
-                # clean-up memory
-                del v
+                    # clean-up memory
+                    del v
 
             # make a combined file with all regions but without admin boundaries
             if write_merged_regional_averages:
                 for weight in o.weights:
+                    ofile = indicator.get_path(**simu, regional=True, regional_weight=weight)
+                    if not o.overwrite and ofile.exists():
+                        continue
                     rfiles = [(indicator.get_path(**simu, region=region, regional_weight=weight), region)
                                         for region in o.region]
                     # some masks do not exist, so we need to filter unexistent files
@@ -345,14 +349,13 @@ def main():
                     data.index = pd.to_datetime(data.index)
                     data.index.name = "time"
 
-                    ofile = indicator.get_path(**simu, regional=True, regional_weight=weight)
                     logger.info(f"{indicator.name}|{simu}|{weight} : write merged regional averages to {ofile}")
                     ofile.parent.mkdir(exist_ok=True, parents=True)
                     data.to_csv(ofile)
                     # data.to_netcdf(ofile, encoding={variable: {'zlib': True}})
 
-                # clean-up memory
-                del data
+                    # clean-up memory
+                    del data
 
 if __name__ == "__main__":
     main()
