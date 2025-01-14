@@ -2,12 +2,12 @@ import os
 import subprocess as sp
 import time
 
-def check_call(cmd, env=None, dry_run=False):
+def check_call(cmd, env=None, dry_run=False, **kw):
     print(cmd)
     if dry_run:
         return 0
     my_env = dict(os.environ, **env) if env is not None else None
-    return sp.check_call(cmd, shell=True, env=my_env)
+    return sp.check_call(cmd, shell=True, env=my_env, **kw)
 
 def cdo(cmd, **kwargs):
     return check_call(f"cdo {cmd}", **kwargs)
