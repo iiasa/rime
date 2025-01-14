@@ -14,7 +14,6 @@ from pathlib import Path
 import argparse
 import concurrent.futures
 import glob
-import subprocess as sp
 import tqdm
 from itertools import groupby, product
 import warnings
@@ -28,8 +27,6 @@ from rimeX.config import CONFIG, config_parser
 from rimeX.datasets.download_isimip import get_models, get_experiments, get_variables, isimip_parser
 from rimeX.datasets.download_isimip import Indicator, _matches
 from rimeX.compat import open_dataset, open_mfdataset
-from rimeX.tools import cdo
-import tempfile
 
 def get_files(variable, model, experiment, **kwargs):
     indicator = Indicator.from_config(variable)
@@ -50,14 +47,10 @@ def get_coords(res=0.5):
     return lon, lat
 
 
-def get_mask_file(region, weights, masks_folder=None):
-    if masks_folder is None: masks_folder = CONFIG["preprocessing.regional.masks_folder"]
-    return Path(masks_folder) / f"{region}/masks/{region}_360x720lat89p75to-89p75lon-179p75to179p75_{weights}.nc4"
-
-
 def open_region_mask(region, weights, masks_folder=None):
     """return DataArray mask from a subregion"""
-    path = get_mask_file(region, weights, masks_folder)
+    if masks_folder is None: masks_folder = CONFIG["preprocessing.regional.masks_folder"]
+    path = Path(masks_folder) / f"{region}/masks/{region}_360x720lat89p75to-89p75lon-179p75to179p75_{weights}.nc4"
     return xa.open_dataset(path)
 
 
@@ -182,67 +175,6 @@ def calc_regional_averages(v, ds_mask, name=None, **kwargs):
         return _calc_regional_averages_unfiltered(v, ds_mask, name=name, **kwargs)
 
 
-def _getmaskinfo(maskfile):
-    with xa.open_dataset(maskfile) as ds:
-        bbox = ds.lon[0].item(), ds.lon[-1].item(), ds.lat[0].item(), ds.lat[-1].item()
-        subregions = list(ds)
-
-    return bbox, subregions
-
-def calc_regional_averages_cdo(datafile, maskfile):
-# def _calc_regional_average_cdo(datafile, maskfile, maskvar, outputfile, cleanupmask=True, bbox=None):
-    cdokw =  dict(stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-    # extract the data file onto the mask grid
-    bbox, subregions = _getmaskinfo(maskfile)
-    l, r, b, t = bbox
-    maskname = str(maskfile.name).split(".")[0]
-    datafiletmp = datafile.with_suffix(f".{maskname}.nc")
-    datafiletmp.parent.mkdir(exist_ok=True, parents=True)
-    databbox, _ = _getmaskinfo(datafile)
-
-    if (t - b)*(databbox[3] - databbox[2]) > 0:  # same orientation
-        cdo(f"-sellonlatbox,{l},{r},{b},{t} {datafile} {datafiletmp}", **cdokw)
-
-    # otherwise flip the data
-    else:
-        cdo(f"-invertlat -sellonlatbox,{l},{r},{t},{b} {datafile} {datafiletmp}", **cdokw)
-
-    # now loop over the subregions
-    ncfiles = []
-    for maskvar in subregions:
-        maskvarclean = "".join(c for c in maskvar if c.isalnum() or c in ('_', '-')).rstrip()
-        ofile_nc = datafiletmp.with_suffix(f".{maskvarclean}.nc")
-
-        maskfiletmp = Path(tempfile.mktemp(suffix=".nc", prefix=f"mask_{maskvarclean}"))
-        if maskfiletmp.exists():
-            maskfiletmp.unlink()
-        cdo(f"-setmisstoc,0 -setctomiss,nan -selvar,'{maskvar}' {maskfile} {maskfiletmp}", **cdokw)
-
-        ofile_nc.parent.mkdir(exist_ok=True, parents=True)
-        if ofile_nc.exists():
-            ofile_nc.unlink()
-
-        f = lambda : cdo(f"fldmean -setgridarea,{maskfiletmp} -setctomiss,nan -mul -sellonlatbox,{l},{r},{b},{t} {datafiletmp} -gtc,0 {maskfiletmp} {ofile_nc}", **cdokw)
-        try:
-            f()
-        except sp.CalledProcessError as error:
-            logger.warning("command failed -> try again")
-            f()
-
-        maskfiletmp.unlink()
-        ncfiles.append(ofile_nc)
-
-    datafiletmp.unlink()
-
-    ds = open_mfdataset(ncfiles, combine='nested', concat_dim="region").load().squeeze()
-    ds = ds.assign_coords(region=subregions)
-
-    for ofile_nc in ncfiles:
-        ofile_nc.unlink()
-
-    return ds
-
-
 def open_map_files(indicator, simus, **isel):
     files = [indicator.get_path(**simu) for simu in simus]
     return open_mfdataset(files, combine='nested', concat_dim="time", **isel)[indicator.ncvar]
@@ -312,12 +244,11 @@ def open_files(indicator, simus, regional=False, isel={}, **kwargs):
     return data
 
 
-def _crunch_regional_averages(indicator, simu, masks, o, write_merged_regional_averages=True, cdofldmean=False):
+def _crunch_regional_averages(indicator, simu, masks, o, write_merged_regional_averages=True):
 
     todo = [(region, weights) for region in o.region
             for weights in o.weights
-                # if (region, weights) in masks
-                if get_mask_file(region, weights).exists()
+                if (region, weights) in masks
                     and (o.overwrite or not indicator.get_path(**simu, region=region, regional_weight=weights).exists())]
                             # and (o.overwrite or not get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model).exists())]
 
@@ -343,46 +274,29 @@ def _crunch_regional_averages(indicator, simu, masks, o, write_merged_regional_a
     # calculate regional averages including admin boundaries
     if todo:
         file = indicator.get_path(**simu)
+        with open_dataset(file) as ds:
 
-        if cdofldmean:
+            v = ds[indicator.ncvar].load()
+
             for weight in o.weights:
                 for region in o.region:
+
+                    if not (region, weight) in masks:
+                        continue
+
                     ofile_csv = indicator.get_path(**simu, region=region, regional_weight=weight)
                     if not o.overwrite and ofile_csv.exists():
-                        logger.info(f"{region} | {weight} already exists")
                         continue
-                    maskfile = get_mask_file(region, weight)
-                    if not maskfile.exists():
-                        logger.warning(f"Skip {region} | {weight}")
-                        continue
-                    v = calc_regional_averages_cdo(file, maskfile)[indicator.ncvar]
+
+                    # keep the same netCDF name as the original file, for consistency with lat/lon file
+                    res = calc_regional_averages(v, masks[(region, weight)], name=indicator.ncvar)
+
+                    # write to CSV
                     ofile_csv.parent.mkdir(exist_ok=True, parents=True)
-                    v.to_pandas().T.to_csv(ofile_csv)
+                    res.to_pandas().to_csv(ofile_csv)
 
-        else:
-            with open_dataset(file) as ds:
-
-                v = ds[indicator.ncvar].load()
-
-                for weight in o.weights:
-                    for region in o.region:
-
-                        if not (region, weight) in masks:
-                            continue
-
-                        ofile_csv = indicator.get_path(**simu, region=region, regional_weight=weight)
-                        if not o.overwrite and ofile_csv.exists():
-                            continue
-
-                        # keep the same netCDF name as the original file, for consistency with lat/lon file
-                        res = calc_regional_averages(v, masks[(region, weight)], name=indicator.ncvar)
-
-                        # write to CSV
-                        ofile_csv.parent.mkdir(exist_ok=True, parents=True)
-                        res.to_pandas().to_csv(ofile_csv)
-
-                # clean-up memory
-                del v
+            # clean-up memory
+            del v
 
     # make a combined file with all regions but without admin boundaries
     if write_merged_regional_averages:
@@ -423,15 +337,11 @@ def main():
     group.add_argument("--region", nargs='+', default=ALL_MASKS, choices=ALL_MASKS)
     group.add_argument("--weights", nargs='+', default=CONFIG["preprocessing.regional.weights"], choices=CONFIG["preprocessing.regional.weights"])
     group.add_argument("--cpus", type=int)
-    group.add_argument("--cdo", action='store_true', help="use cdo to calculate regional averages")
 
     o = parser.parse_args()
     setup_logger(o)
 
-    if o.cdo:
-        masks = None
-    else:
-        masks = preload_masks(o.region, o.weights)
+    masks = preload_masks(o.region, o.weights)
 
     write_merged_regional_averages = True
     if list(o.region) != list(get_all_regions()):
@@ -469,7 +379,7 @@ def main():
 
     for indicator, simu in all_items:
         # _crunch_regional_averages(indicator, simu, masks, o, write_merged_regional_averages=write_merged_regional_averages)
-        jobs.append( pool.submit(_crunch_regional_averages, indicator, simu, masks, o, write_merged_regional_averages=write_merged_regional_averages, cdofldmean=o.cdo) )
+        jobs.append( pool.submit(_crunch_regional_averages, indicator, simu, masks, o, write_merged_regional_averages=write_merged_regional_averages) )
 
     for job in tqdm.tqdm(jobs):
         if job is not None:
