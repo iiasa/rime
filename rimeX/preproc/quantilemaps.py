@@ -102,7 +102,8 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                 # data = seasonal_sel.sel(time=slice(str(year-w),str(year+w))).mean("time").load()
                 data = data_smooth.sel(year=year).load()
                 if not np.isfinite(data.values).any():
-                    logger.warning(f"All NaNs (after rolling mean with {w} valid values required): {(wl, year, simu)}")
+                    logger.debug(f"All NaNs: {(wl, year, simu)}")
+                    continue  # move on !
                 assert "year" not in data.dims, (data.dims, data.shape)
 
                 # subtract the reference period or express as relative change
@@ -148,6 +149,7 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
         samples = xa.concat(values, dim="sample")
         del values  # clear memory
         # quantiles = samples.quantile(quants, dim="sample")
+        assert np.any(np.isfinite(samples.values)), (wl, samples.shape)
         if equiprobable_models:
             quantiles = fast_weighted_quantile(samples, quants, weights=weights, dim="sample", skipna=skip_nans)
         else:

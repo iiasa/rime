@@ -165,6 +165,9 @@ def weighted_quantiles(values, weights, quantiles=0.5, interpolate=True, skipna=
         mask = ~np.isnan(values)
         values = values[mask]
         weights = weights[mask]
+        if len(values) == 0:
+            # logger.warning("No valid values in weighted_quantiles")
+            return np.full_like(quantiles, np.nan)
     i = np.argsort(values)
     sorted_weights = weights[i]
     sorted_values = values[i]
