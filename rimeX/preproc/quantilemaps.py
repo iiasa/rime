@@ -201,7 +201,7 @@ def get_filepath(name, season="annual", root_dir=None, suffix="", region=None, r
         return root_dir / "quantilemaps" / name / f"{name}_{season}_quantilemaps{suffix}.nc"
 
 
-def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .05, .95], deterministic=True):
+def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .05, .95], deterministic=True, clip=False, skipna=False):
     """Make a prediction of the quantile map for a given global mean temperature
 
     Parameters
@@ -215,6 +215,12 @@ def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .0
     deterministic : bool
         if True (the default), gmt is resampled deterministically
         setting to False may speed-up the computation at the cost of some loss of precision
+    clip : bool
+        if True, clip the GMT data to the range of the quantile map, otherwise fill with NaNs
+        False by default
+    skipna : bool
+        if True, skip NaN values in the quantiles calculation (default: False)
+        can be useful if clip is set to False
 
     Returns
     -------
@@ -223,6 +229,9 @@ def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .0
     assert tuple(a.dims[:2]) == ("warming_level", "quantile"), f"Expected dimensions ('warming_level', 'quantile'), got {a.dims[:2]}"
     interp = RegularGridInterpolator((a.warming_level.values, a.coords["quantile"].values), a.values, bounds_error=False)
     rng = np.random.default_rng(seed=seed)
+
+    if clip:
+        gmt = gmt.clip(lower=a.coords["warming_level"].values[0], upper=a.coords["warming_level"].values[-1])
 
     # (re)sample GMT
     if deterministic:
@@ -246,7 +255,7 @@ def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .0
 
     # compute quantiles
     if quantiles is not None:
-        sampled_maps = fast_quantile(sampled_maps, quantiles, dim="sample")
+        sampled_maps = fast_quantile(sampled_maps, quantiles, dim="sample", skipna=skipna)
 
     return sampled_maps
 
