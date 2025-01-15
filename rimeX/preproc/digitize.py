@@ -108,10 +108,10 @@ def load_regional_indicator_data(indicator, region, subregion, weights, season, 
                 data = pd.concat([data_h, data], axis=0)
                 model_data[i] = data
 
-        for data in model_data:
-            model = simus["climate_forcing"]
-            experiment = simus["climate_scenario"]
-            impact_model = simus.get("model")
+        for data, simu in zip(model_data, simus):
+            model = simu["climate_forcing"]
+            experiment = simu["climate_scenario"]
+            impact_model = simu.get("model")
             data = transform_indicator(data, indicator.name)
             all_data[(model, impact_model, experiment)] = data
 
