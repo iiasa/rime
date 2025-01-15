@@ -201,7 +201,7 @@ def get_filepath(name, season="annual", root_dir=None, suffix="", region=None, r
         return root_dir / "quantilemaps" / name / f"{name}_{season}_quantilemaps{suffix}.nc"
 
 
-def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .05, .95]):
+def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .05, .95], deterministic=True):
     """Make a prediction of the quantile map for a given global mean temperature
 
     Parameters
@@ -212,21 +212,42 @@ def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .0
     seed : random seed
     quantiles : quantiles to compute (default: [0.5, .05, .95])
         if None, all ensemble members are returned
+    deterministic : bool
+        if True (the default), gmt is resampled deterministically
+        setting to False may speed-up the computation at the cost of some loss of precision
 
     Returns
     -------
     sampled_maps : xa.DataArray with dimensions year, sample
     """
+    assert tuple(a.dims[:2]) == ("warming_level", "quantile"), f"Expected dimensions ('warming_level', 'quantile'), got {a.dims[:2]}"
     interp = RegularGridInterpolator((a.warming_level.values, a.coords["quantile"].values), a.values, bounds_error=False)
     rng = np.random.default_rng(seed=seed)
-    igmt = rng.integers(0, gmt.columns.size, size=samples)
-    resampled_gmt = gmt.iloc[:, igmt]
+
+    # (re)sample GMT
+    if deterministic:
+        step = 1/samples
+        gmt_quants = np.linspace(step/2, 1-step/2, num=samples)
+        resampled_gmt = np.quantile(gmt.values, gmt_quants, axis=1)
+    else:
+        igmt = rng.integers(0, gmt.columns.size, size=samples)
+        resampled_gmt = gmt.values[:, igmt]
+
+    # sample local impact distribution
     iquantiles = rng.integers(0, a.coords["quantile"].size, size=resampled_gmt.shape)
-    sampled_maps = interp((resampled_gmt.values, a.coords["quantile"].values[iquantiles]))
+
+    # joint sampling of GMT and impact distribution
+    sampled_maps = interp((resampled_gmt, a.coords["quantile"].values[iquantiles]))
+
+    # create the output DataArray
+    trailing_dims = a.dims[2:]
     sampled_maps = xa.DataArray(sampled_maps, coords=[
-        gmt.index, np.arange(samples), a.lat, a.lon], dims=["year", "sample", "lat", "lon"])
+        gmt.index, np.arange(samples), *(a.coords[d] for d in trailing_dims)], dims=["year", "sample", *trailing_dims])
+
+    # compute quantiles
     if quantiles is not None:
         sampled_maps = fast_quantile(sampled_maps, quantiles, dim="sample")
+
     return sampled_maps
 
 
