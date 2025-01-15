@@ -17,7 +17,7 @@ def global_mean_file(variable, model, experiment, simulation_round=None, root=No
     # if root is None: root = Path(CONFIG["isimip.climate_impact_explorer"]) / simulation_round
     # return Path(root) / f"isimip_global_mean/{variable}/globalmean_{variable}_{model.lower()}_{experiment}.csv"
     # return Path(CONFIG["indicators.folder"]) / f"globalmean_{variable} / globalmean_{variable}_{model.lower()}_{experiment}.csv"
-    return Path(CONFIG["isimip.download_folder"]) / f"global_mean_{variable}/globalmean_{variable}_{model.lower()}_{experiment}.csv"
+    return Path(CONFIG["isimip.climate_impact_explorer"]) / f"global_mean_{variable}/globalmean_{variable}_{model.lower()}_{experiment}.csv"
 
 
 def load_global_average_tas(variable, model, experiment, simulation_round=None, csv=True):
