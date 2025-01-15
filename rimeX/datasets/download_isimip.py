@@ -275,7 +275,7 @@ class Indicator:
                  spatial_aggregation=None, depends_on=None, expr=None, time_aggregation=None, isimip_meta=None,
                  shell=None, custom=None,
                  db=None, isimip_folder=None, comment=None, transform=None, year_min=None, units="", title="", projection_baseline=None,
-                 depends_on_climatology=False, climatology_quantile=False, historical=True,
+                 depends_on_climatology=False, climatology_quantile=False,
                  **kwargs):
 
         self.name = name
@@ -312,7 +312,6 @@ class Indicator:
         self.comment = comment
         self.transform = transform  # this refers to the baseline period and is only accounted for later on in the emulator (misnamed...)
         self.units = units
-        self.historical = historical
         self.title = title
         self.projection_baseline = projection_baseline or CONFIG["preprocessing.projection_baseline"]
 
