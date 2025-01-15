@@ -77,6 +77,11 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
             else:
                 seasonal_sel = data
 
+            # need to convert certain variables to float
+            if seasonal_sel.dtype.name.startswith("timedelta"):
+                seasonal_sel = seasonal_sel.load()
+                seasonal_sel.values = seasonal_sel.values.astype("timedelta64[D]").astype(float)
+
             # crunch anual mean
             annual_mean = seasonal_sel.groupby("time.year").mean()
 
