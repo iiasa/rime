@@ -47,61 +47,24 @@ def get_coords(res=0.5):
     return lon, lat
 
 
+def get_mask_file(region, weights, masks_folder=None):
+    if masks_folder is None: masks_folder = CONFIG["preprocessing.regional.masks_folder"]
+    return Path(masks_folder) / f"{region}/masks/{region}_360x720lat89p75to-89p75lon-179p75to179p75_{weights}.nc4"
+
 def open_region_mask(region, weights, masks_folder=None):
     """return DataArray mask from a subregion"""
-    if masks_folder is None: masks_folder = CONFIG["preprocessing.regional.masks_folder"]
-    path = Path(masks_folder) / f"{region}/masks/{region}_360x720lat89p75to-89p75lon-179p75to179p75_{weights}.nc4"
+    path = get_mask_file(region, weights, masks_folder)
     return xa.open_dataset(path)
 
+_MASKS_CACHE = {}
+
+def get_region_masks(region, weights, masks_folder=None):
+    if (region, weights) not in _MASKS_CACHE:
+        _MASKS_CACHE[(region, weights)] = open_region_mask(region, weights, masks_folder)
+    return _MASKS_CACHE[(region, weights)]
 
 def get_all_regions():
     return sorted([o.name for o in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
-
-
-def preload_masks(regions=None, weights=["latWeight"], admin=True):
-    """Return a xarray.Dataset with all masks for the given regions and weights
-    """
-    if regions is None:
-        regions = get_all_regions()
-    masks = {}
-    for weight in weights:
-        for region in regions:
-            try:
-                with open_region_mask(region, weight) as mask:
-                    mask_loaded = mask.load()
-                    if not admin:
-                        mask_loaded = mask_loaded[list(mask_loaded)[:1]]
-                    masks[(region, weight)] = mask_loaded
-
-            except FileNotFoundError as error:
-                # logger.warning(str(error))
-                logger.warning(f"No mask found for {region} {weight}")
-
-    return masks
-
-
-def preload_masks_merged(regions=None, weight="latWeight", admin=True):
-    """Return a xarray.Dataset with all masks for the given regions and weights
-    """
-    if regions is None:
-        regions = get_all_regions()
-    masks = preload_masks(regions, [weight], admin)
-    merged_masks = xa.merge(list(masks.values()), compat="override", combine_attrs="drop_conflicts", fill_value=np.nan)
-    del merged_masks.coords["region"]
-    return merged_masks
-
-
-def get_merged_masks(regions, weights="latWeight", admin=True):
-    key = (weights, len(regions) if len(regions) > 1 else regions[0], "admin" if admin else "noadmin")
-    filepath = Path(CONFIG["indicators.folder"], "masks", "merged_"+"_".join(map(str, key))+".nc")
-    if filepath.exists():
-        logger.info(f"Load merged masks from {filepath}")
-        return open_dataset(filepath)
-    merged_masks = preload_masks_merged(regions, weights, admin)
-    logger.info(f"Write merged masks to {filepath}")
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-    merged_masks.to_netcdf(filepath, encoding={v: {'zlib': True} for v in merged_masks.data_vars})
-    return merged_masks
 
 
 def _regional_average(v, mask):
@@ -243,12 +206,11 @@ def open_files(indicator, simus, regional=False, isel={}, **kwargs):
         data = data.isel(isel)
     return data
 
-
-def _crunch_regional_averages(indicator, simu, masks, o, write_merged_regional_averages=True):
+def _crunch_regional_averages(indicator, simu, o, write_merged_regional_averages=True):
 
     todo = [(region, weights) for region in o.region
             for weights in o.weights
-                if (region, weights) in masks
+                if get_mask_file(region, weights).exists()
                     and (o.overwrite or not indicator.get_path(**simu, region=region, regional_weight=weights).exists())]
                             # and (o.overwrite or not get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model).exists())]
 
@@ -282,7 +244,9 @@ def _crunch_regional_averages(indicator, simu, masks, o, write_merged_regional_a
             for weight in o.weights:
                 for region in o.region:
 
-                    if not (region, weight) in masks:
+                    try:
+                        mask = get_region_masks(region, weight)
+                    except FileNotFoundError:
                         continue
 
                     ofile_csv = indicator.get_path(**simu, region=region, regional_weight=weight)
@@ -290,7 +254,7 @@ def _crunch_regional_averages(indicator, simu, masks, o, write_merged_regional_a
                         continue
 
                     # keep the same netCDF name as the original file, for consistency with lat/lon file
-                    res = calc_regional_averages(v, masks[(region, weight)], name=indicator.ncvar)
+                    res = calc_regional_averages(v, mask, name=indicator.ncvar)
 
                     # write to CSV
                     ofile_csv.parent.mkdir(exist_ok=True, parents=True)
@@ -324,6 +288,7 @@ def _crunch_regional_averages(indicator, simu, masks, o, write_merged_regional_a
             # clean-up memory
             del data
 
+
 def main():
 
     ALL_MASKS = sorted([o.name for o in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
@@ -341,8 +306,6 @@ def main():
 
     o = parser.parse_args()
     setup_logger(o)
-
-    masks = preload_masks(o.region, o.weights)
 
     write_merged_regional_averages = True
     if list(o.region) != list(get_all_regions()):
@@ -380,7 +343,7 @@ def main():
 
     for indicator, simu in all_items:
         # _crunch_regional_averages(indicator, simu, masks, o, write_merged_regional_averages=write_merged_regional_averages)
-        jobs.append( pool.submit(_crunch_regional_averages, indicator, simu, masks, o, write_merged_regional_averages=write_merged_regional_averages) )
+        jobs.append( pool.submit(_crunch_regional_averages, indicator, simu, o, write_merged_regional_averages=write_merged_regional_averages) )
 
     for job in tqdm.tqdm(jobs):
         if job is not None:
