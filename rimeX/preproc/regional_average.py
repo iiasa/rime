@@ -241,6 +241,9 @@ def _crunch_regional_averages(indicator, simu, o, write_merged_regional_averages
 
             v = ds[indicator.ncvar].load()
 
+            if v.dtype.name.startswith("timedelta"):
+                v.values = v.values.astype("timedelta64[D]").astype(float)
+
             for weight in o.weights:
                 for region in o.region:
 
