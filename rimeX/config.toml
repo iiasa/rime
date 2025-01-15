@@ -65,7 +65,7 @@ ensemble_specifiers = ["model"] # further specifiers to identify the ensemble me
 [indicator.river_discharge]
 frequency = "monthly"
 spatial_aggregation = ["latWeight", "pop2015"]
-transform = "baseline_change_percent"
+# transform = "baseline_change_percent"  # no historical data available !
 
 [indicator.river_discharge.isimip_meta]
 specifiers = ["variable", "time_step", "soc_scenario", "sens_scenario"]
@@ -78,7 +78,7 @@ ensemble_specifiers = ["model"] # further specifiers to identify the ensemble me
 [indicator.runoff]
 frequency = "monthly"
 spatial_aggregation = ["latWeight", "pop2015"]
-transform = "baseline_change_percent"
+# transform = "baseline_change_percent"  # no historical data available !
 
 [indicator.runoff.isimip_meta]
 specifiers = ["variable", "time_step", "soc_scenario", "sens_scenario"]
