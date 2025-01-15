@@ -251,6 +251,43 @@ def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .0
     return sampled_maps
 
 
+def _loop(o, indicator, warming_levels, season, mode, open_func_kwargs, filepath):
+
+    if filepath.exists() and not o.overwrite:
+        logger.info(f"{filepath} already exists. Use -O or --overwrite to reprocess.")
+        return
+
+    # to reduce the memory usage, it is possible to split the calls into smaller warming_levels chunks
+    # and concat along the warming level dimension afterwards (it will be less efficient)
+    if mode == "map" and o.map_chunk_size is not None:
+        make_quantile_map_array_ = chunked("lat", o.map_chunk_size, 360)(make_quantile_map_array)
+    else:
+        make_quantile_map_array_ = make_quantile_map_array
+
+    try:
+        array = make_quantile_map_array_(indicator,
+                                        warming_levels,
+                                        season=season,
+                                        quantile_bins=o.quantile_bins,
+                                        running_mean_window=o.running_mean_window,
+                                        projection_baseline=o.projection_baseline,
+                                        equiprobable_models=o.equiprobable_climate_models,
+                                        skip_transform=o.skip_transform,
+                                        skip_nans=o.skip_nans,
+                                        open_func_kwargs=open_func_kwargs,
+                                        )
+    except:
+        if mode == "regional":
+            logger.warning(f"Failed to process {indicator.name} | {open_func_kwargs['regions']}")
+            return
+        raise
+
+    logger.info(f"Write to {filepath}")
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    encoding = {array.name: {'zlib': True}}
+    array.to_netcdf(filepath, encoding=encoding)
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description=__doc__, epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[config_parser, log_parser])
@@ -283,6 +320,7 @@ def main():
     parser.add_argument("--suffix", default="", help="add suffix to the output file name (to reflect different processing options)")
     parser.add_argument("--no-auto-suffix", action='store_false', dest="auto_suffix", help="add an automatically-generated suffix to the output file name (to reflect different processing options)")
     parser.add_argument("--skip-nans", action='store_true', help="Skip NaN values in the quantile map calculation")
+    parser.add_argument("--cpus", type=int)
 
     # group = parser.add_argument_group('Result')
     # group.add_argument("--backend", nargs="+", default=CONFIG["preprocessing.isimip_binned_backend"], choices=["csv", "feather"])
@@ -358,43 +396,21 @@ def main():
                     files = [get_filepath(indicator.name, season, root_dir=root_dir, suffix=o.suffix,
                                         regional=regional, regional_weights=o.weight, regions=o.region)]
 
-                # to reduce the memory usage, it is possible to split the calls into smaller warming_levels chunks
-                # and concat along the warming level dimension afterwards (it will be less efficient)
-                if mode == "map" and o.map_chunk_size is not None:
-                    make_quantile_map_array_ = chunked("lat", o.map_chunk_size, 360)(make_quantile_map_array)
+                if len(open_func_kwargs_loop) > 1 and o.cpus and o.cpus > 1:
+                    import concurrent.futures
+                    cpus = min(o.cpus, len(open_func_kwargs_loop))
+                    executor = concurrent.futures.ProcessPoolExecutor(max_workers=cpus)
                 else:
-                    make_quantile_map_array_ = make_quantile_map_array
+                    executor = argparse.Namespace(submit=lambda f, *args, **kwargs: f(*args, **kwargs))
 
+                jobs = []
 
                 for filepath, open_func_kwargs in zip(files, open_func_kwargs_loop):
+                    jobs.append(executor.submit(_loop, o, indicator, warming_levels, season, mode, open_func_kwargs, filepath))
 
-                    if filepath.exists() and not o.overwrite:
-                        logger.info(f"{filepath} already exists. Use -O or --overwrite to reprocess.")
-                        continue
-
-                    try:
-                        array = make_quantile_map_array_(indicator,
-                                                        warming_levels,
-                                                        season=season,
-                                                        quantile_bins=o.quantile_bins,
-                                                        running_mean_window=o.running_mean_window,
-                                                        projection_baseline=o.projection_baseline,
-                                                        equiprobable_models=o.equiprobable_climate_models,
-                                                        skip_transform=o.skip_transform,
-                                                        skip_nans=o.skip_nans,
-                                                        open_func_kwargs=open_func_kwargs,
-                                                        )
-                    except:
-                        if mode == "regional":
-                            logger.warning(f"Failed to process {indicator.name} | {open_func_kwargs['regions']}")
-                            continue
-                        raise
-
-                    logger.info(f"Write to {filepath}")
-                    filepath.parent.mkdir(parents=True, exist_ok=True)
-                    encoding = {array.name: {'zlib': True}}
-                    array.to_netcdf(filepath, encoding=encoding)
-
+                for job in jobs:
+                    if job is not None:
+                        job.result()
 
 if __name__ == "__main__":
     main()
