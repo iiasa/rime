@@ -254,17 +254,18 @@ def _crunch_regional_averages(indicator, simu, masks, o, write_merged_regional_a
 
     # also consider merged files
     merged_files = [indicator.get_path(**simu, regional=True, regional_weight=weights) for weights in o.weights]
-    write_merged_regional_averages_ = write_merged_regional_averages and any(not f.exists() for f in merged_files)
-    nothing_todo = not todo and write_merged_regional_averages_
+    missing_files = [f for f in merged_files if o.overwrite or not f.exists()]
+    write_merged_regional_averages_ = write_merged_regional_averages and len(missing_files) > 0
+    nothing_todo = not todo and not write_merged_regional_averages_
 
     if nothing_todo:
         logger.info(f"{indicator.name}, {simu}: all region-mask averages already exist")
         return
 
     elif not todo:
-        logger.info(f"{indicator.name}, {simu}: compute merged regional averages")
+        logger.info(f"{indicator.name}, {simu}: compute merged regional averages: {missing_files}")
 
-    elif len(todo) < len(o.region)*len(o.weights):
+    elif 0 < len(todo) < len(o.region)*len(o.weights):
         logger.info(f"{indicator.name}, {simu}:: {len(todo)} / {len(o.region)*len(o.weights)} region-mask averages to process")
 
     else:
