@@ -201,7 +201,7 @@ def get_filepath(name, season="annual", root_dir=None, suffix="", region=None, r
         return root_dir / "quantilemaps" / name / f"{name}_{season}_quantilemaps{suffix}.nc"
 
 
-def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .05, .95], deterministic=True, clip=False, skipna=False):
+def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .05, .95], mode="deterministic", clip=False, skipna=False):
     """Make a prediction of the quantile map for a given global mean temperature
 
     Parameters
@@ -212,9 +212,12 @@ def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .0
     seed : random seed
     quantiles : quantiles to compute (default: [0.5, .05, .95])
         if None, all ensemble members are returned
-    deterministic : bool
-        if True (the default), gmt is resampled deterministically
-        setting to False may speed-up the computation at the cost of some loss of precision
+    mode : {"deterministic", "factorial", "montecarlo"}
+        - "deterministic" (the default): gmt is resampled deterministically
+        - "montecarlo" : gmt is simply resampled (may speed-up the computation at the cost of some loss of precision)
+        - "factorial" : gmt is combined with the quantile map in a factorial way
+            The total number of samples is then samples * gmt.shape[1]
+        Note the impact distribution is always resampled in a deterministic way
     clip : bool
         if True, clip the GMT data to the range of the quantile map, otherwise fill with NaNs
         False by default
@@ -234,13 +237,18 @@ def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .0
         gmt = gmt.clip(lower=a.coords["warming_level"].values[0], upper=a.coords["warming_level"].values[-1])
 
     # (re)sample GMT
-    if deterministic:
+    if mode == "deterministic":
         step = 1/samples
         gmt_quants = np.linspace(step/2, 1-step/2, num=samples)
         resampled_gmt = np.quantile(gmt.values, gmt_quants, axis=1).T
-    else:
+    elif mode == "montecarlo":
         igmt = rng.integers(0, gmt.columns.size, size=samples)
         resampled_gmt = gmt.values[:, igmt]
+    elif mode == "factorial":
+        resampled_gmt = gmt.values[:, :, np.newaxis].repeat(samples, axis=2).reshape(gmt.shape[0], -1)
+        samples = resampled_gmt.shape[1]
+    else:
+        raise ValueError(f"Unknown mode {mode}")
 
     # sample local impact distribution
     iquantiles = rng.integers(0, a.coords["quantile"].size, size=resampled_gmt.shape)
