@@ -206,12 +206,21 @@ def open_files(indicator, simus, regional=False, isel={}, **kwargs):
         data = data.isel(isel)
     return data
 
+def _check_file(file):
+    if not file.exists():
+        return False
+    if file.stat().st_size == 0:
+        logger.warning(f"Empty file: {file} -> remove")
+        file.unlink()
+        return False
+    return True
+
 def _crunch_regional_averages(indicator, simu, o, write_merged_regional_averages=True):
 
     todo = [(region, weights) for region in o.region
             for weights in o.weights
                 if get_mask_file(region, weights).exists()
-                    and (o.overwrite or not indicator.get_path(**simu, region=region, regional_weight=weights).exists())]
+                    and (o.overwrite or not _check_file(indicator.get_path(**simu, region=region, regional_weight=weights)))]
                             # and (o.overwrite or not get_regional_averages_file(variable, model, experiment, region, weights, impact_model=impact_model).exists())]
 
     # also consider merged files
@@ -278,7 +287,16 @@ def _crunch_regional_averages(indicator, simu, o, write_merged_regional_averages
             rfiles = [(f, region) for f, region in rfiles if f.exists()]
 
             # load all regional averages and keep only the first column (full region, no admin)
-            data = pd.concat([pd.read_csv(f, index_col=0)[region] for f, region in rfiles], axis=1)
+            # data = pd.concat([pd.read_csv(f, index_col=0)[region] for f, region in rfiles], axis=1)
+            rdata = []
+            for f, region in rfiles:
+                try:
+                    data = pd.read_csv(f, index_col=0)[region]
+                except:
+                    raise
+                rdata.append(data)
+
+            data = pd.concat(rdata, axis=1)
             data.name = indicator.ncvar
             data.index = pd.to_datetime(data.index)
             data.index.name = "time"
