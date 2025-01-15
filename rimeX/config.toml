@@ -16,7 +16,8 @@ models = ["IPSL-CM5A-LR", "GFDL-ESM2M", "MIROC5", "HadGEM2-ES"]
 experiments = [ "historical", "rcp26", "rcp45", "rcp60", "rcp85",]
 
 [indicators]
-folder="/mnt/PROVIDE/climate_impact_explorer/indicators"
+folder="/mnt/ISIMIP/indicators"
+# folder="/mnt/PROVIDE/climate_impact_explorer/indicators"
 
 [indicator.maize_yield]
 frequency = "annual"
@@ -163,7 +164,7 @@ warming_level_min = 1
 running_mean_window = 21
 isimip_binned_backend = [ "csv", ]
 projection_baseline = [ 1995, 2014,] # this is used in rime-preproc-digitize
-quantilemap_quantile_bins = 21
+quantilemap_quantile_bins = 101
 
 [preprocessing.regional]
 weights = [ "latWeight", "gdp2015", "pop2015",]
