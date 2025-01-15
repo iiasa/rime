@@ -228,7 +228,7 @@ def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .0
     if deterministic:
         step = 1/samples
         gmt_quants = np.linspace(step/2, 1-step/2, num=samples)
-        resampled_gmt = np.quantile(gmt.values, gmt_quants, axis=1)
+        resampled_gmt = np.quantile(gmt.values, gmt_quants, axis=1).T
     else:
         igmt = rng.integers(0, gmt.columns.size, size=samples)
         resampled_gmt = gmt.values[:, igmt]
