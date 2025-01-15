@@ -21,6 +21,7 @@ folder="/mnt/PROVIDE/climate_impact_explorer/indicators"
 [indicator.maize_yield]
 frequency = "annual"
 spatial_aggregation = ["latWeight"]
+units = "%"
 
 [indicator.maize_yield.isimip_meta]
 specifiers = ["variable", "crop"]
@@ -31,6 +32,7 @@ ensemble_specifiers = ["model"] # further specifiers to identify the ensemble me
 [indicator.rice_yield]
 frequency = "annual"
 spatial_aggregation = ["latWeight"]
+units = "%"
 
 [indicator.rice_yield.isimip_meta]
 specifiers = ["variable", "crop"]
@@ -41,6 +43,7 @@ ensemble_specifiers = ["model"] # further specifiers to identify the ensemble me
 [indicator.wheat_yield]
 frequency = "annual"
 spatial_aggregation = ["latWeight"]
+units = "%"
 
 [indicator.wheat_yield.isimip_meta]
 specifiers = ["variable", "crop"]
@@ -51,6 +54,7 @@ ensemble_specifiers = ["model"] # further specifiers to identify the ensemble me
 [indicator.soy_yield]
 frequency = "annual"
 spatial_aggregation = ["latWeight"]
+units = "%"
 
 [indicator.soy_yield.isimip_meta]
 specifiers = ["variable", "crop"]

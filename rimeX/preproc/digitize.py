@@ -19,7 +19,7 @@ from rimeX.logs import logger, setup_logger, log_parser
 from rimeX.config import CONFIG, config_parser
 from rimeX.datasets.download_isimip import Indicator
 from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory
-from rimeX.preproc.regional_average import get_regional_averages_file, get_files
+from rimeX.preproc.regional_average import get_regional_averages_file, get_files, get_all_regions
 from rimeX.records import average_per_group, make_models_equiprobable
 
 def load_seasonal_means_per_region(indicator, region, subregion, weights, seasons=['annual', 'winter', 'spring', 'summer', 'autumn'], **simu):
@@ -33,7 +33,7 @@ def load_seasonal_means_per_region(indicator, region, subregion, weights, season
 
     if indicator.frequency == "annual":
         seasonal_means = {"annual": monthly.values}
-        years = monthly.index
+        years = pd.to_datetime(monthly.index).year
 
     else:
 
@@ -90,6 +90,15 @@ def load_regional_indicator_data(indicator, region, subregion, weights, season, 
         experiments = sorted(set(s["climate_scenario"] for s in simus))
         logger.info(f"load all experiments for {indicator.name} | {key} | {region} | {subregion} | {weights} | {season}: {experiments}")
         model_data = [load_seasonal_means_per_region(indicator, region, subregion, weights, seasons=[season], **simu)[season] for simu in simus]
+
+        # check for all-nan scenario (e.g. ssp370 in maize_yield indicator)
+        # -> that will reduce warning messages later on
+        for i in list(range(len(simus)))[::-1]:  # backward not to modify the list indexing
+            if np.isnan(model_data[i].iloc[1:]).all(): # (only the 2015 value is present in the instance that motivated this)
+                logger.warning(f"Data is NaN for {key} | {region} | {subregion} | {weights} | {season} | {experiments[i]}. Skip.")
+                del model_data[i]
+                del simus[i]
+                del experiments[i]
 
         # concatenate historical data and future scenarios
         if "historical" in experiments:
@@ -161,8 +170,8 @@ def _bin_isimip_records(indicator_data, warming_levels,
             continue
 
         # data = indicator_data[(model, experiment)]
-        all_data = {k[1]:indicator_data[k] for k in indicator_data if k[0] == model and k[2] == experiment}
-        # assert len(all_data) > 0
+        all_data = {k[1]:indicator_data[k] for k in indicator_data if k[0].lower() == model.lower() and k[2].lower() == experiment.lower()}
+        # assert len(all_data) > 0, (model, experiment, list(indicator_data))
         if len(all_data) == 0:
             logger.warning(f"{model}|{experiment} is not present in impact data: Skip")
             continue
@@ -184,10 +193,13 @@ def _bin_isimip_records(indicator_data, warming_levels,
                 for impact_model, data in all_data.items():
                     datasel = data.loc[start:end]
 
-                    if np.isnan(datasel.values).any():
-                        logger.warning(f"{model} | {impact_model} | {experiment} | {start} to {end} => some NaNs were found")
-                        if np.isnan(datasel.values).all():
-                            raise ValueError(f"{model} | {impact_model} | {experiment} => all NaNs slide")
+                    if np.isnan(datasel.values).sum() > running_mean_window // 2:
+                        logger.warning(f"{model} | {impact_model} | {experiment} | {year} ({start} to {end}) :: More than half of the values are NaNs when performing the running mean. Skip.")
+                        continue
+                    # elif np.isnan(datasel.values).all():
+                    #     raise ValueError(f"{model} | {impact_model} | {experiment} | {year} ({start} to {end}0 => all NaNs")
+                    # elif np.isnan(datasel.values).any():
+                    #     logger.warning(f"{model} | {impact_model} | {experiment} | {start} to {end} => some NaNs were found")
 
                     binned_isimip_data.append({"value":datasel.mean(axis=0), "model": model, "experiment": experiment, "impact_model": impact_model, "year": year, "warming_level": wl, **(meta or {})})
 
@@ -220,10 +232,8 @@ def bin_isimip_records(indicator_data, warming_levels,
     if running_mean_window is None: running_mean_window = CONFIG["preprocessing.running_mean_window"]
 
     logger.info("bin ISIMIP data")
-    print("indicator_data", len(indicator_data))
     binned_isimip_data = _bin_isimip_records(indicator_data, warming_levels,
         running_mean_window=running_mean_window, warming_levels_reached=warming_levels_reached, meta=meta)
-    print("binned_isimip_data", len(binned_isimip_data))
 
     if average_scenarios:
         logger.info("average across scenarios (and years)")
@@ -270,7 +280,7 @@ def get_binned_isimip_file(variable, region, subregion, weights, season,
     return Path(root) / f"isimip_binned_data/{variable}/{region}/{subregion}/{weights}/{variable}_{region.lower()}_{subregion.lower()}_{season}_{weights.lower()}_{running_mean_window}-yrs{scenarioavg}{othertags}{ext}"
 
 
-def get_indicator_units(variable, simulation_round=None):
+def get_indicator_units(variable):
 
     units = CONFIG.get(f"indicator.{variable}.units", "")
     if units:
@@ -278,22 +288,31 @@ def get_indicator_units(variable, simulation_round=None):
 
     if CONFIG.get(f"indicator.{variable}.transform") == "baseline_change_percent":
         units = "%"
+    elif CONFIG.get(f"indicator.{variable}.units"):
+        units = CONFIG.get(f"indicator.{variable}.units")
     else:
-        file = get_files(variable, "*", "*", simulation_round=simulation_round)[0]
-        logger.debug(f"Open {file} to find {variable} units")
-        with xa.open_dataset(file) as ds:
-            v = ds[variable]
-            if hasattr(v, "units"):
-                units = v.units
-                logger.debug(f"{variable} units found: {units}")
+        # file = get_files(variable, "*", "*", simulation_round=simulation_round)[0]
+        try:
+            indicator = Indicator.from_config(variable)
+            file = indicator.get_path(**indicator.simulations[0])
+            logger.debug(f"Open {file} to find {variable} units")
+            with xa.open_dataset(file, decode_times=False) as ds:
+                v = ds[indicator.ncvar]
+                if hasattr(v, "units"):
+                    units = v.units
+                    logger.debug(f"{variable} units found: {units}")
 
-            elif hasattr(v, "unit"):
-                units = v.unit
-                logger.debug(f"{variable} units found: {units}")
+                elif hasattr(v, "unit"):
+                    units = v.unit
+                    logger.debug(f"{variable} units found: {units}")
 
-            else:
-                logger.warning(f"Cannot find units for {variable}")
-                units = ""
+                else:
+                    logger.warning(f"Cannot find units for {variable}")
+                    units = ""
+        except Exception as e:
+            logger.warning(e)
+            logger.warning(f"Cannot find units for {variable}. Leave empty.")
+            return ""
 
     return units
 
@@ -330,7 +349,7 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
         logger.warning(f"No indicator data for {variable} | {region} | {subregion} | {weights} | {season}.")
         return []
 
-    units = get_indicator_units(variable, simulation_round=simulation_round)
+    units = get_indicator_units(variable)
 
     all_data = bin_isimip_records(indicator_data, warming_levels, meta={
         "region": region,
@@ -372,7 +391,7 @@ def get_subregions(region):
 
 def main():
 
-    all_regions = sorted([f.name for f in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*") if (f/"masks").exists() and any((f/"masks").glob("*nc4"))])
+    all_regions = get_all_regions()
 
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[config_parser, log_parser])
 
