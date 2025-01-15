@@ -375,7 +375,7 @@ class Indicator:
         results = self.db.filter(**request_dict)
 
         if len(results) == 0:
-            raise ValueError(f"No results found for {self.name} {request_dict}")
+            raise ValueError(f"No ISIMIP dataset found for {self.name} {request_dict}")
 
         checks = [r['specifiers'] for r in results]
         check_str = "\n".join(f"{k}, {[c[k] for c in checks]}" for k in set(checks[0].keys()))

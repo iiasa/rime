@@ -34,6 +34,7 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
 
 
     simulations = indicator.simulations
+    all_experiments = sorted(set(simu["climate_scenario"] for simu in simulations))
     w = running_mean_window // 2
     quants = np.linspace(0, 1, quantile_bins)
 
@@ -67,7 +68,7 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
             logger.debug(f"No warming level calculation for {key[0]} {key[1]}: Skip")
             continue
 
-        with open_files(indicator, [simu_historical, simu], **open_func_kwargs) as data:
+        with open_files(indicator, [simu_historical, simu] if "historical" in all_experiments else [simu], **open_func_kwargs) as data:
 
             # only select relevant months
             if season is not None:
@@ -105,7 +106,12 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
 
                 # mean over required time-slice
                 # data = seasonal_sel.sel(time=slice(str(year-w),str(year+w))).mean("time").load()
-                data = data_smooth.sel(year=year).load()
+                try:
+                    data = data_smooth.sel(year=year).load()
+                except KeyError:
+                    logger.warning(f"{indicator.name} | Missing year {year} in {key}")
+                    continue
+
                 if not np.isfinite(data.values).any():
                     logger.debug(f"All NaNs: {(wl, year, simu)}")
                     continue  # move on !
@@ -298,9 +304,11 @@ def _loop(o, indicator, warming_levels, season, mode, open_func_kwargs, filepath
                                         skip_nans=o.skip_nans,
                                         open_func_kwargs=open_func_kwargs,
                                         )
-    except:
+    except Exception as error:
         if mode == "regional":
+            logger.warning(error)
             logger.warning(f"Failed to process {indicator.name} | {open_func_kwargs['regions']}")
+            # raise
             return
         raise
 

@@ -10,6 +10,7 @@ So about 25 min per (model, variable).
 There are 10 models, so less than 5 h to run on a single core.
 Memory usage is moderate (5G VIRT, 3G RES), mostly due to pre-loading all (partial) masks.
 """
+import os
 from pathlib import Path
 import argparse
 import concurrent.futures
@@ -27,6 +28,8 @@ from rimeX.config import CONFIG, config_parser
 from rimeX.datasets.download_isimip import get_models, get_experiments, get_variables, isimip_parser
 from rimeX.datasets.download_isimip import Indicator, _matches
 from rimeX.compat import open_dataset, open_mfdataset
+from rimeX.tools import dir_is_empty
+
 
 def get_files(variable, model, experiment, **kwargs):
     indicator = Indicator.from_config(variable)
@@ -64,8 +67,7 @@ def get_region_masks(region, weights, masks_folder=None):
     return _MASKS_CACHE[(region, weights)]
 
 def get_all_regions():
-    return sorted([o.name for o in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
-
+    return sorted(o.name for o in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*") if not dir_is_empty(o) and not dir_is_empty(o / "masks"))
 
 def _regional_average(v, mask):
     """Country averages
@@ -312,7 +314,7 @@ def _crunch_regional_averages(indicator, simu, o, write_merged_regional_averages
 
 def main():
 
-    ALL_MASKS = sorted([o.name for o in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*")])
+    ALL_REGIONS = get_all_regions()
     all_variables = list(CONFIG["isimip.variables"]) + sorted(set(v.split(".")[0] for v in CONFIG["indicator"]))
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, isimip_parser])
     # parser.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"])
@@ -321,7 +323,7 @@ def main():
     # parser.add_argument("--backends", nargs="+", choices=["csv", "netcdf"], default=["netcdf", "csv"])
     parser.add_argument("--frequency")
     group = parser.add_argument_group('mask')
-    group.add_argument("--region", nargs='+', default=ALL_MASKS, choices=ALL_MASKS)
+    group.add_argument("--region", nargs='+', default=ALL_REGIONS, choices=ALL_REGIONS)
     group.add_argument("--weights", nargs='+', default=CONFIG["preprocessing.regional.weights"], choices=CONFIG["preprocessing.regional.weights"])
     group.add_argument("--cpus", type=int)
 

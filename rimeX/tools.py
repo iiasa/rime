@@ -12,6 +12,12 @@ def check_call(cmd, env=None, dry_run=False):
 def cdo(cmd, **kwargs):
     return check_call(f"cdo {cmd}", **kwargs)
 
+
+def dir_is_empty(path):
+    # https://stackoverflow.com/questions/57968829/what-is-the-fastest-way-to-check-whether-a-directory-is-empty-in-python
+    with os.scandir(path) as it:
+        return not any(it)
+
 class Timer:
     def __init__(self):
         self.reset()
