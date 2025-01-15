@@ -16,7 +16,7 @@ from rimeX.config import CACHE_FOLDER, CONFIG, config_parser, get_outputpath
 from rimeX.logs import logger, log_parser, setup_logger
 
 import rimeX_datasets
-_DEFAULTDATADIR = rimeX_datasets.__path__[0]
+_DEFAULTDATADIR = list(rimeX_datasets.__path__)[0]
 
 def get_downloadpath(relpath=''):
     return Path(CONFIG.get('downloaddir', CACHE_FOLDER / "download")) / relpath
@@ -118,8 +118,8 @@ def extract_archive(downloaded, path, ext=None, members=None, recursive=False, d
     if not ext:
         if archive != path:
             logger.info(f"mv {archive} {path}")
-            shutil.move(archive, path)  
-        return 
+            shutil.move(archive, path)
+        return
 
     logger.info(f"Extract {archive} to {path}")
 
@@ -239,7 +239,7 @@ def download_by_records(records, **kwargs):
 def expand_names(names):
     """The input list may contain wild cards
     """
-    all_datasets = [r['name'] for r in DATASET_REGISTER['records']]    
+    all_datasets = [r['name'] for r in DATASET_REGISTER['records']]
     expanded_names = []
     for name in names:
         expanded_names.extend(fnmatch.filter(all_datasets, name))
@@ -258,7 +258,7 @@ def print_local_datasets():
 
 
 def import_all_dataset_modules():
-    """Populate the DATASET_REGISTER dictionary. 
+    """Populate the DATASET_REGISTER dictionary.
     This is equivalent to top-module-level statement `from rimeX.datasets import *`
     """
     for name in rimeX.datasets.__all__:
@@ -272,7 +272,7 @@ def get_local_datasets():
     return [name for name in get_all_datasets() if get_datapath(name).exists()]
 
 
-# Needs to be packed in 
+# Needs to be packed in
 def main():
     import argparse
     import_all_dataset_modules()
@@ -323,4 +323,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()    
+    main()
