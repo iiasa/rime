@@ -16,7 +16,7 @@ models = ["IPSL-CM5A-LR", "GFDL-ESM2M", "MIROC5", "HadGEM2-ES"]
 experiments = [ "historical", "rcp26", "rcp45", "rcp60", "rcp85",]
 
 [indicators]
-folder="/mnt/ISIMIP/indicators"
+folder="/mnt/PROVIDE/climate_impact_explorer/indicators"
 
 [indicator.maize_yield]
 frequency = "annual"
