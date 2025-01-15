@@ -126,3 +126,142 @@ def plot_comparison_data(all_data, suptitle="", ni=2, nj=2, figsize=(12, 8), ref
         f.suptitle(suptitle)
 
     f.tight_layout()
+
+
+
+from rimeX.cie import predict_from_records, predict_from_quantilemap
+from rimeX.cie import load_magicc_mat
+
+indicator_names = [
+	"maize_yield",
+	"rice_yield",
+	"wheat_yield",
+	"soy_yield",
+	"daily_temperature_variability",
+	"number_of_wet_days",
+	"extreme_daily_rainfall",
+	"rx5day",
+	"wet_bulb_temperature",
+	"river_discharge",
+	# "runoff",
+	"tas",
+	"pr",
+	# "tasmax",
+	# "tasmin",
+]
+
+
+def plot_df(df, ax, color=None, label="", **kw):
+    l, = ax.plot(df.index, df[0.5], color=color, label=label, **kw)
+    # for k in [0.05, 0.95]:
+    #     ax.plot(df[k], color=l.get_color(), linestyle="--", **kw)
+    ax.fill_between(df.index, df[0.05], df[0.95], color=l.get_color(), alpha=0.2)
+
+
+def plot_one(ax, magicc_scenario, indicator_name, region, subregion, season, weight, all_data=None, gmt=None, label=None, colors={}):
+
+    if all_data is None:
+        all_data = {}
+
+    try:
+        key = magicc_scenario, indicator_name, region, subregion, season, weight
+        if key not in all_data:
+            if gmt is None:
+                gmt = load_magicc_mat(magicc_scenario)
+            all_data[key] = predict_from_records(gmt, indicator_name, region, subregion, season, weight, samples=5000, vectorized=False)
+        df = all_data[key]
+        plot_df(df, ax, color=colors.get(label), label=label)
+
+    except:
+        print(f"Failed to process: {indicator_name}. Skip.")
+        return
+
+magicc_scenarios = ["RCP3PD", "RCP45", "RCP85"]
+colors_ = ["tab:green", "tab:blue", "tab:orange"]
+scenario_colors = dict(zip(magicc_scenarios, colors_))
+
+seasons = ["annual", "winter", "spring", "summer", "autumn"]
+_scolors = ["black", "tab:purple", "tab:green", "tab:orange", "tab:brown"]
+season_colors = dict(zip(seasons, _scolors))
+
+
+def plot_many_scenarios(magicc_scenarios, indicator_names, region, subregion, season, weight, gmts=None, all_data=None):
+
+    if all_data is None:
+        all_data = {}
+
+    if gmts is None:
+        gmts = {magicc_scenario: load_magicc_mat(magicc_scenario) for magicc_scenario in magicc_scenarios}
+
+    f, axes = plt.subplots(4, 3, figsize=(12, 12))
+
+    for i, indicator_name in enumerate(indicator_names):
+
+        ax = axes.flat[i]
+
+        for magicc_scenario in magicc_scenarios:
+            gmt = gmts[magicc_scenario]
+
+            plot_one(ax, magicc_scenario, indicator_name, region, subregion, season, weight, all_data=all_data, gmt=gmt, label=magicc_scenario, colors=scenario_colors)
+
+        ax.legend()
+        ax.grid()
+        ax.set_title(f"{indicator_name}")
+
+    f.suptitle(f"{region} | {subregion} | {season} | {weight}")
+    f.tight_layout()
+
+    return all_data
+
+
+def plot_many_seasons(magicc_scenario, indicator_names, region, subregion, seasons, weight, all_data=None):
+
+    if all_data is None:
+        all_data = {}
+
+    gmt = load_magicc_mat(magicc_scenario)
+
+    f, axes = plt.subplots(4, 3, figsize=(12, 12))
+
+    for i, indicator_name in enumerate(indicator_names):
+
+        ax = axes.flat[i]
+
+        for season in seasons:
+            plot_one(ax, magicc_scenario, indicator_name, region, subregion, season, weight, all_data=all_data, gmt=gmt, label=season, colors=season_colors)
+
+        ax.legend()
+        ax.grid()
+        ax.set_title(f"{indicator_name}")
+
+    f.suptitle(f"{region} | {subregion} | {weight} | MAGICC {magicc_scenario}")
+    f.tight_layout()
+
+    return all_data
+
+
+def plot_many_regions(magicc_scenario, indicator_names, regions, season, weight, all_data=None, subregions=None):
+
+    if all_data is None:
+        all_data = {}
+
+    gmt = load_magicc_mat(magicc_scenario)
+
+    f, axes = plt.subplots(4, 3, figsize=(12, 12))
+
+    for i, indicator_name in enumerate(indicator_names):
+
+        ax = axes.flat[i]
+
+        for j, region in enumerate(regions):
+            subregion = subregions[j] if subregions is not None else region
+            plot_one(ax, magicc_scenario, indicator_name, region, subregion, season, weight, all_data=all_data, gmt=gmt, label=region)
+
+        ax.legend()
+        ax.grid()
+        ax.set_title(f"{indicator_name}")
+
+    f.suptitle(f"{subregion} | {season} | {weight} | MAGICC {magicc_scenario}")
+    f.tight_layout()
+
+    return all_data
