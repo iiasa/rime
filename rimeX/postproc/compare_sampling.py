@@ -106,7 +106,13 @@ def plot_comparison_data(all_data, suptitle="", ni=2, nj=2, figsize=(12, 8), ref
                 label = ref_label
                 kw = dict(color = "black", linewidth=0.5)
             else:
-                result = data.sel(sample=s)
+                try:
+                    result = data.sel(sample=s)
+                except KeyError as error:
+                    try:
+                        result = data.sel(sample=int(s))  # strange case (bug) with mixed integer and strings
+                    except:
+                        raise (error)
                 label = s
                 kw = dict()
             l, = ax.plot(result.year, result.sel(quantile=0.5), label=label, **kw)
@@ -153,7 +159,7 @@ def plot_df(df, ax, color=None, label="", **kw):
     ax.fill_between(df.index, df[0.05], df[0.95], color=l.get_color(), alpha=0.2)
 
 
-def plot_one(ax, magicc_scenario, indicator_name, region, subregion, season, weight, all_data=None, gmt=None, label=None, colors={}):
+def plot_one(ax, magicc_scenario, indicator_name, region, subregion, season, weight, all_data=None, gmt=None, label=None, colors={}, quantilemap=True):
 
     if all_data is None:
         all_data = {}
@@ -163,7 +169,10 @@ def plot_one(ax, magicc_scenario, indicator_name, region, subregion, season, wei
         if key not in all_data:
             if gmt is None:
                 gmt = load_magicc_mat(magicc_scenario)
-            all_data[key] = predict_from_records(gmt, indicator_name, region, subregion, season, weight, samples=5000, vectorized=False)
+            if quantilemap:
+                all_data[key] = predict_from_quantilemap(gmt, indicator_name, region, subregion, season, weight, samples=5000)
+            else:
+                all_data[key] = predict_from_records(gmt, indicator_name, region, subregion, season, weight, vectorized=False)
         df = all_data[key]
         plot_df(df, ax, color=colors.get(label), label=label)
 
@@ -180,7 +189,7 @@ _scolors = ["black", "tab:purple", "tab:green", "tab:orange", "tab:brown"]
 season_colors = dict(zip(seasons, _scolors))
 
 
-def plot_many_scenarios(magicc_scenarios, indicator_names, region, subregion, season, weight, gmts=None, all_data=None):
+def plot_many_scenarios(magicc_scenarios, indicator_names, region, subregion, season, weight, gmts=None, all_data=None, **kw):
 
     if all_data is None:
         all_data = {}
@@ -197,7 +206,7 @@ def plot_many_scenarios(magicc_scenarios, indicator_names, region, subregion, se
         for magicc_scenario in magicc_scenarios:
             gmt = gmts[magicc_scenario]
 
-            plot_one(ax, magicc_scenario, indicator_name, region, subregion, season, weight, all_data=all_data, gmt=gmt, label=magicc_scenario, colors=scenario_colors)
+            plot_one(ax, magicc_scenario, indicator_name, region, subregion, season, weight, all_data=all_data, gmt=gmt, label=magicc_scenario, colors=scenario_colors, **kw)
 
         ax.legend()
         ax.grid()
@@ -209,7 +218,7 @@ def plot_many_scenarios(magicc_scenarios, indicator_names, region, subregion, se
     return all_data
 
 
-def plot_many_seasons(magicc_scenario, indicator_names, region, subregion, seasons, weight, all_data=None):
+def plot_many_seasons(magicc_scenario, indicator_names, region, subregion, seasons, weight, all_data=None, **kw):
 
     if all_data is None:
         all_data = {}
@@ -223,7 +232,7 @@ def plot_many_seasons(magicc_scenario, indicator_names, region, subregion, seaso
         ax = axes.flat[i]
 
         for season in seasons:
-            plot_one(ax, magicc_scenario, indicator_name, region, subregion, season, weight, all_data=all_data, gmt=gmt, label=season, colors=season_colors)
+            plot_one(ax, magicc_scenario, indicator_name, region, subregion, season, weight, all_data=all_data, gmt=gmt, label=season, colors=season_colors, **kw)
 
         ax.legend()
         ax.grid()
@@ -235,7 +244,7 @@ def plot_many_seasons(magicc_scenario, indicator_names, region, subregion, seaso
     return all_data
 
 
-def plot_many_regions(magicc_scenario, indicator_names, regions, season, weight, all_data=None, subregions=None):
+def plot_many_regions(magicc_scenario, indicator_names, regions, season, weight, all_data=None, subregions=None, **kw):
 
     if all_data is None:
         all_data = {}
@@ -250,7 +259,7 @@ def plot_many_regions(magicc_scenario, indicator_names, regions, season, weight,
 
         for j, region in enumerate(regions):
             subregion = subregions[j] if subregions is not None else region
-            plot_one(ax, magicc_scenario, indicator_name, region, subregion, season, weight, all_data=all_data, gmt=gmt, label=region)
+            plot_one(ax, magicc_scenario, indicator_name, region, subregion, season, weight, all_data=all_data, gmt=gmt, label=region, **kw)
 
         ax.legend()
         ax.grid()
