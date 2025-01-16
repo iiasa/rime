@@ -142,7 +142,8 @@ def calc_regional_averages(v, ds_mask, name=None, **kwargs):
 
 def open_map_files(indicator, simus, **isel):
     files = [indicator.get_path(**simu) for simu in simus]
-    return open_mfdataset(files, combine='nested', concat_dim="time", **isel)[indicator.ncvar]
+    ds = open_mfdataset(files, combine='nested', concat_dim="time", **isel)
+    return ds[indicator.check_ncvar(ds)]
 
 def get_all_subregion(region, weights="latWeight"):
     with open_region_mask(region, weights) as mask:
@@ -250,7 +251,7 @@ def _crunch_regional_averages(indicator, simu, o, write_merged_regional_averages
         file = indicator.get_path(**simu)
         with open_dataset(file) as ds:
 
-            v = ds[indicator.ncvar].load()
+            v = ds[indicator.check_ncvar(ds)].load()
 
             if v.dtype.name.startswith("timedelta"):
                 v.values = v.values.astype("timedelta64[D]").astype(float)

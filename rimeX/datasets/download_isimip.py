@@ -319,6 +319,14 @@ class Indicator:
     def ncvar(self):
         return self.isimip_meta.get("variable", self.name)
 
+    def check_ncvar(self, ds):
+        """ we found an instance of sfcWind instead of sfcwind...
+        """
+        if self.ncvar not in ds:
+            i = [k.lower() for k in ds].index(self.ncvar.lower())
+            return list(ds)[i]
+        return self.ncvar
+
     @classmethod
     def from_config(cls, name, **kw):
         cfg = CONFIG.get(f"indicator.{name}", {})
