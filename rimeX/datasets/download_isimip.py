@@ -311,6 +311,9 @@ class Indicator:
         self._isimip_folder = isimip_folder
         self.comment = comment
         self.transform = transform  # this refers to the baseline period and is only accounted for later on in the emulator (misnamed...)
+
+        if not units and "percent" in transform:
+            units = "%"
         self.units = units
         self.title = title
         self.projection_baseline = projection_baseline or CONFIG["preprocessing.projection_baseline"]
