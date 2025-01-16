@@ -12,7 +12,7 @@ import xarray as xa
 
 from rimeX.config import CONFIG, config_parser
 from rimeX.logs import logger, log_parser
-from rimeX.stats import fast_quantile, fast_weighted_quantile
+from rimeX.stats import fast_quantile, fast_weighted_quantile, equally_spaced_quantiles
 from rimeX.datasets.download_isimip import Indicator, _matches
 from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory
 from rimeX.preproc.digitize import transform_indicator
@@ -249,8 +249,7 @@ def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .0
 
     # (re)sample GMT
     if mode == "deterministic":
-        step = 1/samples
-        gmt_quants = np.linspace(step/2, 1-step/2, num=samples)
+        gmt_quants = equally_spaced_quantiles(samples)
         resampled_gmt = np.quantile(gmt.values, gmt_quants, axis=1).T
     elif mode == "montecarlo":
         igmt = rng.integers(0, gmt.columns.size, size=samples)
@@ -262,10 +261,14 @@ def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .0
         raise ValueError(f"Unknown mode {mode}")
 
     # sample local impact distribution
-    iquantiles = rng.integers(0, a.coords["quantile"].size, size=resampled_gmt.shape)
+    # iquantiles = rng.integers(0, a.coords["quantile"].size, size=resampled_gmt.shape)
+    # resampled_quantiles = a.coords["quantile"].values[iquantiles]
+
+    resampled_quantiles = equally_spaced_quantiles(samples)
+    rng.shuffle(resampled_quantiles)
 
     # joint sampling of GMT and impact distribution
-    sampled_maps = interp((resampled_gmt, a.coords["quantile"].values[iquantiles]))
+    sampled_maps = interp((resampled_gmt, resampled_quantiles))
 
     # create the output DataArray
     trailing_dims = a.dims[2:]
