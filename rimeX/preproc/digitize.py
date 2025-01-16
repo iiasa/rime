@@ -317,7 +317,7 @@ def get_indicator_units(variable):
     return units
 
 
-def get_binned_isimip_records(warming_levels, variable, region, subregion, weights, season, overwrite=False, backends=["csv"], simulation_round=None, **kw):
+def get_binned_isimip_records(warming_levels, variable, region, subregion, weights, season, overwrite=False, backends=["csv"], simulation_round=None, check=False, **kw):
     """ Same as bin_isimip_records but with cached I/O
     """
     supported_backend = ["csv", "feather", "parquet", "excel"]
@@ -329,6 +329,10 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
 
     for file, backend in zip(binned_records_files, backends):
         if not overwrite and file.exists():
+            if check:
+                logger.info(f"{file} already exists")
+                return
+
             logger.info(f"Load binned ISIMIP data from {file}")
             if backend == "csv":
                 df = pd.read_csv(file)
@@ -443,7 +447,7 @@ def main():
             if CONFIG.get(f"indicator.{variable}.frequency", "monthly") == "annual" and season != "annual":
                 continue
             get_binned_isimip_records(warming_levels, variable, region, subregion, weights, season,
-                running_mean_window=o.running_mean_window, overwrite=o.overwrite, backends=o.backend, simulation_round=o.simulation_round)
+                running_mean_window=o.running_mean_window, overwrite=o.overwrite, backends=o.backend, simulation_round=o.simulation_round, check=True)
 
         parser.exit(0)
 
@@ -462,7 +466,7 @@ def main():
             if CONFIG.get(f"indicator.{variable}.frequency", "monthly") == "annual" and season != "annual":
                 continue
             jobs.append((executor.submit(get_binned_isimip_records, warming_levels, variable, region, subregion, weights, season,
-                running_mean_window=o.running_mean_window, overwrite=o.overwrite, backends=o.backend, simulation_round=o.simulation_round), (variable, region, subregion, weights, season)))
+                running_mean_window=o.running_mean_window, overwrite=o.overwrite, backends=o.backend, simulation_round=o.simulation_round, check=True), (variable, region, subregion, weights, season)))
 
         # wait for the jobs to finish to exit this script
         for j, (job, ids) in enumerate(jobs):
