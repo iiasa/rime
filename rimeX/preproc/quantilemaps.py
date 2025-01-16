@@ -241,33 +241,35 @@ def make_quantilemap_prediction(a, gmt, samples=100, seed=42, quantiles=[0.5, .0
     sampled_maps : xa.DataArray with dimensions year, sample
     """
     assert tuple(a.dims[:2]) == ("warming_level", "quantile"), f"Expected dimensions ('warming_level', 'quantile'), got {a.dims[:2]}"
-    interp = RegularGridInterpolator((a.warming_level.values, a.coords["quantile"].values), a.values, bounds_error=False)
     rng = np.random.default_rng(seed=seed)
 
     if clip:
         gmt = gmt.clip(lower=a.coords["warming_level"].values[0], upper=a.coords["warming_level"].values[-1])
 
-    # (re)sample GMT
     if mode == "deterministic":
         gmt_quants = equally_spaced_quantiles(samples)
         resampled_gmt = np.quantile(gmt.values, gmt_quants, axis=1).T
+
+        resampled_quantiles = equally_spaced_quantiles(samples)
+        rng.shuffle(resampled_quantiles)
+
     elif mode == "montecarlo":
         igmt = rng.integers(0, gmt.columns.size, size=samples)
         resampled_gmt = gmt.values[:, igmt]
+
+        iquantiles = rng.integers(0, a.coords["quantile"].size, size=resampled_gmt.shape)
+        resampled_quantiles = a.coords["quantile"].values[iquantiles]
+
     elif mode == "factorial":
-        resampled_gmt = gmt.values[:, :, np.newaxis].repeat(samples, axis=2).reshape(gmt.shape[0], -1)
-        samples = resampled_gmt.shape[1]
+        samples = gmt.shape[1] * a.coords["quantile"].size
+        resampled_gmt = gmt.values[:, :, None].repeat(a.coords["quantile"].size, axis=2).reshape(gmt.shape[0], -1)
+        resampled_quantiles = a.coords["quantile"].values[None, None, :].repeat(gmt.shape[0], axis=0).repeat(gmt.shape[1], axis=1).reshape(gmt.shape[0], -1)
+
     else:
         raise ValueError(f"Unknown mode {mode}")
 
-    # sample local impact distribution
-    # iquantiles = rng.integers(0, a.coords["quantile"].size, size=resampled_gmt.shape)
-    # resampled_quantiles = a.coords["quantile"].values[iquantiles]
-
-    resampled_quantiles = equally_spaced_quantiles(samples)
-    rng.shuffle(resampled_quantiles)
-
     # joint sampling of GMT and impact distribution
+    interp = RegularGridInterpolator((a.warming_level.values, a.coords["quantile"].values), a.values, bounds_error=False)
     sampled_maps = interp((resampled_gmt, resampled_quantiles))
 
     # create the output DataArray
@@ -331,6 +333,8 @@ def main():
     group.add_argument("--warming-levels", type=float, default=CONFIG.get("preprocessing.quantilemap_warming_levels"), nargs='+', help="All warming levels by default")
     group.add_argument("--quantile-bins", default=CONFIG["preprocessing.quantilemap_quantile_bins"], type=int, help="default: %(default)s")
     group.add_argument("--equiprobable-climate-models", action='store_true', help="Downweight models that are more frequent in the warming level selection")
+    # group.add_argument("--no-equiprobable-climate-models", action='store_false', dest="equiprobable_climate_models",
+    #                    help="Do not downweight models that are more frequent in the warming level selection")
 
     group = parser.add_argument_group('Indicator variable')
     all_variables = list(CONFIG["isimip.variables"]) + sorted(set(v.split(".")[0] for v in CONFIG["indicator"]))

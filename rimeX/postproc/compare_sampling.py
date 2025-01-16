@@ -68,13 +68,8 @@ def generate_comparison_data(indicator_name, gmt, region, subregion, season, wei
         all_data["deterministic"] = results
 
     if "factorial" in modes:
-        results_factorial = []
-        for s in samples:
-            result = make_quantilemap_prediction(impact_data, gmt, samples=s//gmt.shape[1], quantiles=[0.5, .05, .95], mode="factorial", clip=clip, **kw)
-            results_factorial.append(result)
-
-        results_factorial = xa.concat(results_factorial, dim=pd.Index((samples//gmt.shape[1])*gmt.shape[1], name="sample"))
-
+        results_factorial = make_quantilemap_prediction(impact_data, gmt, quantiles=[0.5, .05, .95], mode="factorial", clip=clip, **kw)
+        results_factorial = results_factorial.expand_dims(dim='sample').assign_coords(sample=[impact_data["quantile"].size * gmt.shape[1]])
         all_data["factorial"] = results_factorial
 
     if "montecarlo" in modes:
