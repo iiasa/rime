@@ -297,7 +297,7 @@ def get_indicator_units(variable):
             file = indicator.get_path(**indicator.simulations[0])
             logger.debug(f"Open {file} to find {variable} units")
             with xa.open_dataset(file, decode_times=False) as ds:
-                v = ds[indicator.ncvar]
+                v = ds[indicator.check_ncvar(ds)]
                 if hasattr(v, "units"):
                     units = v.units
                     logger.debug(f"{variable} units found: {units}")
