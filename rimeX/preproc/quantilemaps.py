@@ -14,7 +14,7 @@ from rimeX.config import CONFIG, config_parser
 from rimeX.logs import logger, log_parser
 from rimeX.stats import fast_quantile, fast_weighted_quantile
 from rimeX.datasets.download_isimip import Indicator, _matches
-from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory, get_model_frequencies
+from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory
 from rimeX.preproc.digitize import transform_indicator
 from rimeX.preproc.regional_average import get_all_regions, open_files
 
@@ -45,9 +45,6 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
     keywl = lambda r: r["warming_level"]
     wl_records = sorted(warming_levels.to_dict(orient="records"), key=keywl)
     logger.info(f"Collect quantile maps data for {indicator.name} | {season}. Warming levels {wl_records[0]['warming_level']} to {wl_records[-1]['warming_level']}")
-
-    if equiprobable_models:
-        model_frequencies = get_model_frequencies(warming_levels)
 
     collect = {}
 
@@ -132,9 +129,9 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                 assert "time" not in data.dims, (data.dims, data.shape)
 
                 # append the newly calculated data where it belongs
-                values, weights = collect.setdefault(wl, ([], []))
+                values, models = collect.setdefault(wl, ([], []))
                 values.append(data)
-                weights.append(1/model_frequencies[wl][key[0]] if equiprobable_models else 1)
+                models.append(key[0])
 
 
     logger.info(f"Compute quantiles for collected data {indicator.name} | {season}.")
@@ -155,7 +152,10 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
     # now re-organize the collected values by warming level and calculate the quantiles
     for i,wl in enumerate(tqdm.tqdm(warming_level_coords)):
 
-        values, weights = collect.pop(wl)
+        values, models = collect.pop(wl)
+
+        model_frequencies = {model: len(list(group)) for model, group in groupby(sorted(models))}
+        weights = np.array([1/model_frequencies[model] if equiprobable_models else 1 for model in models])
 
         samples = xa.concat(values, dim="sample")
         del values  # clear memory
