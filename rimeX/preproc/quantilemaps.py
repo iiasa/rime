@@ -30,7 +30,7 @@ def catchwarnings(func):
 def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                             quantile_bins=21, season="annual", running_mean_window=21,
                             projection_baseline=None, equiprobable_models=False,
-                            skip_transform=False, skip_nans=False, open_func_kwargs={}):
+                            skip_nans=False, open_func_kwargs={}):
 
 
     simulations = indicator.simulations
@@ -84,7 +84,7 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
             annual_mean = seasonal_sel.groupby("time.year").mean()
 
             # subtract the reference period or express as relative change
-            if indicator.transform and not skip_transform and projection_baseline is not None:
+            if indicator.transform and projection_baseline is not None:
                 y1, y2 = projection_baseline
                 dataref = annual_mean.sel(year=slice(y1, y2)).mean("year").load()
                 assert np.isfinite(dataref.values).any(), key
@@ -115,7 +115,7 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                 assert "year" not in data.dims, (data.dims, data.shape)
 
                 # subtract the reference period or express as relative change
-                if indicator.transform and not skip_transform:
+                if indicator.transform:
                     data = transform_indicator(data, indicator.name, dataref=dataref).load()
 
                 # assign metadata
@@ -147,6 +147,7 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                                         **{k:data.coords[k] for k in data.dims},
                                         },
                                       name=indicator.name,
+                                      attrs={"units": indicator.units},
                                       )
 
     # now re-organize the collected values by warming level and calculate the quantiles
@@ -305,7 +306,6 @@ def _loop(o, indicator, warming_levels, season, mode, open_func_kwargs, filepath
                                         running_mean_window=o.running_mean_window,
                                         projection_baseline=o.projection_baseline,
                                         equiprobable_models=o.equiprobable_climate_models,
-                                        skip_transform=o.skip_transform,
                                         skip_nans=o.skip_nans,
                                         open_func_kwargs=open_func_kwargs,
                                         )
@@ -399,7 +399,7 @@ def main():
     root_dir = Path(o.warming_level_file).parent
 
     for name in o.indicator:
-        indicator = Indicator.from_config(name)
+        indicator = Indicator.from_config(name, **{"transform": None} if o.skip_transform else {})
 
         for season in o.season:
             if indicator.frequency == "annual" and season != "annual":

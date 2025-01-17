@@ -114,7 +114,7 @@ frequency = "annual"
 custom = "rimeX.indicators:rx5day"
 transform = "baseline_change_percent"
 projection_baseline = [1995, 2014] # this also apply to ISIMIP2b
-# units = "mm"
+units = "mm"
 
 [indicator.wet_bulb_temperature]
 depends_on = ["tasmax", "hurs"]
@@ -134,7 +134,7 @@ depends_on_climatology = true
 frequency = "annual"
 custom = "rimeX.indicators:daily_temperature_variability"
 transform = "baseline_change_percent"
-# units = "°C"
+units = "°C"
 
 [indicator.number_of_wet_days]
 depends_on = ["pr"]
@@ -149,7 +149,7 @@ climatology_quantile = 0.999
 frequency = "annual"
 custom = "rimeX.indicators:extreme_daily_rainfall"
 transform = "baseline_change_percent"
-# units = "mm"
+units = "mm"
 
 [indicator.wet_bulb_temperature_q95]
 _copy = "wet_bulb_temperature"

@@ -280,44 +280,7 @@ def get_binned_isimip_file(variable, region, subregion, weights, season,
     return Path(root) / f"isimip_binned_data/{variable}/{region}/{subregion}/{weights}/{variable}_{region.lower()}_{subregion.lower()}_{season}_{weights.lower()}_{running_mean_window}-yrs{scenarioavg}{othertags}{ext}"
 
 
-def get_indicator_units(variable):
-
-    units = CONFIG.get(f"indicator.{variable}.units", "")
-    if units:
-        return units
-
-    if CONFIG.get(f"indicator.{variable}.transform") == "baseline_change_percent":
-        units = "%"
-    elif CONFIG.get(f"indicator.{variable}.units"):
-        units = CONFIG.get(f"indicator.{variable}.units")
-    else:
-        # file = get_files(variable, "*", "*", simulation_round=simulation_round)[0]
-        try:
-            indicator = Indicator.from_config(variable)
-            file = indicator.get_path(**indicator.simulations[0])
-            logger.debug(f"Open {file} to find {variable} units")
-            with xa.open_dataset(file, decode_times=False) as ds:
-                v = ds[indicator.check_ncvar(ds)]
-                if hasattr(v, "units"):
-                    units = v.units
-                    logger.debug(f"{variable} units found: {units}")
-
-                elif hasattr(v, "unit"):
-                    units = v.unit
-                    logger.debug(f"{variable} units found: {units}")
-
-                else:
-                    logger.warning(f"Cannot find units for {variable}")
-                    units = ""
-        except Exception as e:
-            logger.warning(e)
-            logger.warning(f"Cannot find units for {variable}. Leave empty.")
-            return ""
-
-    return units
-
-
-def get_binned_isimip_records(warming_levels, variable, region, subregion, weights, season, overwrite=False, backends=["csv"], simulation_round=None, check=False, **kw):
+def get_binned_isimip_records(warming_levels, variable, region, subregion, weights, season, overwrite=False, backends=["csv"], simulation_round=None, check=False, skip_transform=False, **kw):
     """ Same as bin_isimip_records but with cached I/O
     """
     supported_backend = ["csv", "feather", "parquet", "excel"]
@@ -346,14 +309,12 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
                 raise NotImplementedError(backend)
             return df.rename({"scenario":"experiment", "midyear": "year"}).to_dict("records")
 
-    indicator = Indicator.from_config(variable)
+    indicator = Indicator.from_config(variable, **{"transform": None} if skip_transform else {})
     indicator_data = load_regional_indicator_data(indicator, region, subregion, weights, season)
 
     if len(indicator_data) == 0:
         logger.warning(f"No indicator data for {variable} | {region} | {subregion} | {weights} | {season}.")
         return []
-
-    units = get_indicator_units(variable)
 
     all_data = bin_isimip_records(indicator_data, warming_levels, meta={
         "region": region,
@@ -361,7 +322,7 @@ def get_binned_isimip_records(warming_levels, variable, region, subregion, weigh
         "weights": weights,
         "season": season,
         "variable": variable,
-        "unit": units,
+        "unit": indicator.units,
         }, **kw)
 
     for file, backend in zip(binned_records_files, backends):
@@ -414,6 +375,7 @@ def main():
     group.add_argument("--season", nargs="+", default=list(CONFIG["preprocessing.seasons"]), choices=list(CONFIG["preprocessing.seasons"]))
     group.add_argument("--simulation-round", nargs="+", default=CONFIG["isimip.simulation_round"], help="default: %(default)s")
     group.add_argument("--projection-baseline", default=CONFIG["preprocessing.projection_baseline"], type=int, nargs=2, help="default: %(default)s")
+    group.add_argument("--skip-transform", action='store_true', help="do not apply transformation to the indicator data")
 
     group = parser.add_argument_group('Result')
     group.add_argument("--backend", nargs="+", default=CONFIG["preprocessing.isimip_binned_backend"], choices=["csv", "feather"])
@@ -447,7 +409,7 @@ def main():
             if CONFIG.get(f"indicator.{variable}.frequency", "monthly") == "annual" and season != "annual":
                 continue
             get_binned_isimip_records(warming_levels, variable, region, subregion, weights, season,
-                running_mean_window=o.running_mean_window, overwrite=o.overwrite, backends=o.backend, simulation_round=o.simulation_round, check=True)
+                running_mean_window=o.running_mean_window, overwrite=o.overwrite, backends=o.backend, simulation_round=o.simulation_round, check=True, skip_transform=o.skip_transform)
 
         parser.exit(0)
 

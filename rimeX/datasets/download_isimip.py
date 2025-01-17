@@ -5,7 +5,7 @@ from itertools import product, groupby, chain
 from pathlib import Path
 import argparse
 from typing import Optional, List, Union
-
+import xarray as xa
 from rimeX.tools import cdo, check_call
 from rimeX.config import CONFIG, config_parser
 from rimeX.logs import log_parser, setup_logger, logger
@@ -311,12 +311,43 @@ class Indicator:
         self._isimip_folder = isimip_folder
         self.comment = comment
         self.transform = transform  # this refers to the baseline period and is only accounted for later on in the emulator (misnamed...)
-
-        if not units and "percent" in transform:
-            units = "%"
-        self.units = units
+        self._units = units
         self.title = title
         self.projection_baseline = projection_baseline or CONFIG["preprocessing.projection_baseline"]
+
+    @property
+    def units(self):
+
+        if self.transform == "baseline_change_percent":
+            return "%"
+
+        if self._units:
+            return self._units
+
+        self._units = ""
+
+        try:
+            file = self.get_path(**self.simulations[0])
+            logger.debug(f"Open {file} to find {self.name} units")
+            with xa.open_dataset(file, decode_times=False) as ds:
+                v = ds[self.check_ncvar(ds)]
+                for attr in ["units", "unit"]:
+                    if attr in v.attrs:
+                        units = v.attrs[attr]
+                        logger.debug(f"{self.name} units found: {units}")
+                        self._units = units
+                        return self._units
+
+                logger.warning(f"Cannot find units for {self.name}")
+                return ""
+
+        except Exception as e:
+            logger.warning(e)
+            logger.warning(f"Cannot find units for {self.name}. Leave empty.")
+            return ""
+
+        return units
+
 
     @property
     def ncvar(self):
