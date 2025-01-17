@@ -33,7 +33,7 @@ for name in ${names[@]}; do
 	# # weight=latWeight
 	rime-download-isimip -i $name --remove-daily
 	rime-pre-region --weight $weight -i $name --cpus 100
-	rime-pre-quantilemap --weight $weight -i $name --regional-no-admin --regional --equi --skip-nans --cpus 200
-	rime-pre-digitize -i $name --weights latWeight --cpus 200 --all-subregions
-	rime-pre-quantilemap --weight $weight -i $name --map --equi --map-chunk 180 --skip-nans --warming-levels 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0 5.5 6.0 6.5 --quantile-bins 11
+	rime-pre-quantilemap --weight $weight -i $name --regional --skip-nans --cpus 200
+	rime-pre-quantilemap -i $name --map --map-chunk 180 --skip-nans --warming-levels 1.0 1.2 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0 5.5 6.0 6.5 --quantile-bins 11
+	rime-pre-digitize -i $name --weights latWeight --cpus 200 --all-subregions   # old CSV files (not used)
 done

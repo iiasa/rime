@@ -332,9 +332,11 @@ def main():
     group.add_argument("--warming-level-file", default=None)
     group.add_argument("--warming-levels", type=float, default=CONFIG.get("preprocessing.quantilemap_warming_levels"), nargs='+', help="All warming levels by default")
     group.add_argument("--quantile-bins", default=CONFIG["preprocessing.quantilemap_quantile_bins"], type=int, help="default: %(default)s")
-    group.add_argument("--equiprobable-climate-models", action='store_true', help="Downweight models that are more frequent in the warming level selection")
-    # group.add_argument("--no-equiprobable-climate-models", action='store_false', dest="equiprobable_climate_models",
-    #                    help="Do not downweight models that are more frequent in the warming level selection")
+
+    egroup = group.add_mutually_exclusive_group()
+    egroup.add_argument("--no-equiprobable-climate-models", action='store_false', dest="equiprobable_climate_models",
+                       help="Do not downweight models that are more frequent in the warming level selection")  # equiprobable climate models by default when --no-equi... comes before --equi definition
+    egroup.add_argument("--equiprobable-climate-models", action='store_true', help=argparse.SUPPRESS)
 
     group = parser.add_argument_group('Indicator variable')
     all_variables = list(CONFIG["isimip.variables"]) + sorted(set(v.split(".")[0] for v in CONFIG["indicator"]))
