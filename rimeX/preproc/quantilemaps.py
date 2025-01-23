@@ -29,8 +29,31 @@ def catchwarnings(func):
 # @catchwarnings
 def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                             quantile_bins=21, season="annual", running_mean_window=21,
-                            projection_baseline=None, equiprobable_models=False,
-                            skip_nans=False, open_func_kwargs={}):
+                            projection_baseline=None, equiprobable_models=True,
+                            skip_nans=False, open_func_kwargs={}, warming_level_simulation_key=None,
+                            wl_to_indicator_mapping = {"experiment": "climate_scenario", "model": "climate_forcing"},
+                            ):
+    """
+    Compute quantile maps for a given indicator and warming levels
+
+    Parameters
+    ----------
+    indicator : Indicator instance or any object with the following attributes:
+        - name : str
+        - simulations : list of dict that contains the keys to identify a unique model simulation
+        - get_path : function to get the path to the data file `get_path(**simulation, region=None, regional=False)` (see `Indicator.get_path` for details)
+        - transform : attribute transform the indicator data (optional)
+        - ncvar: the netCDF variable name
+        - check_ncvar : a method that takes a netCDF dataset as input and returns ncvar if it is present, or a case-insensitive match
+
+    ...
+    warming_level_simulation_key : list of str
+        keys to identify the warming level simulation (default: ["model", "experiment", "ensemble"] if "ensemble" is present in the warming level file otherwise ["model", "experiment"] )
+
+    wl_to_indicator_mapping : dict
+        mapping between the warming level file and the indicator simulations (default: {"experiment": "climate_scenario", "model": "climate_forcing"})
+
+    """
 
 
     simulations = indicator.simulations
@@ -38,34 +61,51 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
     w = running_mean_window // 2
     quants = np.linspace(0, 1, quantile_bins)
 
-    warming_levels["model"] = warming_levels["model"].map(str.lower)
-    warming_levels["experiment"] = warming_levels["experiment"].map(str.lower)
-    warming_level_by_model_exp = warming_levels.set_index(["model", "experiment"])
+    if warming_level_simulation_key is None:
+        required_keys = ["model", "experiment"]
+        optional_keys = ["ensemble", "realization"]
+        warming_level_simulation_key = required_keys + [k for k in optional_keys if k in warming_levels.columns]
+
+    # use lower-case to avoid case issues
+    warming_levels = warming_levels.copy()
+    for key in warming_level_simulation_key:
+        assert key in warming_levels.columns, f"Missing key {key} in warming levels"
+        warming_levels[key] = warming_levels[key].map(str.lower)
+
+    # group the warming levels by simulation key (model, scenario, ensemble)
+    key_func_wl = lambda r: tuple(r[k] for k in warming_level_simulation_key)
+    warming_level_by_model_exp = {k: list(group) for k, group in groupby(sorted(warming_levels.to_dict(orient="records"), key=key_func_wl), key=key_func_wl)}
 
     keywl = lambda r: r["warming_level"]
     wl_records = sorted(warming_levels.to_dict(orient="records"), key=keywl)
     logger.info(f"Collect quantile maps data for {indicator.name} | {season}. Warming levels {wl_records[0]['warming_level']} to {wl_records[-1]['warming_level']}")
 
+    # any situation where that could be relaxed to r.get(...) ? (e.g. ensemble is present in the warming level file but not in the indicator simulations)
+    key_func = lambda r: tuple(r[wl_to_indicator_mapping.get(k, k)] for k in warming_level_simulation_key)
+
     collect = {}
 
-    key_file = lambda r: (r["climate_forcing"], r["climate_scenario"], r.get("model"))
+    for simu in tqdm.tqdm(simulations):
 
-    for key, group in tqdm.tqdm(groupby(sorted(simulations, key=key_file), key=key_file), total=len(simulations)):
-        group = list(group)
-        assert len(group) == 1, group
-        simu = group[0]
-        if key[1] == "historical":
+        key = key_func(simu)
+        key_meta = dict(zip([wl_to_indicator_mapping.get(k, k) for k in warming_level_simulation_key], key))
+
+        if simu[wl_to_indicator_mapping.get("experiment", "experiment")] == "historical":
             continue # this will be covered by the projection
-        simu_historical = {**simu, "climate_scenario": "historical"}
+
+        simu_historical = {**simu, wl_to_indicator_mapping.get("experiment", "experiment"): "historical"}
 
         # check if that simulaion is required
-        try:
-            extract = warming_level_by_model_exp.loc[key[0]].loc[key[1]][["year", "warming_level"]]
-        except KeyError:
-            logger.debug(f"No warming level calculation for {key[0]} {key[1]}: Skip")
+        if key not in warming_level_by_model_exp:
+            logger.debug(f"No warming level calculation for {key_meta}: Skip")
             continue
 
+        wl_data_points = warming_level_by_model_exp[key]
+
         with open_files(indicator, [simu_historical, simu] if "historical" in all_experiments else [simu], **open_func_kwargs) as data:
+
+            # this is used for model-weighting
+            model = simu[wl_to_indicator_mapping.get("model", "model")]
 
             # only select relevant months
             if season is not None:
@@ -84,10 +124,10 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
             annual_mean = seasonal_sel.groupby("time.year").mean()
 
             # subtract the reference period or express as relative change
-            if indicator.transform and projection_baseline is not None:
+            if getattr(indicator, "transform", None) and projection_baseline is not None:
                 y1, y2 = projection_baseline
                 dataref = annual_mean.sel(year=slice(y1, y2)).mean("year").load()
-                assert np.isfinite(dataref.values).any(), key
+                assert np.isfinite(dataref.values).any(), key_meta
 
             # make 21-year running mean
             # we require at least half full to have non-nans values
@@ -95,18 +135,17 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
             # assert np.isfinite(data_smooth.values).any(), key
 
             # collect all time slices required for the warming levels
-            assert len(extract) > 0, f"No warming levels for {key[0]} {key[1]}"
+            for wl_data_point in wl_data_points:
 
-            for i in range(len(extract)):
-                wl = extract.iloc[i]["warming_level"]
-                year = int(extract.iloc[i]["year"])
+                year = wl_data_point["year"]
+                wl = wl_data_point["warming_level"]
 
                 # mean over required time-slice
                 # data = seasonal_sel.sel(time=slice(str(year-w),str(year+w))).mean("time").load()
                 try:
                     data = data_smooth.sel(year=year).load()
                 except KeyError:
-                    logger.warning(f"{indicator.name} | Missing year {year} in {key}")
+                    logger.warning(f"{indicator.name} | Missing year {year} in {key_meta}")
                     continue
 
                 if not np.isfinite(data.values).any():
@@ -115,23 +154,24 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                 assert "year" not in data.dims, (data.dims, data.shape)
 
                 # subtract the reference period or express as relative change
-                if indicator.transform:
+                if getattr(indicator, "transform", None):
                     data = transform_indicator(data, indicator.name, dataref=dataref).load()
 
                 # assign metadata
                 data = data.assign_coords({
                     "warming_level": wl,
-                    "model": key[0],
-                    "experiment": key[1],
                     "midyear": year,
+                    **key_meta
                     })
 
                 assert "time" not in data.dims, (data.dims, data.shape)
 
+                # experiment = simu[wl_to_indicator_mapping.get("scenario", "scenario")]
+
                 # append the newly calculated data where it belongs
                 values, models = collect.setdefault(wl, ([], []))
                 values.append(data)
-                models.append(key[0])
+                models.append(model)
 
 
     logger.info(f"Compute quantiles for collected data {indicator.name} | {season}.")
@@ -147,7 +187,7 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
                                         **{k:data.coords[k] for k in data.dims},
                                         },
                                       name=indicator.name,
-                                      attrs={"units": indicator.units},
+                                      attrs={"units": getattr(indicator, "units", "")},
                                       )
 
     # now re-organize the collected values by warming level and calculate the quantiles
