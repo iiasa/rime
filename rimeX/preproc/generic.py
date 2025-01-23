@@ -82,6 +82,21 @@ class GenericIndicator:
 
     def get_path(self, region=None, regional=False, regional_weight="latWeight", **simulation_specifiers):
         """returns the local file path for this indicator
+
+        Parameters
+        ----------
+        **simulation_specifiers is the destructured dict that could be any item from the `simulations` list
+
+        For ISIMIP simulations, it contains `climate_forcing`, `climate_scenario` and sometimes `model` (for the impact model)
+        For CMIP simulations that would be `model` (? CHECK), `experiment`, etc...
+
+        The default is to return the gridded lon / lat file.
+
+        Regional files are obtained by specifying `region` and `regional_weight`
+
+        if region=... is specified, return a file that contains all sub-regions of the specified region
+
+        if regional=True passed, return a file that contain all regions (but no sub-regions) -- we normally don't use this for the CIE
         """
         raise NotImplementedError()
 
