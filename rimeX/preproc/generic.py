@@ -1,17 +1,15 @@
 from pathlib import Path
 from rimeX.config import CONFIG
 from rimeX.logs import logger
+import xarray as xa
 
 
 class GenericIndicator:
     """Proposed generic Indicator class to inherit from
     """
 
-    def __init__(self, name, simulations, ncvar=None,
-                 spatial_aggregation=None,
-                 comment=None, transform=None,
-                 units="", title="", projection_baseline=None,
-                 **kwargs):
+    def __init__(self, name, simulations, frequency="monthly",
+                 transform=None, units="", title="", projection_baseline=None, ncvar=None, **kwargs):
 
         if len(kwargs):
             logger.debug(f"Unused arguments: {kwargs}")
@@ -19,121 +17,139 @@ class GenericIndicator:
         vars(self).update(kwargs)
 
         self.name = name
-        self.simulations = simulations
-        self.ncvar = ncvar or name
-
-        self.spatial_aggregation = spatial_aggregation or CONFIG["preprocessing.regional.weights"]
-
-        self.comment = comment
+        self._simulations = simulations
         self.transform = transform  # this refers to the baseline period and is only accounted for later on in the emulator (misnamed...)
+        self.projection_baseline = projection_baseline
         self._units = units
         self.title = title
-        self.projection_baseline = projection_baseline or CONFIG["preprocessing.projection_baseline"]
+        self.frequency = frequency
+        self._ncvar = ncvar
 
     @property
     def units(self):
-
-        if self.transform == "baseline_change_percent":
+        if "percent" in self.transform:
             return "%"
+        return self._units
 
-        if self._units:
-            return self._units
+    @property
+    def ncvar(self):
+        return getattr(self, "_ncvar", None) or self.name
 
-        self._units = ""
-        try:
-            file = self.get_path(**self.simulations[0])
-            import xarray as xa
-            with xa.open_dataset(file, decode_times=False) as ds:
-                v = ds[self.check_ncvar(ds)]
-                for attr in ["units", "unit"]:
-                    if attr in v.attrs:
-                        units = v.attrs[attr]
-                        logger.debug(f"{self.name} units found: {units}")
-                        self._units = units
-                        return self._units
-
-                logger.warning(f"Cannot find units for {self.name}")
-                return ""
-
-        except Exception as e:
-            logger.warning(e)
-            logger.warning(f"Cannot find units for {self.name}. Leave empty.")
-            return ""
-
-        return units
-
-    def check_ncvar(self, ds):
-        """ we found an instance of sfcWind instead of sfcwind...
-        """
-        if self.ncvar not in ds:
-            i = [k.lower() for k in ds].index(self.ncvar.lower())
-            return list(ds)[i]
-        return self.ncvar
+    @property
+    def simulations(self):
+        return self._simulations
 
     @classmethod
     def from_config(cls, name, **kw):
-        cfg = CONFIG.get(f"indicator.{name}", {})
-        copy = cfg.pop("_copy", None)
-        if copy:
-            cfg = {**CONFIG.get(f"indicator.{copy}", {}), **cfg}
-        if name not in CONFIG["indicator"] and name not in CONFIG["isimip.variables"]:
-            raise ValueError(f"Unknown indicator {name}")
-        return cls(name, **{**cfg, **kw})
+        raise NotImplementedError()
 
-    def get_path(self, region=None, regional=False, regional_weight="latWeight", **simulation_specifiers):
-        """returns the local file path for this indicator
+    def get_path(self, region: str = None, regional: bool = False, regional_weight: str = "latWeight", **simulation_specifiers) -> Path:
+        """Returns the local file path for this indicator
+
+        The default is to return the gridded lon / lat file.
+        Regional-average files are obtained by specifying `region` or `regional`, as well as `regional_weight` (See below)
 
         Parameters
         ----------
-        **simulation_specifiers is the destructured dict that could be any item from the `simulations` list
+        region : str, optional
+            If provided, the file path is for the region. The designated file contains all sub-regions for that region.
 
-        For ISIMIP simulations, it contains `climate_forcing`, `climate_scenario` and sometimes `model` (for the impact model)
-        For CMIP simulations that would be `model` (? CHECK), `experiment`, etc...
+        regional : bool, optional
+            If True, return a file that contain all regions (but no sub-regions) -- we normally don't use this for the CIE
 
-        The default is to return the gridded lon / lat file.
+        regional_weight : str, optional
+            The weight for the region. The default is "latWeight". Other possible weights include "gdp2005" and "pop2005".
 
-        Regional files are obtained by specifying `region` and `regional_weight`
+        **simulation_specifiers
+            The destructured dict that could be any item from the `simulations` list.
+            For ISIMIP simulations, it contains `climate_forcing`, `climate_scenario` and sometimes `model` (for the impact model)
+            For CMIP simulations that would be `model` (? CHECK), `experiment`, etc...
 
-        if region=... is specified, return a file that contains all sub-regions of the specified region
-
-        if regional=True passed, return a file that contain all regions (but no sub-regions) -- we normally don't use this for the CIE
+        Returns
+        -------
+        a Path object
         """
         raise NotImplementedError()
 
 
-        # # one file for each region including admin boundaries
-        # if region:
-        #     assert regional_weight is not None
-        #     regionfolders = [regional_weight, region]
-        #     region_tag = f"_{region}_{regional_weight}".lower()
-        #     ext = ".csv"
+    ## The methods below could be separate functions. They are intended to be as general as possible
+    ## To define a custom load function, it is possible to override the open_simulation method method
+    ## Or the lower-level functions _load_csv_file and _load_nc_file
 
-        # # one file for all regions
-        # elif regional:
-        #     region_tag = f"_regional_{regional_weight}".lower()
-        #     regionfolders = []
-        #     ext = ".csv"
+    def _load_csv_file(self, filepath, metadata={}) -> xa.DataArray:
+        import pandas as pd
+        df = pd.read_csv(filepath, index_col=0)
 
-        # # lon-lat file
-        # else:
-        #     region_tag = f""
-        #     regionfolders = []
-        #     ext = ".nc"
+        return xa.DataArray(df,
+                # make sure we have dates as index (and not just years, cause the calling function needs dates)
+                coords=[pd.to_datetime(df.index.astype(str)), df.columns],
+                dims=["time", "region"]).assign_attrs(metadata)
 
-        # # otherwise create a new path separate from the ISIMIP database
-        # basename = f"{climate_forcing.lower()}{ensemble_tag}_{climate_scenario}_{self.name}{region_tag}_{self.frequency}{timeslice_tag}"+ext
-        # return Path(self.folder, self.name, climate_scenario, climate_forcing.lower(), *regionfolders, basename)
-
-
-    def open_variable(self, region=None, regional=False, regional_weight="latWeight", **simulation_specifiers):
-        """ that could be used to hide ncvar and check_ncvar
+    def _check_ncvar(self, ds):
         """
-        filepath = self.get_path(region, regional, regional_weight, **simulation_specifiers)
+        it can be tricky to find the proper netCDF file name : ncvar and indicator names generally differ,
+        and at some point during the processing it may have been renamed from ncvar to indicator name.
+        Even ncvar has been found to vary across source ISIMIP files (e.g. sfcwind and sfcWind)
+        """
+        ncvars = list(ds)
+
+        # simple when only one non-coordinate variable is present:
+        if len(ncvars) == 1:
+            return ncvars[0]
+
+        # otherwise use the indicator name or the ncvar attribute, if any
+        candidate_vars = [self.name]
+        if hasattr(self, "ncvar"):
+            candidate_vars.append(self.ncvar)
+
+        # compare case-insensitive names (e.g. sfcwind and sfcWind exist)
+        candidate_vars = [v.lower() for v in  candidate_vars]
+        ncvars_lower = [v.lower() for v in  ncvars]
+
+        intersection = set(ncvars_lower).intersection(candidate_vars)
+        if not intersection:
+            raise ValueError(f"Could not find a variable for {self.name} in {ncvars}")
+        elif len(intersection) > 1:
+            raise ValueError(f"Multiple variables found for {self.name} in {ncvars}: {intersection}")
+        assert len(intersection) == 1
+
+        v = intersection.pop()
+        return ncvars[ncvars_lower.index(v)]
+
+    def _load_nc_file(self, filepath, metadata={}, ncvar=None, xarray_kwargs={}) -> xa.DataArray:
+        """ Basic function that is superceded in download_isimip.Indicator because it does not account for variation in ncvar (e.g. sfcwind and sfcWind)
+        """
+        from rimeX.compat import open_dataset
+        with open_dataset(filepath, **xarray_kwargs) as ds:
+            if ncvar is None:
+                ncvar = self._check_ncvar(ds)
+            return ds[ncvar].assign_attrs(metadata)
+
+    def open_simulation(self, xarray_kwargs={}, isel={}, **simu) -> xa.DataArray:
+        """ That's the main function
+        """
+        filepath = self.get_path(**simu)
+        metadata = dict(units=self.units, **simu)
 
         if filepath.suffix == ".csv":
-            import pandas as pd
-            return pd.read_csv(filepath).to_xarray()
+            a = self._load_csv_file(filepath, metadata=metadata)
 
-        from rimeX.compat import open_dataset
-        with open_dataset(filepath) as ds:
-            return ds[self.check_ncvar(ds)]
+        elif filepath.suffix == ".nc":
+            a = self._load_nc_file(filepath, xarray_kwargs=xarray_kwargs, metadata=metadata)
+
+        else:
+            raise NotImplementedError(filepath.suffix)
+
+        if isel:
+            a = a.isel(**isel)
+
+        # number of wet days had issues with timedelta64[ns] dtype
+        if a.dtype.name.startswith("timedelta"):
+            a.values = a.values.astype("timedelta64[D]").astype(float)
+
+        # Here for back-compatibility we keen the original ncvar name in the DataArray
+        # That way the regional average files are consistent with the cdo-produced gridded lat/lon files
+        # (besides strange occurrences of sfcwind and sfcWind)
+        a = a.rename(self.ncvar)
+
+        return a

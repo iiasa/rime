@@ -140,74 +140,10 @@ def calc_regional_averages(v, ds_mask, name=None, **kwargs):
         return _calc_regional_averages_unfiltered(v, ds_mask, name=name, **kwargs)
 
 
-def open_map_files(indicator, simus, **isel):
-    files = [indicator.get_path(**simu) for simu in simus]
-    ds = open_mfdataset(files, combine='nested', concat_dim="time", **isel)
-    return ds[indicator.check_ncvar(ds)]
-
 def get_all_subregion(region, weights="latWeight"):
     with open_region_mask(region, weights) as mask:
         return list(mask)
 
-def _dataframe_to_dataarray(df, **kwargs):
-    return xa.DataArray(df,
-            # make sure we have dates as index (and not just years, cause the calling function needs dates)
-            coords=[pd.to_datetime(df.index.astype(str)), df.columns],
-            dims=["time", "region"], **kwargs,
-            )
-
-def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admin=False, **kwargs):
-    """This function loads data from the CSV files as computed in the preprocessing step
-    """
-    if regions is None:
-        regions = get_all_regions()
-
-    # if admin averages are not required, load the regional averages excluding the admin boundaries,
-    # which are in a sperate file for convenience
-    if not admin:
-        file = indicator.get_path(**simu, regional=True, regional_weight=weights)
-        df = pd.read_csv(file, index_col=0)
-        return _dataframe_to_dataarray(df, name=indicator.ncvar)
-
-    files = [indicator.get_path(**simu, region=region, regional_weight=weights, **kwargs)
-                                    for region in regions]
-
-    n0 = len(files)
-
-    missing_regions = [region for (f, region) in zip(files, regions) if not f.exists()]
-    missing_files = [f for f in files if not f.exists()]
-    files = [f for f in files if f.exists()]
-    if len(files) == 0:
-        print("missing files", missing_files)
-        raise FileNotFoundError(f"No regional files found for {indicator.name} {simu['climate_forcing']} {simu['climate_scenario']} {simu.get('model')}")
-
-    if len(files) < n0:
-        logger.debug(f"Missing regions {missing_regions}")
-        logger.debug(f"Only {len(files)} out of {n0} files exist. Skip the missing ones.")
-
-    if admin:
-        dfs = pd.concat([pd.read_csv(file, index_col=0) for file in files], axis=1)  # concat region and their admin boundaries
-        # remove duplicate columns
-        dfs = dfs.loc[:, ~dfs.columns.duplicated()]
-    else:
-        dfs = pd.concat([pd.read_csv(file, index_col=0).iloc[:, :1] for file in files], axis=1)  # only use the first column (full region)
-
-    return _dataframe_to_dataarray(dfs, name=indicator.ncvar)
-
-
-def open_regional_files(indicator, simus, **kwargs):
-    return xa.concat([_open_regional_data(indicator, simu, **kwargs)
-                      for simu in simus], dim="time") # historical and future
-
-
-def open_files(indicator, simus, regional=False, isel={}, **kwargs):
-    if regional:
-        data = open_regional_files(indicator, simus, **kwargs)
-    else:
-        data = open_map_files(indicator, simus)
-    if isel:
-        data = data.isel(isel)
-    return data
 
 def _check_file(file):
     if not file.exists():
@@ -248,35 +184,30 @@ def _crunch_regional_averages(indicator, simu, o, write_merged_regional_averages
 
     # calculate regional averages including admin boundaries
     if todo:
-        file = indicator.get_path(**simu)
-        with open_dataset(file) as ds:
+        with indicator.open_simulation(**simu) as v:
+            v = v.load()
 
-            v = ds[indicator.check_ncvar(ds)].load()
+        for weight in o.weights:
+            for region in o.region:
 
-            if v.dtype.name.startswith("timedelta"):
-                v.values = v.values.astype("timedelta64[D]").astype(float)
+                try:
+                    mask = get_region_masks(region, weight)
+                except FileNotFoundError:
+                    continue
 
-            for weight in o.weights:
-                for region in o.region:
+                ofile_csv = indicator.get_path(**simu, region=region, regional_weight=weight)
+                if not o.overwrite and ofile_csv.exists():
+                    continue
 
-                    try:
-                        mask = get_region_masks(region, weight)
-                    except FileNotFoundError:
-                        continue
+                # keep the same netCDF name as the original file, for consistency with lat/lon file
+                res = calc_regional_averages(v, mask, name=indicator.ncvar)
 
-                    ofile_csv = indicator.get_path(**simu, region=region, regional_weight=weight)
-                    if not o.overwrite and ofile_csv.exists():
-                        continue
+                # write to CSV
+                ofile_csv.parent.mkdir(exist_ok=True, parents=True)
+                res.to_pandas().to_csv(ofile_csv)
 
-                    # keep the same netCDF name as the original file, for consistency with lat/lon file
-                    res = calc_regional_averages(v, mask, name=indicator.ncvar)
-
-                    # write to CSV
-                    ofile_csv.parent.mkdir(exist_ok=True, parents=True)
-                    res.to_pandas().to_csv(ofile_csv)
-
-            # clean-up memory
-            del v
+        # clean-up memory
+        del v
 
     # make a combined file with all regions but without admin boundaries
     if write_merged_regional_averages:
