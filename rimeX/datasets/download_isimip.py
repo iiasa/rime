@@ -9,7 +9,7 @@ import xarray as xa
 from rimeX.tools import cdo, check_call
 from rimeX.config import CONFIG, config_parser
 from rimeX.logs import log_parser, setup_logger, logger
-
+from rimeX.preproc.generic import GenericIndicator
 
 client = None
 
@@ -269,7 +269,7 @@ def _are_consecutive_time_slices(time_slices):
     return all(t2[0] == t1[1]+1 for t1, t2 in zip(time_slices[:-1], time_slices[1:]))
 
 
-class Indicator:
+class Indicator(GenericIndicator):
 
     def __init__(self, name, frequency="monthly", folder=None,
                  spatial_aggregation=None, depends_on=None, expr=None, time_aggregation=None, isimip_meta=None,
@@ -327,9 +327,7 @@ class Indicator:
         self._units = ""
 
         try:
-            file = self.get_path(**self.simulations[0])
-            logger.debug(f"Open {file} to find {self.name} units")
-            with xa.open_dataset(file, decode_times=False) as ds:
+            with self.open_variable(**self.simulations[0], xarray_kwargs={"decode_times":False}) as v:
                 v = ds[self.check_ncvar(ds)]
                 for attr in ["units", "unit"]:
                     if attr in v.attrs:
@@ -352,14 +350,6 @@ class Indicator:
     @property
     def ncvar(self):
         return self.isimip_meta.get("variable", self.name)
-
-    def check_ncvar(self, ds):
-        """ we found an instance of sfcWind instead of sfcwind...
-        """
-        if self.ncvar not in ds:
-            i = [k.lower() for k in ds].index(self.ncvar.lower())
-            return list(ds)[i]
-        return self.ncvar
 
     @classmethod
     def from_config(cls, name, **kw):
@@ -482,6 +472,7 @@ class Indicator:
         # otherwise create a new path separate from the ISIMIP database
         basename = f"{climate_forcing.lower()}{ensemble_tag}_{climate_scenario}_{self.name}{region_tag}_{self.frequency}{timeslice_tag}"+ext
         return Path(self.folder, self.name, climate_scenario, climate_forcing.lower(), *regionfolders, basename)
+
 
     def download_climatology(self, climate_forcing, dry_run=False, **ensemble_specifiers):
         """compute the climatology of the base variables the indicator depends on

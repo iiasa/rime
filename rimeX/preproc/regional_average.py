@@ -141,20 +141,17 @@ def calc_regional_averages(v, ds_mask, name=None, **kwargs):
 
 
 def open_map_files(indicator, simus, **isel):
-    files = [indicator.get_path(**simu) for simu in simus]
-    ds = open_mfdataset(files, combine='nested', concat_dim="time", **isel)
-    return ds[indicator.check_ncvar(ds)]
+    """That's a useful to load e.g. [historical, future] simulations and concatenate them along the time dimension.
+    """
+    variables = [indicator.open_simulation(**simu) for simu in simus]
+    if isel:
+        variables = [v.isel(**isel) for v in variables]
+    return xa.concat(variables, combine="nested", concat_dim="time")
+
 
 def get_all_subregion(region, weights="latWeight"):
     with open_region_mask(region, weights) as mask:
         return list(mask)
-
-def _dataframe_to_dataarray(df, **kwargs):
-    return xa.DataArray(df,
-            # make sure we have dates as index (and not just years, cause the calling function needs dates)
-            coords=[pd.to_datetime(df.index.astype(str)), df.columns],
-            dims=["time", "region"], **kwargs,
-            )
 
 def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admin=False, **kwargs):
     """This function loads data from the CSV files as computed in the preprocessing step
@@ -165,18 +162,18 @@ def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admi
     # if admin averages are not required, load the regional averages excluding the admin boundaries,
     # which are in a sperate file for convenience
     if not admin:
-        file = indicator.get_path(**simu, regional=True, regional_weight=weights)
-        df = pd.read_csv(file, index_col=0)
-        return _dataframe_to_dataarray(df, name=indicator.ncvar)
+        return indicator.open_simulation(**simu, regional=True, regional_weight=weights)
 
     files = [indicator.get_path(**simu, region=region, regional_weight=weights, **kwargs)
                                     for region in regions]
 
     n0 = len(files)
 
+    regions = [region for (f, region) in zip(files, regions) if f.exists()]
     missing_regions = [region for (f, region) in zip(files, regions) if not f.exists()]
+
     missing_files = [f for f in files if not f.exists()]
-    files = [f for f in files if f.exists()]
+    # files = [f for f in files if f.exists()]
     if len(files) == 0:
         print("missing files", missing_files)
         raise FileNotFoundError(f"No regional files found for {indicator.name} {simu['climate_forcing']} {simu['climate_scenario']} {simu.get('model')}")
@@ -185,14 +182,8 @@ def _open_regional_data(indicator, simu, regions=None, weights="latWeight", admi
         logger.debug(f"Missing regions {missing_regions}")
         logger.debug(f"Only {len(files)} out of {n0} files exist. Skip the missing ones.")
 
-    if admin:
-        dfs = pd.concat([pd.read_csv(file, index_col=0) for file in files], axis=1)  # concat region and their admin boundaries
-        # remove duplicate columns
-        dfs = dfs.loc[:, ~dfs.columns.duplicated()]
-    else:
-        dfs = pd.concat([pd.read_csv(file, index_col=0).iloc[:, :1] for file in files], axis=1)  # only use the first column (full region)
-
-    return _dataframe_to_dataarray(dfs, name=indicator.ncvar)
+    dfs = [indicator.open_simulation(**simu, region=region, regional_weight=weights, **kwargs) for region in regions]
+    return xa.concat(dfs, dim="region")
 
 
 def open_regional_files(indicator, simus, **kwargs):
