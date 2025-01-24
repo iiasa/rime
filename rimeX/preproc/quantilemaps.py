@@ -13,10 +13,10 @@ import xarray as xa
 from rimeX.config import CONFIG, config_parser
 from rimeX.logs import logger, log_parser
 from rimeX.stats import fast_quantile, fast_weighted_quantile, equally_spaced_quantiles
-from rimeX.datasets.download_isimip import Indicator, _matches
+from rimeX.datasets.download_isimip import Indicator
 from rimeX.preproc.warminglevels import get_warming_level_file, get_root_directory
 from rimeX.preproc.digitize import transform_indicator
-from rimeX.preproc.regional_average import get_all_regions, open_files
+from rimeX.preproc.regional_average import get_all_regions
 
 def catchwarnings(func):
     def wrapped(*args, **kwargs):
@@ -38,13 +38,17 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
 
     Parameters
     ----------
-    indicator : Indicator instance or any object with the following attributes:
+    indicator : GenericIndicator instance or any object with the following attributes:
         - name : str
         - simulations : list of dict that contains the keys to identify a unique model simulation
-        - get_path : function to get the path to the data file `get_path(**simulation, region=None, regional=False)` (see `Indicator.get_path` for details)
+        - open_simulation : function that returns a xa.DataArray via `open_simulation(**simulation, **open_func_kwargs)`
+            where:
+                - simulation represents any item from the `simulations` list defined above
+                - open_func_kwargs are additional keyword arguments passed to `make_quantile_map_array`
+                At the time of writing, open_func_kwargs determiend whether gridded or regional-average files are to be loaded
+                and consists of `region=None, regional_weight="latWeight"` (and also an unused `regional=False` keyword argument)
+                (see `GenericIndicator.open_simulation` for details)
         - transform : attribute transform the indicator data (optional)
-        - ncvar: the netCDF variable name
-        - check_ncvar : a method that takes a netCDF dataset as input and returns ncvar if it is present, or a case-insensitive match
 
     ...
     warming_level_simulation_key : list of str
@@ -102,8 +106,12 @@ def make_quantile_map_array(indicator:Indicator, warming_levels:pd.DataFrame,
 
         wl_data_points = warming_level_by_model_exp[key]
 
-        with open_files(indicator, [simu_historical, simu] if "historical" in all_experiments else [simu], **open_func_kwargs) as data:
+        if "historical" in all_experiments:
+            data = xa.concat([indicator.open_simulation(**simu_, **open_func_kwargs) for simu_ in [simu_historical, simu]], dim="time")
+        else:
+            data = indicator.open_simulation(**simu, **open_func_kwargs)
 
+        with data:
             # this is used for model-weighting
             model = simu[wl_to_indicator_mapping.get("model", "model")]
 
@@ -235,7 +243,7 @@ def chunked(dim, size, total_size):
 
 
 def get_filepath(name, season="annual", root_dir=None, suffix="", region=None, regional=False,
-                 regional_weights="latWeight", regions=None, **kw):
+                 regional_weight="latWeight", regions=None, **kw):
     if root_dir is None:
         root_dir = get_root_directory(**kw)
     if regional:
@@ -246,9 +254,9 @@ def get_filepath(name, season="annual", root_dir=None, suffix="", region=None, r
             else:
                 parts.append(f"r{len(regions)}")
             suffix += f"_{'-'.join(parts)}"
-        return root_dir / "quantilemaps_regional" / name / f"{name}_{season}_noadmin_{regional_weights.lower()}{suffix}.nc"
+        return root_dir / "quantilemaps_regional" / name / f"{name}_{season}_noadmin_{regional_weight.lower()}{suffix}.nc"
     elif region is not None:
-        return root_dir / "quantilemaps_regional_admin" / name / region / f"{name}_{season}_{region.lower()}_{regional_weights.lower()}{suffix}.nc"
+        return root_dir / "quantilemaps_regional_admin" / name / region / f"{name}_{season}_{region.lower()}_{regional_weight.lower()}{suffix}.nc"
     else:
         return root_dir / "quantilemaps" / name / f"{name}_{season}_quantilemaps{suffix}.nc"
 
@@ -453,27 +461,17 @@ def main():
 
                 if mode == "regional":
                     # in that mode loop over all regions and create a file for each, including admin boundaries
-                    open_func_kwargs_loop = [ dict(
-                                                regional=True,
-                                                admin=True,
-                                                weights=o.weight,
-                                                regions=[region],
-                                            ) for region in o.region]
+                    open_func_kwargs_loop = [ dict( region=region, regional_weight=o.weight, ) for region in o.region ]
 
                     files = [get_filepath(indicator.name, season, root_dir=root_dir, suffix=o.suffix,
-                                            region=region, regional_weights=o.weight) for region in o.region]
+                                            region=region, regional_weight=o.weight) for region in o.region]
 
                 else:
                     # in these modes, create a single file for all regions, without admin boundaries, or a single file for the lat/lon maps
                     regional = mode in ["regional_no_admin", "regional"]
-                    open_func_kwargs_loop = [dict(
-                                                regional=regional,
-                                                admin=False,
-                                                weights=o.weight,
-                                                regions=o.region,
-                                            )]
+                    open_func_kwargs_loop = [dict( regional=regional, regional_weight=o.weight, )]
                     files = [get_filepath(indicator.name, season, root_dir=root_dir, suffix=o.suffix,
-                                        regional=regional, regional_weights=o.weight, regions=o.region)]
+                                        regional=regional, regional_weight=o.weight)]
 
                 if len(open_func_kwargs_loop) > 1 and o.cpus and o.cpus > 1:
                     import concurrent.futures

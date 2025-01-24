@@ -328,7 +328,6 @@ class Indicator(GenericIndicator):
 
         try:
             with self.open_variable(**self.simulations[0], xarray_kwargs={"decode_times":False}) as v:
-                v = ds[self.check_ncvar(ds)]
                 for attr in ["units", "unit"]:
                     if attr in v.attrs:
                         units = v.attrs[attr]

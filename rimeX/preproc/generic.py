@@ -9,7 +9,7 @@ class GenericIndicator:
     """
 
     def __init__(self, name, simulations, frequency="monthly",
-                 transform=None, units="", title="", projection_baseline=None, **kwargs):
+                 transform=None, units="", title="", projection_baseline=None, ncvar=None, **kwargs):
 
         if len(kwargs):
             logger.debug(f"Unused arguments: {kwargs}")
@@ -23,12 +23,17 @@ class GenericIndicator:
         self._units = units
         self.title = title
         self.frequency = frequency
+        self._ncvar = ncvar
 
     @property
     def units(self):
         if "percent" in self.transform:
             return "%"
         return self._units
+
+    @property
+    def ncvar(self):
+        return getattr(self, "_ncvar", None) or self.name
 
     @property
     def simulations(self):
@@ -71,17 +76,14 @@ class GenericIndicator:
     ## To define a custom load function, it is possible to override the open_simulation method method
     ## Or the lower-level functions _load_csv_file and _load_nc_file
 
-    @staticmethod
-    def _load_csv_file(filepath, metadata={}) -> xa.DataArray:
+    def _load_csv_file(self, filepath, metadata={}) -> xa.DataArray:
         import pandas as pd
         df = pd.read_csv(filepath, index_col=0)
-        metadata = metadata.copy()
-        name = metadata.pop("name", None)
 
         return xa.DataArray(df,
                 # make sure we have dates as index (and not just years, cause the calling function needs dates)
                 coords=[pd.to_datetime(df.index.astype(str)), df.columns],
-                dims=["time", "region"], name=name).assign_attrs(metadata)
+                dims=["time", "region"]).assign_attrs(metadata)
 
     def _check_ncvar(self, ds):
         """
@@ -101,8 +103,8 @@ class GenericIndicator:
             candidate_vars.append(self.ncvar)
 
         # compare case-insensitive names (e.g. sfcwind and sfcWind exist)
-        candidate_vars = map(str.lower, candidate_vars)
-        ncvars_lower = map(str.lower, ncvars)
+        candidate_vars = [v.lower() for v in  candidate_vars]
+        ncvars_lower = [v.lower() for v in  ncvars]
 
         intersection = set(ncvars_lower).intersection(candidate_vars)
         if not intersection:
@@ -121,18 +123,33 @@ class GenericIndicator:
         with open_dataset(filepath, **xarray_kwargs) as ds:
             if ncvar is None:
                 ncvar = self._check_ncvar(ds)
-            return ds[ncvar].rename(self.name).assign_attrs(metadata)
+            return ds[ncvar].assign_attrs(metadata)
 
-    def open_simulation(self, xarray_kwargs={}, **simu) -> xa.DataArray:
+    def open_simulation(self, xarray_kwargs={}, isel={}, **simu) -> xa.DataArray:
         """ That's the main function
         """
         filepath = self.get_path(**simu)
-        metadata = dict(units=self.units, name=self.name, **simu)
+        metadata = dict(units=self.units, **simu)
 
         if filepath.suffix == ".csv":
-            return self._load_csv_file(filepath, metadata=metadata)
+            a = self._load_csv_file(filepath, metadata=metadata)
 
-        if filepath.suffix == ".nc":
-            return self._load_nc_file(filepath, xarray_kwargs=xarray_kwargs, metadata=metadata)
+        elif filepath.suffix == ".nc":
+            a = self._load_nc_file(filepath, xarray_kwargs=xarray_kwargs, metadata=metadata)
 
-        raise NotImplementedError(filepath.suffix)
+        else:
+            raise NotImplementedError(filepath.suffix)
+
+        if isel:
+            a = a.isel(**isel)
+
+        # number of wet days had issues with timedelta64[ns] dtype
+        if a.dtype.name.startswith("timedelta"):
+            a.values = a.values.astype("timedelta64[D]").astype(float)
+
+        # Here for back-compatibility we keen the original ncvar name in the DataArray
+        # That way the regional average files are consistent with the cdo-produced gridded lat/lon files
+        # (besides strange occurrences of sfcwind and sfcWind)
+        a = a.rename(self.ncvar)
+
+        return a
