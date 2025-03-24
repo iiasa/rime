@@ -146,7 +146,7 @@ def table_impacts_gwl(
     ssp = dfx[ssp_meta_col]  # <<< isue here?
 
     # Need to check SSP integration here.
-    if ssp not in ["SSP1", "SSP2", "SSP3"]:
+    if ssp not in ["SSP1", "SSP2", "SSP3", "SSP4", "SSP5"]:
         ssp = "SSP2"
 
     # tt.loc[tt.value<gwl_below, 'value'] = gwl_below

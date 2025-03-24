@@ -14,12 +14,12 @@ import re
 import xarray as xr
 import time
 
-# try:
+try:
 
-ab_present = True
-# except:
-#     print("alive_progress not installed")
-#     ab_present = False
+    ab_present = True
+except:
+    print("alive_progress not installed")
+    ab_present = False
 
 # start = time.time()
 
@@ -40,22 +40,18 @@ years = list(range(yr_start, yr_end + 1))
 os.chdir(wdtable_input)
 files = glob.glob(table_output_format.replace("|", "*"))
 
+indicator_subset = ['cdd', 'dri', 'dri_qtot', 'iavar', 'iavar_qtot',
+                    'hw_95_3', 'hw_95_5', 'hw_95_7', 'hw_95_10',
+                    'hw_97_3', 'hw_97_5', 'hw_97_7', 'hw_97_10',
+                    'hw_99_3', 'hw_99_5', 'hw_99_7', 'hw_99_10',
+                    'hwd_95_3', 'hwd_95_5', 'hwd_95_7', 'hwd_95_10',
+                    'hwd_97_3', 'hwd_97_5', 'hwd_97_7', 'hwd_97_10',
+                    'hwd_99_3', 'hwd_99_5', 'hwd_99_7', 'hwd_99_10',
+                    'pr_r10', 'pr_r20', 'pr_r95p', 'pr_r99p', 'sdii',
+                    'seas', 'seas_qtot', 'sdd_c', 'sdd_c_24p0', 'sdd_c_20p0',
+                    'sdd_c_18p3', 'tr20', 'wsi']
 
-# indicator_subset = ['cdd','dri','ia_var_qtot',]#
-# indicator_subset = ['seas_qtot','tr20','wsi'] #'heatwave','precip','sdd_24p0',
-# indicator_subset = ['sdd_20p0']
-# indicator_subset = ['heatwave']
-# if indicator_subset:
-# files = [str for str in files if any(sub in str for sub in indicator_subset)]
-
-# files = files[0:3]
-# files = files[2:4]
-files = files[4:5]  # heatwav & iavar
-# files = files[5:10]
-# files = files[10:12]
-# files = files[12:15]
-# files = files[15:]
-
+files = [str for str in files if any(sub in str for sub in indicator_subset)]
 
 indicators = []
 
@@ -72,6 +68,8 @@ for i, ind in enumerate(zip(indicators, files)):
     print(ind)
     istart = time.time()
     dfin = pyam.IamDataFrame(f"{wdtable_input}{ind[1]}")
+    dfin = dfin.filter(model='Climate Solutions', variable='*|50.0th Percentile')
+    
 
     if ind[0] == "heatwave":
         hws = ["hw_95_10*", "hw_99_5*"]
@@ -83,12 +81,12 @@ for i, ind in enumerate(zip(indicators, files)):
         stems = [x.split("|")[0] for x in dfin.variable]
         subs1 = []
         subs = [
-            "|Exposure|Land area",
-            "|Exposure|Population",
-            "|Exposure|Population|%",
-            "|Hazard|Absolute|Land area weighted",
-            "|Hazard|Absolute|Population weighted",
-            "|Hazard|Risk score|Population weighted",
+            "|Exposure|Land area|50.0th Percentile",
+            "|Exposure|Population|50.0th Percentile",
+            "|Exposure|Population|%|50.0th Percentile",
+            "|Hazard|Absolute|Land area weighted|50.0th Percentile",
+            "|Hazard|Absolute|Population weighted|50.0th Percentile",
+            "|Hazard|Risk score|Population weighted|50.0th Percentile",
         ]
         for x in list(set(stems)):
             for i in subs:
@@ -109,6 +107,7 @@ for i, ind in enumerate(zip(indicators, files)):
 
     df[["SSP", "GWL"]] = df.scenario.str.split("_", expand=True)
     df["GWL"] = df["GWL"].str.replace("p", ".").astype("float")
+    df["variable"] = df["variable"].str.replace("|50.0th Percentile", "")
 
     # df.drop(columns=['model', 'scenario'], inplace=True)
 
