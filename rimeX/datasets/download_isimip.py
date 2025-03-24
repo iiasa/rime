@@ -159,15 +159,21 @@ def aggregate_time(time_aggregation, input_file, output_file, frequency="monthly
     take a 10-year netcdf file with daily values, and output a monthly values
     instead, with mean, max, min or cumulative values.
     """
-    if frequency != "monthly":
-        raise NotImplementedError("Only monthly frequency is supported for now")
+    
+    if frequency != "monthly" and frequency != "daily":
+        raise NotImplementedError("Only monthly and daily frequency is supported for now")
 
-    if time_aggregation in ("mean", "avg", "", None):
-        cdo(f'monavg {input_file} {output_file}', dry_run=dry_run)
-    elif time_aggregation in ("max", "min", "sum"):
-        cdo(f'mon{time_aggregation} {input_file} {output_file}', dry_run=dry_run)
-    else:
-        raise ValueError(f"Unknown time aggregation {time_aggregation}")
+    if frequency == "monthly": 
+        if time_aggregation in ("mean", "avg", "", None):
+            cdo(f'monavg {input_file} {output_file}', dry_run=dry_run)
+        elif time_aggregation in ("max", "min", "sum"):
+            cdo(f'mon{time_aggregation} {input_file} {output_file}', dry_run=dry_run)
+        else:
+            raise ValueError(f"Unknown time aggregation {time_aggregation}")
+    if frequency == 'daily' and input_file != output_file:
+        import os
+        os.rename(input_file, output_file)
+    
 
 
 def download(path, folder=None, queue=False, overwrite=False, remove_zip=True, dry_run=False):
@@ -275,7 +281,7 @@ class Indicator(GenericIndicator):
                  spatial_aggregation=None, depends_on=None, expr=None, time_aggregation=None, isimip_meta=None,
                  shell=None, custom=None,
                  db=None, isimip_folder=None, comment=None, transform=None, year_min=None, units="", title="", projection_baseline=None,
-                 depends_on_climatology=False, climatology_quantile=False,
+                 depends_on_climatology=False, climatology_quantile=False, climatology_manual = False,
                  **kwargs):
 
         self.name = name
@@ -303,6 +309,7 @@ class Indicator(GenericIndicator):
         self.depends_on = depends_on
         self.depends_on_climatology = depends_on_climatology
         self.climatology_quantile = climatology_quantile
+        self.climatology_manual = climatology_manual
         self.spatial_aggregation = spatial_aggregation or CONFIG["preprocessing.regional.weights"]
         self.time_aggregation = time_aggregation
         if isinstance(db, list):
@@ -492,9 +499,13 @@ class Indicator(GenericIndicator):
                 cat = f"cdo timpctl,{self.climatology_quantile*100} {cattedinput} {filepath_min} {filepath_max} {filepath}"
                 # cat = f"cdo timpctl,{self.climatology_quantile*100} {cattedinput} -timmin {cattedinput} -timmax {cattedinput} {{output}}"
                 indicator.download("historical", climate_forcing, dry_run=dry_run, cat=cat, output_file=filepath, **ensemble_specifiers)
+            elif self.climatology_manual: 
+                filepath = Path(str(filepath_base) + ".climatology")
+                cat = f'cdo -cat {{input}} {{output}}'
+                indicator.download("historical", climate_forcing, dry_run=dry_run, cat=cat, output_file=filepath, **ensemble_specifiers)   
             else:
                 filepath = Path(str(filepath_base) + ".climatology")
-                cat = f"cdo ymonmean -cat {{input}} {{output}}"
+                cat = f"cdo ymonmean -cat [{{input}}] {{output}}"
                 indicator.download("historical", climate_forcing, dry_run=dry_run, cat=cat, output_file=filepath, **ensemble_specifiers)
             yield filepath
 
