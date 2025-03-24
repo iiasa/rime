@@ -31,7 +31,7 @@ region = "COUNTRIES"  # 'R10' or 'COUNTRIES'
 table_output_format = f"table_output_|_{region}.csv"
 
 
-yr_start = 2010
+yr_start = 2020
 yr_end = 2100
 
 
