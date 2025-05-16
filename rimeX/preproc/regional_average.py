@@ -97,8 +97,11 @@ def _calc_regional_averages_unfiltered(v, ds_mask, name=None, reindex=True):
     v : xarray.DataArray (will be reindexed onto ds_mask)
     ds_mask : xarray.Dataset of binary masks (the regions)
     """
-    assert v.dims == ("time", "lat", "lon") # no need to be more general here
-
+    assert set(v.dims) == set(("time", "lat", "lon")) # no need to be more general here
+    
+    if v.dims != ("time", "lat", "lon"): 
+        v = v.transpose("time", "lat", "lon")
+    
     if reindex:
         # at the time of writing, the mask dataset is defined on a local grid
         # so we need to extract the larger dataset onto that local grid
