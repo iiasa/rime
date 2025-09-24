@@ -14,7 +14,6 @@ import numpy as np
 import pandas as pd
 import xarray as xa
 from typing import List
-from dask.diagnostics import ProgressBar
 
 from rimeX.logs import logger, log_parser, setup_logger
 from rimeX.config import CONFIG, config_parser
@@ -29,7 +28,7 @@ import numpy as np
 from scipy.stats import genextreme
 from scipy.optimize import minimize
 import math
-import dask.array as da
+#import dask.array as da
 from multiprocessing import Pool, RawArray
 from functools import partial
 import multiprocessing as mp 
@@ -50,13 +49,12 @@ def get_all_regions():
     return sorted(o.name for o in Path(CONFIG["preprocessing.regional.masks_folder"]).glob("*") if not dir_is_empty(o) and not dir_is_empty(o / "masks"))
 
 
-def fit_nonstationary_gev(values, gmt):
+def fit_nonstationary_gev_rxNday(values, gmt):
     """Fit GEV distribution dependent on GMT to values and gmt  
 
     Args:
         values (np.array): GEV distributed values
         gmt (np.array): GMT levels when the values where recorded
-
     Raises:
         RuntimeError: GMT fit doesn't work
 
@@ -108,9 +106,123 @@ def fit_nonstationary_gev(values, gmt):
     
     return result.x
 
+def fit_nonstationary_gev_tempBaseMu(values, gmt):
+    """Fit GEV distribution dependent on GMT to values and gmt  
+
+    Args:
+        values (np.array): GEV distributed values
+        gmt (np.array): GMT levels when the values where recorded
+    Raises:
+        RuntimeError: GMT fit doesn't work
+
+    Returns:
+        tuple: parameters of GMT dependent GEV that fit best to the values 
+    """    
+    # Fit stationary GEV for initial parameters
+    c_initial, mu_initial, sigma_initial = genextreme.fit(values)
+    xi_initial = -c_initial  # Convert SciPy's c to ξ
+
+    # Initial parameters: [a0, a1, b0, b1, xi]
+    initial_params = np.array([
+        1, mu_initial, sigma_initial, xi_initial        # a0, a1 (location parameters)
+         # b0, b1 (log-scale parameters)
+                      # ξ (shape parameter)
+    ])
+
+    # Negative log-likelihood function
+    def neg_log_likelihood(params):
+        """Return neg log likelihood values for current parameters
+
+        Args:
+            params (tuple): the four parameters for our non-stationary GEV
+
+        Returns:
+            float: neg log likelihood value from trying to reproduce our values with a GEV described by the paras
+        """        
+        alpha, mu0, sigma0, xi = params
+        
+        #CAUTION this use of alpha is only guerenteed to not be stupid for precipitation indicators - will have to figure out for other indicators 
+        mu = mu0 + alpha * gmt/mu0
+        sigma = sigma0 
+        
+        z = (values - mu) / sigma
+
+        # Check support condition: 1 + ξ*z > 0 for all data points
+        if np.any(1 + xi * z <= 0):
+            return np.inf  # Return infinity if invalid
+
+        # Compute log-likelihood using SciPy's GEV (c = -ξ)
+        log_pdfs = genextreme.logpdf(values, c=-xi, loc=mu, scale=sigma)
+        return -np.sum(log_pdfs)
+
+    # Optimize parameters
+    result = minimize(neg_log_likelihood, initial_params, method='Nelder-Mead', options={'maxfev': 5000, 'maxiter': 5000})  # Increase these values)
+
+    if not result.success:
+        raise RuntimeError(f"Optimization failed: {result.message}")
+    
+    return result.x
+
+def fit_nonstationary_gev_tempBaseMuSigma(values, gmt):
+    """Fit GEV distribution dependent on GMT to values and gmt  
+
+    Args:
+        values (np.array): GEV distributed values
+        gmt (np.array): GMT levels when the values where recorded
+    Raises:
+        RuntimeError: GMT fit doesn't work
+
+    Returns:
+        tuple: parameters of GMT dependent GEV that fit best to the values 
+    """    
+    # Fit stationary GEV for initial parameters
+    c_initial, mu_initial, sigma_initial = genextreme.fit(values)
+    xi_initial = -c_initial  # Convert SciPy's c to ξ
+
+    # Initial parameters: [a0, a1, b0, b1, xi]
+    initial_params = np.array([
+        1, 1, mu_initial, sigma_initial, xi_initial        # a0, a1 (location parameters)
+         # b0, b1 (log-scale parameters)
+                      # ξ (shape parameter)
+    ])
+
+    # Negative log-likelihood function
+    def neg_log_likelihood(params):
+        """Return neg log likelihood values for current parameters
+
+        Args:
+            params (tuple): the four parameters for our non-stationary GEV
+
+        Returns:
+            float: neg log likelihood value from trying to reproduce our values with a GEV described by the paras
+        """        
+        alpha, beta, mu0, sigma0, xi = params
+        
+        #CAUTION this use of alpha is only guerenteed to not be stupid for precipitation indicators - will have to figure out for other indicators 
+        mu = mu0 + alpha * gmt/mu0
+        sigma = sigma0 + beta*gmt/sigma0
+        
+        z = (values - mu) / sigma
+
+        # Check support condition: 1 + ξ*z > 0 for all data points
+        if np.any(1 + xi * z <= 0):
+            return np.inf  # Return infinity if invalid
+
+        # Compute log-likelihood using SciPy's GEV (c = -ξ)
+        log_pdfs = genextreme.logpdf(values, c=-xi, loc=mu, scale=sigma)
+        return -np.sum(log_pdfs)
+
+    # Optimize parameters
+    result = minimize(neg_log_likelihood, initial_params, method='Nelder-Mead', options={'maxfev': 5000, 'maxiter': 5000})  # Increase these values)
+
+    if not result.success:
+        raise RuntimeError(f"Optimization failed: {result.message}")
+    
+    return result.x
 
 
-def get_return_period(alpha, mu0, sigma0, xi, warming_levels, return_periods):
+
+def get_return_period( mu0, sigma0, xi,alpha, beta, warming_levels, return_periods, indicator_name):
     """_summary_
 
     Args:
@@ -127,13 +239,29 @@ def get_return_period(alpha, mu0, sigma0, xi, warming_levels, return_periods):
 
     return_periods = 1-1/return_periods
     out = np.zeros([warming_levels.size, return_periods.size])
+    xi = -xi
     
     for i,warming_level in enumerate(warming_levels): 
         
-        mu = mu0 * np.exp(alpha * warming_level/mu0)
-        sigma = sigma0 * np.exp(alpha * warming_level/mu0)
+        if indicator_name in ['rx1day','rx5day']:
         
-        out[i,:] = genextreme.ppf(return_periods, c=-xi, loc=mu, scale=sigma)
+            mu = mu0 * np.exp(alpha * warming_level/mu0)
+            sigma = sigma0 * np.exp(alpha * warming_level/mu0)
+            
+        
+        elif indicator_name in ['HImax', 'spei_gamma_12_min']: 
+            
+            mu = mu0 + alpha * warming_level / mu0
+            sigma = sigma0
+            
+        
+        elif indicator_name in ['TXx']: 
+            
+            mu = mu0 + alpha * warming_level / mu0
+            sigma = sigma0 + beta * warming_level / sigma0
+           
+        
+        out[i,:] = genextreme.ppf(return_periods, c=xi, loc=mu, scale=sigma)
         
 
     return out
@@ -150,7 +278,7 @@ def process_cell_GEV_fitting_and_evaluation(lat_idx, lon_idx, region_idx):
     Returns:
         np.array: numpy array including all return periods; dimension: (warming_levels_out.size, return_periods_out.size) 
     """    
-    global shared_values, shared_gmt, n_time, n_lat, n_lon, n_regions, shared_warming_levels_out, shared_return_periods_out
+    global shared_values, shared_gmt, n_time, n_lat, n_lon, n_regions, shared_warming_levels_out, shared_return_periods_out, indicator_name
     # Access shared arrays
 
     if region_idx is not None:
@@ -171,12 +299,40 @@ def process_cell_GEV_fitting_and_evaluation(lat_idx, lon_idx, region_idx):
     
     
     try:
-        params = fit_nonstationary_gev(values_1d, gmt_1d)
-        alpha, mu0, sigma0, xi = tuple(params)
-        return_periods = get_return_period(alpha, mu0, sigma0, xi, warming_levels_out, return_periods_out)
+        if indicator_name in ['rx1day','rx5day']:
+            params = fit_nonstationary_gev_rxNday(values_1d, gmt_1d)
+            alpha, mu0, sigma0, xi = tuple(params)
+            beta = 0
+            
+            return_periods = get_return_period(mu0, sigma0, xi, alpha, beta, warming_levels_out, return_periods_out, indicator_name)
+           
+        elif indicator_name in ['HImax', 'spei_gamma_12_min']:
+            
+            if indicator_name == 'spei_gamma_12_min': 
+                values_1d = - values_1d
+            
+            params = fit_nonstationary_gev_tempBaseMu(values_1d, gmt_1d)
+            alpha, mu0, sigma0, xi = tuple(params)
+            beta = 0
+            
+     
+            return_periods = get_return_period(mu0, sigma0, xi, alpha, beta, warming_levels_out, return_periods_out, indicator_name)
+            
+            if indicator_name == 'spei_gamma_12_min': 
+                return_periods = -return_periods
+            
+        elif indicator_name in ['TXx']:
+            params = fit_nonstationary_gev_tempBaseMuSigma(values_1d, gmt_1d)
+            alpha, beta, mu0, sigma0, xi = tuple(params)
+            
+            return_periods = get_return_period(mu0, sigma0, xi, alpha, beta, warming_levels_out, return_periods_out, indicator_name)
+
      
         return return_periods 
+    
     except Exception as e:
+        
+        print(e)
    
         return np.full([warming_levels_out.size, return_periods_out.size], np.nan)
 
@@ -208,10 +364,10 @@ def make_return_period_array(
     """    
     
     # Need to have global variables to be accessable from each paralel process
-    global shared_values, shared_gmt, n_time, n_lat, n_lon, shared_warming_levels_out, shared_return_periods_out, n_regions #params, n_params, warming_levels_out, return_periods_out,
+    global shared_values, shared_gmt, n_time, n_lat, n_lon, shared_warming_levels_out, shared_return_periods_out, n_regions, indicator_name #params, n_params, warming_levels_out, return_periods_out,
     
     n_regions = None
-    
+    indicator_name = indicator.name
     simulations = []
 
     #Filter simulations to only consider simulations from one model (and impact model)
@@ -301,8 +457,10 @@ def make_return_period_array(
     coords=dict(
         time=np.array(all_simulations.time.values),
     ))
-    
-    all_simulations_dataarray = all_simulations.transpose('time','lat','lon', 'bnds')[indicator.name].values
+    if 'bnds' in all_simulations.dims.keys():
+        all_simulations_dataarray = all_simulations.transpose('time','lat','lon', 'bnds')[indicator.name].values
+    else: 
+        all_simulations_dataarray = all_simulations.transpose('time','lat','lon')[indicator.name].values
     warming_levels_all_simulations_dataarray = warming_levels_all_simulations['warming_level'].values
     
     
@@ -367,7 +525,9 @@ def make_return_period_array_regional_averages(
     """    
     
     # Need to have global variables to be accessable from each paralel process
-    global shared_values, shared_gmt, n_time, n_lat, n_lon, n_regions, shared_warming_levels_out, shared_return_periods_out #params, n_params, warming_levels_out, return_periods_out,
+    global shared_values, shared_gmt, n_time, n_lat, n_lon, n_regions, shared_warming_levels_out, shared_return_periods_out, indicator_name #params, n_params, warming_levels_out, return_periods_out,
+    
+    indicator_name = indicator.name
      
     simulations = []
 
@@ -507,7 +667,7 @@ def main():
     ALL_MODELS = get_models(simulation_round=CONFIG['isimip.simulation_round'])
     DEFAULT_OUTPUT_RETURN_PERIODS = [2,3,4,5,6,7,8,9,10,15,20,25] + [30 + i*10 for i in range(8)] + [150] + [200 + i*100 for i in range(9)]
     DEFAULT_OUTPUT_WARMING_LEVELS = [0.0 + 0.1 * i for i in range(151)]
-    all_variables = ['rx5day']
+    all_variables = ['rx5day','rx1day','TXx','HImax', 'spei_gamma_12_min']
     parser = argparse.ArgumentParser(epilog="""""", formatter_class=argparse.RawDescriptionHelpFormatter, parents=[log_parser, config_parser, isimip_parser])
     # parser.add_argument("-v", "--variable", nargs='+', default=[], choices=CONFIG["isimip.variables"])
     parser.add_argument("-i", "--indicator", nargs='+', default=[], choices=all_variables, help="includes additional, secondary indicator with specific monthly statistics")
@@ -529,9 +689,6 @@ def main():
 
     o = parser.parse_args()
     setup_logger(o)
-
-    if o.regions is None: 
-        o.regions = ALL_REGIONS
     
     for indicator_name in o.indicator:
 
@@ -550,6 +707,11 @@ def main():
         
         elif 'model' not in indicator.simulations[0].keys(): 
             o.impact_models = None
+          
+        # all regions with data for the aggregation type available
+        if o.regions is None: 
+            o.regions = sorted(_.name for _ in Path(f'{CONFIG["isimip.climate_impact_explorer"]}/indicators/{indicator.name}/historical/{o.models[0].lower()}/{o.aggregation}/').glob("*") if not dir_is_empty(_))
+
     
         for model in o.models: 
 

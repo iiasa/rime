@@ -526,9 +526,9 @@ class Indicator(GenericIndicator):
 
 
         # special case where the indicator is exactly the same as the ISIMIP variable
-        if not regional and self.frequency == meta["time_step"] and self.depends_on is None and len(time_slices) == 1 and region is None and ext == ".nc":
-            with contextlib.redirect_stdout(io.StringIO()):
-                return download(result['files'][0]['path'], folder=self.db.download_folder, dry_run=True)
+        #if not regional and self.frequency == meta["time_step"] and self.depends_on is None and len(time_slices) == 1 and region is None and ext == ".nc":
+            #with contextlib.redirect_stdout(io.StringIO()):
+                #return download(result['files'][0]['path'], folder=self.db.download_folder, dry_run=True)
 
         # otherwise create a new path separate from the ISIMIP database
         basename = f"{climate_forcing.lower()}{ensemble_tag}_{climate_scenario}_{self.name}{region_tag}_{self.frequency}{timeslice_tag}"+ext
@@ -571,12 +571,12 @@ class Indicator(GenericIndicator):
         """
         if self.depends_on_climatology:
             clim_files = list(self.download_climatology(climate_forcing, dry_run=dry_run, **ensemble_specifiers))
-
+        
         if output_file is None:
             output_file = self.get_path(climate_scenario, climate_forcing, **ensemble_specifiers)
         else:
             output_file = Path(output_file)
-
+        print(output_file)
         if not overwrite and output_file.exists():
             return output_file
 
@@ -603,7 +603,7 @@ class Indicator(GenericIndicator):
         time_slice_files = []
         previous_input_files = None
         previous_output_file = None
-
+        
         for t, time_slice in enumerate(time_slices):
 
             # temporary monthly (or else time-aggregated) file
@@ -730,7 +730,7 @@ class Indicator(GenericIndicator):
                 # this will be removed after the next pass because some functions need the previous_input_files
                 _mark_for_cleanup(input_daily_files)
 
-
+        
         # custom concatenation of time slice files (e.g. for quantiles)
         if cat is not None:
             if not dry_run:
@@ -740,8 +740,10 @@ class Indicator(GenericIndicator):
             check_call(catcmd, dry_run=dry_run)
             if self.frequency != "daily" or remove_daily:
                 _mark_for_cleanup(time_slice_files)
-
+        
         elif len(time_slice_files) == 1:
+            if not dry_run:
+                output_file.parent.mkdir(parents=True, exist_ok=True)
             if time_slice_files[0] != output_file:
                 check_call(f"mv '{time_slice_files[0]}' '{output_file}'", dry_run=dry_run)
 
