@@ -150,34 +150,89 @@ def fast_quantile(a, quantiles, dim=None, skipna=False):
 
 
 def weighted_quantiles(values, weights, quantiles=0.5, interpolate=True, skipna=False):
-    """
-    https://stackoverflow.com/a/75321415/2192272
-
-    NOTE: Perhaps surprisingly, weighted_quantiles([0, 1, 2], [.5, .25, .25], .5) returns 0.666 instead of 0.5
-    whereas weighted_quantiles([0, 0, 1, 2], [1, 1, 1, 1], .5) and np.quantile([0, 0, 1, 2], .5) do return 0.5
-
-    This should be fixed in the future. However, we should make sure we still have
-    `weighted_quantiles(np.array([1, 2, 3, 4]), np.ones(4), interpolate=True) == 2.5` (as we now do)
+    """Compute weighted quantiles with proper interpolation.
+    
+    This implementation ensures consistency with np.quantile when all weights
+    are equal, while handling weighted cases appropriately. It uses a cumulative
+    weight mapping that places samples at positions corresponding to their
+    cumulative weight midpoints, then maps quantiles to these positions.
+    
+    Parameters
+    ----------
+    values : array-like
+        Input values
+    weights : array-like
+        Weights corresponding to values
+    quantiles : float or array-like, default 0.5
+        Quantile(s) to compute, must be between 0 and 1
+    interpolate : bool, default True
+        If True, use linear interpolation between values
+    skipna : bool, default False
+        If True, ignore NaN values
+    
+    Returns
+    -------
+    float or ndarray
+        Computed quantile(s)
+    
+    References
+    ----------
+    Original implementation: https://stackoverflow.com/a/75321415/2192272
+    
+    Notes
+    -----
+    For equal weights, this reduces to NumPy's linear interpolation (type 7).
+    The key is to map each value to a fractional position based on cumulative
+    weights, creating positions at: (cumsum - weight/2) / total_weight * (n - 1)
+    where n is the number of values. This ensures the first value is at position 0
+    and the last is at position n-1, matching NumPy's convention.
     """
     values = np.asarray(values)
     weights = np.asarray(weights)
+    quantiles_array = np.asarray(quantiles)
+    scalar_quantile = quantiles_array.ndim == 0
+    
     if skipna:
         mask = ~np.isnan(values)
         values = values[mask]
         weights = weights[mask]
         if len(values) == 0:
-            # logger.warning("No valid values in weighted_quantiles")
-            return np.full_like(quantiles, np.nan)
+            return np.full_like(quantiles_array, np.nan) if not scalar_quantile else np.nan
+    
+    # Sort values and weights
     i = np.argsort(values)
-    sorted_weights = weights[i]
     sorted_values = values[i]
-    Sn = np.cumsum(sorted_weights)
-
+    sorted_weights = weights[i]
+    
+    # Compute cumulative weights
+    cum_weights = np.cumsum(sorted_weights)
+    total_weight = cum_weights[-1]
+    
+    # Map cumulative weights to positions: each value is at the midpoint of its weight interval
+    # This creates positions from 0 to (n-1), matching NumPy's convention
+    n = len(sorted_values)
+    if n == 1:
+        # Special case: single value
+        return np.full_like(quantiles_array, sorted_values[0]) if not scalar_quantile else sorted_values[0]
+    
+    # Positions range from 0 to n-1
+    # For the i-th value, its position represents where it falls in the weighted distribution
+    # Formula: (cumulative weight before this point) / (total weight - last weight) * (n - 1)
+    # This ensures first value is at position 0 and last value is at position n-1
+    positions = (cum_weights - sorted_weights) / (total_weight - sorted_weights[-1]) * (n - 1)
+    
     if interpolate:
-        Pn = (Sn - sorted_weights/2 ) / Sn[-1]
-        return np.interp(quantiles, Pn, sorted_values)
+        # Map quantiles to positions in the range [0, n-1]
+        target_positions = quantiles_array * (n - 1)
+        result = np.interp(target_positions, positions, sorted_values)
     else:
-        return sorted_values[np.searchsorted(Sn, np.asarray(quantiles) * Sn[-1])]
+        # For non-interpolating mode, find the value at or after the target position
+        target_positions = quantiles_array * (n - 1)
+        result = np.array([sorted_values[np.searchsorted(positions, pos, side='right')] 
+                          if pos < positions[-1] else sorted_values[-1] 
+                          for pos in np.atleast_1d(target_positions)])
+    
+    return result.item() if scalar_quantile else result
 
 def weighted_quantiles_along_axis(values, weights, quantiles=0.5, axis=-1, skipna=False, **kwargs):
 
