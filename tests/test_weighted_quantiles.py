@@ -65,9 +65,9 @@ def test_weighted_case_original():
     print(f"Quantile: {q}")
     print(f"Result: {result:.4f}")
     print(f"Expected: ~0.5 (50% of cumulative weight)")
-    
-    # The 50th percentile should fall within the first value since it has 50% weight
-    assert 0 <= result <= 1, f"Median should be between 0 and 1, got {result}"
+
+    # The 50th percentile should be 0.75, since 0*0.5 + 1*0.25 + 2*0.25 = 0.75
+    assert result == 0.75, f"Median should be 0.75, got {result}"
     print("✓ Test passed\n")
 
 
