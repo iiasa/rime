@@ -84,7 +84,11 @@ Change to the rime folder and install the package including the requirements.
 
 	pip install --editable .
 
-## Further information
-This package is in a pre-release mode. A manuscript preprint is currently under-going peer review and available at [EarthArXiv](https://eartharxiv.org/repository/view/8825/).  
+## Further information and citation
+If you use or take inspiration from this package, please cite the papers and associated materials accordingly:  
+Edward Byers et al. 2025. [Fast climate impact emulation for global temperature scenarios with the rapid impact model emulator (RIME).](https://iopscience.iop.org/article/10.1088/2752-5295/adee3d) Environ. Res.: Climate 4 035011.
 
 Examples provided use climate impacts data [Werning et al. 2024a](https://zenodo.org/records/14524342) that was developed using the methodology in [Werning et al. 2024b](https://iopscience.iop.org/article/10.1088/2752-5295/ad8300/meta), currently hosted on the [Climate Solutions Explorer](https://www.climate-solutions-explorer.eu/).
+
+A subsequent paper implementing a probabilistic version, RIME-X, is published in Geoscientific Development:  
+Niklas Schwind et al. 2026. [RIME-X v1.0: combining simple climate models, Earth system models, and climate impact models into a unified statistical emulator for regional climate indicators](https://gmd.copernicus.org/articles/19/6797/2026/) Geosci. Model Dev., 19, 6797–6828.
